@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Requi Trading — Trailing &amp; Exit Engine Development Guide (v2.4)</title>
+<style>
+@page { size: A4; margin: 2.1cm 1.8cm;
+  @top-center { content: string(doctitle); font-size: 8pt; color: #666; font-family: Helvetica, Arial, sans-serif; }
+  @bottom-center { content: counter(page); font-size: 9pt; color: #666; font-family: Helvetica, Arial, sans-serif; } }
+@page :first { margin: 0; @top-center { content: none; } @bottom-center { content: none; } }
+@page toc { @top-center { content: none; } }
+body { margin: 0; padding: 0; string-set: doctitle ""; font-family: Georgia, 'Times New Roman', serif; font-size: 10.5pt; line-height: 1.55; color: #333; text-align: justify; text-align-last: left; }
+h1 { string-set: doctitle content(); }
+
+/* cover */
+.cover { width: 210mm; height: 297mm; margin: 0; position: relative; overflow: hidden; page-break-after: always;
+  background: linear-gradient(160deg, #0a1628 0%, #10294a 55%, #143a63 100%); }
+.cover .accent { position: absolute; top: 0; left: 0; width: 14mm; height: 70mm; background: #2dd4bf; }
+.cover .accent2 { position: absolute; top: 0; left: 14mm; width: 5mm; height: 45mm; background: #1e6fbd; }
+.cover .grid { position: absolute; bottom: 0; right: 0; width: 90mm; height: 90mm;
+  background-image: repeating-linear-gradient(0deg, rgba(45,212,191,.14) 0 1px, transparent 1px 11mm), repeating-linear-gradient(90deg, rgba(45,212,191,.14) 0 1px, transparent 1px 11mm); }
+.cover .badge { position: absolute; bottom: 28mm; left: 30mm; width: 12mm; height: 12mm; border: 1.5px solid #2dd4bf; }
+.cover-content { position: absolute; top: 84mm; left: 30mm; right: 26mm; }
+.cover-kicker { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; letter-spacing: 4px; color: #2dd4bf; text-transform: uppercase; margin-bottom: 9mm; }
+.cover-title { font-family: Helvetica, Arial, sans-serif; font-size: 30pt; font-weight: 800; color: #ffffff; line-height: 1.16; margin: 0 0 7mm 0; text-align: left; }
+.cover-sub { font-family: Helvetica, Arial, sans-serif; font-size: 13pt; color: #b8cbe0; margin-bottom: 16mm; text-align: left; }
+.cover-meta { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #8fa9c4; line-height: 1.9; border-top: 1px solid rgba(184,203,224,.35); padding-top: 6mm; width: 105mm; text-align: left; }
+
+/* toc */
+.toc-page { page: toc; page-break-after: always; }
+.toc-title { font-family: Helvetica, Arial, sans-serif; font-size: 17pt; font-weight: 700; color: #10294a; border-bottom: 2.5px solid #10294a; padding-bottom: 6px; margin: 0 0 14px 0; text-align: left; }
+ul.toc { list-style: none; padding: 0; margin: 0; }
+ul.toc li { margin: 0 0 7px 0; }
+ul.toc a { display: block; position: relative; text-decoration: none; color: #333; font-size: 10.5pt; padding-right: 24px; }
+ul.toc a::after { content: target-counter(attr(href url), page); position: absolute; right: 0; font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #10294a; }
+ul.toc li.app a { padding-left: 16px; }
+
+/* sections */
+.section { page-break-before: always; }
+h1.sec { font-family: Helvetica, Arial, sans-serif; font-size: 16pt; font-weight: 700; color: #10294a; border-left: 5px solid #2dd4bf; padding-left: 10px; margin: 0 0 12px 0; text-align: left; }
+h2 { font-family: Helvetica, Arial, sans-serif; font-size: 12pt; font-weight: 700; color: #143a63; margin: 18px 0 7px 0; text-align: left; page-break-after: avoid; }
+p { margin: 0 0 9px 0; }
+ul, ol { margin: 0 0 9px 0; padding-left: 22px; }
+li { margin-bottom: 4px; }
+
+/* code */
+.codehead { font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: 8.6pt; color: #10294a; background: #e9eef4; border: 1px solid #c9d4df; border-bottom: none; padding: 5px 10px; margin: 13px 0 0 0; page-break-after: avoid; page-break-inside: avoid; text-align: left; }
+pre { background: #f5f5f5; border: 1px solid #d9d9d9; padding: 9px 11px; margin: 0 0 11px 0; font-family: 'DejaVu Sans Mono', Consolas, monospace; font-size: 7.4pt; line-height: 1.42; white-space: pre-wrap; word-wrap: break-word; max-width: 100%; overflow: visible; box-sizing: border-box; text-align: left; }
+code { font-family: 'DejaVu Sans Mono', Consolas, monospace; font-size: 9pt; word-break: break-word; background: #f0f0f0; padding: 0 2px; }
+
+/* three-line tables */
+table { border-collapse: collapse; width: 100%; max-width: 100%; margin: 10px 0 14px 0; font-size: 9.3pt; box-sizing: border-box; }
+thead { display: table-header-group; }
+th, td { padding: 5px 8px; text-align: left; vertical-align: top; }
+thead tr { border-top: 1.6px solid #333; border-bottom: 1px solid #333; }
+tbody tr { border-bottom: 0.5px solid #ccc; }
+tbody tr.last { border-bottom: 1.6px solid #333; }
+tr { page-break-inside: avoid; }
+caption { caption-side: top; text-align: left; font-size: 9pt; color: #555; margin-bottom: 4px; }
+caption::before { content: attr(data-label) " — "; font-weight: bold; }
+
+/* note / warning boxes (left border, theorem style) */
+.note { border-left: 3px solid #1e6fbd; background: #f3f7fb; padding: 8px 12px; margin: 11px 0; page-break-inside: avoid; }
+.warn { border-left: 3px solid #b45309; background: #fdf7ee; padding: 8px 12px; margin: 11px 0; page-break-inside: avoid; }
+.note .t, .warn .t { font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.note .t { color: #1e6fbd; } .warn .t { color: #b45309; }
+
+/* flow diagram (pure CSS, no JS) */
+.flow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px; margin: 12px 0 14px 0; page-break-inside: avoid; }
+.fbox { border: 1.2px solid #10294a; background: #f5f8fb; padding: 7px 9px; font-family: Helvetica, Arial, sans-serif; font-size: 8.2pt; line-height: 1.3; text-align: center; width: 108px; display: flex; align-items: center; justify-content: center; }
+.fbox.hot { background: #0f2c50; color: #fff; border-color: #0f2c50; }
+.farr { display: flex; align-items: center; font-size: 12pt; color: #2dd4bf; font-weight: 700; }
+</style></head><body>
+
+<div class="cover">
+  <div class="accent"></div><div class="accent2"></div>
+  <div class="grid"></div><div class="badge"></div>
+  <div class="cover-content">
+    <div class="cover-kicker">Requi Trading &nbsp;·&nbsp; Engineering</div>
+    <div class="cover-title">Trailing &amp; Exit Engine<br>Development Guide</div>
+    <div class="cover-sub">Version 2.4 — automatic trailing stops, T1/T2 scale-outs, immediate-trail stop mode, manual overrides, broker-side reconciliation, disaster stop, and the live trade stream</div>
+    <div class="cover-meta">
+      Document type: Engineering handoff — full source, diffs, and rollout steps<br>
+      Companion to: Autonomous Execution Development Guide v2.2 (auto-execute, orders, P&amp;L)<br>
+      Date: August 5, 2026 &nbsp;·&nbsp; Classification: Confidential — internal engineering only
+    </div>
+  </div>
+</div>
+
+<div class="toc-page">
+  <p class="toc-title">Contents</p>
+  <ul class="toc">
+    <li><a href="#sec1">1&nbsp;&nbsp;What this version ships</a></li>
+    <li><a href="#sec2">2&nbsp;&nbsp;The trailing-stop spec and how it maps to code</a></li>
+    <li><a href="#sec3">3&nbsp;&nbsp;Stop modes — CLASSIC vs IMMEDIATE_TRAIL</a></li>
+    <li><a href="#sec4">4&nbsp;&nbsp;Automatic scale-outs at T1 and T2</a></li>
+    <li><a href="#sec5">5&nbsp;&nbsp;Manual override controls</a></li>
+    <li><a href="#sec6">6&nbsp;&nbsp;Broker-side reconciliation — cancel-and-govern and the disaster stop</a></li>
+    <li><a href="#sec7">7&nbsp;&nbsp;Live trade stream</a></li>
+    <li><a href="#sec8">8&nbsp;&nbsp;Safety invariants</a></li>
+    <li><a href="#sec9">9&nbsp;&nbsp;Execution flow</a></li>
+    <li><a href="#sec10">10&nbsp;&nbsp;Database migration</a></li>
+    <li><a href="#sec11">11&nbsp;&nbsp;Implementation steps</a></li>
+    <li><a href="#sec12">12&nbsp;&nbsp;API reference</a></li>
+    <li><a href="#sec13">13&nbsp;&nbsp;Test plan</a></li>
+    <li class="app"><a href="#appA">Appendix A — api/engine/trailing.ts (new file, full source)</a></li>
+    <li class="app"><a href="#appB">Appendix B — api/engine/portfolio.ts (full source, replaces v2.2)</a></li>
+    <li class="app"><a href="#appC">Appendix C — db/schema.ts edits</a></li>
+    <li class="app"><a href="#appD">Appendix D — api/lib/ensure-schema.ts edits</a></li>
+    <li class="app"><a href="#appE">Appendix E — broker layer edits (getOpenOrders)</a></li>
+    <li class="app"><a href="#appF">Appendix F — tickets.ts and monitor.ts edits (T2)</a></li>
+    <li class="app"><a href="#appG">Appendix G — api/engine-router.ts edits</a></li>
+    <li class="app"><a href="#appH">Appendix H — systemcheck/checks.ts and boot.ts edits</a></li>
+    <li class="app"><a href="#appI">Appendix I — src/components/OrdersPanel.tsx (full source, replaces v2.2)</a></li>
+    <li class="app"><a href="#appJ">Appendix J — src/components/LiveStream.tsx (new file) + page mount</a></li>
+  </ul>
+</div>
+
+<div class="section" id="sec1">
+<h1 class="sec">1&nbsp;&nbsp;What this version ships</h1>
+<p>Versions 2.3 and 2.4 (delivered together here as the <b>exit engine</b>) turn the Autonomous module into a fully self-managing trading system: every position the system opens is protected, scaled out of, and exited automatically, with the human able to override at any moment. Six capabilities ship on top of the v2.2 base (auto-execute, order history, P&amp;L, strategy self-identification):</p>
+<ol>
+<li><b>Automatic trailing stops.</b> A 5-second-cycle module manages every open position that carries a governed stop — whether the entry came from the autonomous engine or from an Intelligence chat trade, and whether it was human-confirmed or auto-executed. Flat stop first, then a ratcheting ATR trail that never moves down, with breakeven and T1 floors after scale-outs.</li>
+<li><b>Immediate-trail stop mode.</b> A per-user alternative stop policy: no flat stop-loss anywhere — a percentage trail is live from entry at 0.5%, tightening on gain milestones, with a moving hard bottom. Selected from the UI, persisted per user.</li>
+<li><b>Automatic scale-outs at T1/T2.</b> The module sells a third of the position at the first target and half the remainder at the second, booking realized P&amp;L and advancing the trailing floors. The trail runs the rest.</li>
+<li><b>Manual override controls.</b> Per-position tighten (stop or trail), take/return manual control (the only way to loosen), and flatten-now — all from the positions table, all audited.</li>
+<li><b>Broker-side reconciliation.</b> Cancel-and-govern: resting broker-side sell-stops the system did not create are cancelled with a confirmation alert, so they can never preempt the trail. Disaster stop: one catastrophic resting STP far below everything as crash insurance, polled, and auto-cancelled on close.</li>
+<li><b>Live trade stream.</b> A real-time activity feed on the Autonomous page — entries, scale-outs, fires, cancellations, overrides — updating every five seconds.</li>
+</ol>
+<div class="warn"><p class="t">Read this first</p>
+<p>The exit engine <b>exits only</b> — it can never open or add to a position. Every exit travels the same broker adapter path as entries, with the same idempotency discipline and the same dead-end-on-UNKNOWN rule. All stops are managed in software; the only resting broker order the system ever places is the optional disaster stop, which sits far below the working stop and is removed when the position closes.</p></div>
+</div>
+
+<div class="section" id="sec2">
+<h1 class="sec">2&nbsp;&nbsp;The trailing-stop spec and how it maps to code</h1>
+<p>The module was built to a five-point specification. The mapping below is the reference for every later section:</p>
+<table>
+<caption data-label="Table 1">Spec → implementation</caption>
+<thead><tr><th style="width:14%">Spec</th><th style="width:44%">Requirement</th><th style="width:42%">Implementation</th></tr></thead>
+<tbody>
+<tr><td>1. ARM</td><td>Trail activates only after price reaches entry + 1R (R = entry − original stop). Before that, the original flat stop governs.</td><td><code>evaluate()</code> CLASSIC branch: <code>armed</code> flips when <code>last ≥ entry + 1×R</code>; pre-arm the fire level is the flat stop itself, so a position is never unprotected.</td></tr>
+<tr><td>2. TRAIL</td><td>Trail = highest price since entry − (2.5 × ATR14). Recalculate on every new high; NEVER move down.</td><td><code>highestPrice</code> ratchets in the DB; <code>trail = max(stored trail, highest − 2.5×ATR14, floor)</code>. ATR is the same Wilder ATR the signal engine uses (<code>api/engine/triggers.ts</code>).</td></tr>
+<tr><td>3. FLOOR</td><td>After T1 scale-out fills, trail can never be below entry (breakeven floor). After T2, floor moves to T1 price.</td><td><code>scaleStage</code> on the position row (0/1/2) drives the floor: stage ≥ 1 → entry, stage ≥ 2 → T1 price.</td></tr>
+<tr><td>4. FIRE</td><td>If last price ≤ trail → market sell the entire remaining position. Log: entry, trail at fire, fill, slippage.</td><td><code>submitExit()</code> sends a pure MKT sell through the position's own broker (paper / Robinhood MCP / IBKR, resolved from the source ticket). <code>bookExit()</code> writes the alert with entry, reference at fire, fill, and slippage.</td></tr>
+<tr class="last"><td>5. SAFETY</td><td>Feed stalls &gt;60s → flatten position or alert human. Kill switch checked every cycle.</td><td>Stall = no usable mark for one full refresh cycle (75s grace): <code>safetyFlatten()</code> attempts the flatten AND raises a CRITICAL alert (throttled 5 min). The per-user kill switch (<code>ai_limits.killSwitch</code>, persisted in the DB) is read every cycle — ON means the bot stands down entirely.</td></tr>
+</tbody>
+</table>
+<p>Two structural properties worth knowing: the module manages positions, not tickets — so it covers engine trades and chat-brokered trades identically. And it sleeps outside US regular hours (09:30–16:00 ET, Mon–Fri): overnight, positions rest on their stops and the disaster order.</p>
+</div>
+
+<div class="section" id="sec3">
+<h1 class="sec">3&nbsp;&nbsp;Stop modes — CLASSIC vs IMMEDIATE_TRAIL</h1>
+<p>Version 2.4 adds a per-user stop policy (<code>users.stopMode</code>, default CLASSIC), switched from the Trail toggle in the Orders &amp; P&amp;L panel header. Both modes share the same machinery — feed handling, ratchets, scale-outs, fire path, alerts — and differ only in how the fire level is computed.</p>
+<h2>3.1 CLASSIC (default)</h2>
+<p>The Section 2 behaviour: flat stop until entry + 1R, then the 2.5×ATR14 trail with scale-stage floors. Best for swing-style entries that need room to develop.</p>
+<h2>3.2 IMMEDIATE_TRAIL</h2>
+<p>No flat stop-loss is used anywhere — a software trail is live from the first second, starting at the same margin a flat stop would have used (0.5% below price), and tightening as the trade proves itself:</p>
+<table>
+<caption data-label="Table 2">IMMEDIATE_TRAIL distance schedule (implemented in immediateDistPct)</caption>
+<thead><tr><th style="width:34%">Gain since entry</th><th style="width:33%">Trail distance below highest</th><th style="width:33%">Hard bottom</th></tr></thead>
+<tbody>
+<tr><td>0% (at entry)</td><td>0.50%</td><td>entry − 0.5%</td></tr>
+<tr><td>+0.5%</td><td>0.45%</td><td>entry − 0.5%</td></tr>
+<tr><td>+1.0%</td><td>0.40%</td><td><b>entry (breakeven)</b></td></tr>
+<tr><td>+1.5%</td><td>0.32%</td><td>entry</td></tr>
+<tr><td>+2.0%</td><td>0.27%</td><td>entry + 40% of peak gain</td></tr>
+<tr class="last"><td>+2.5% and beyond</td><td>0.22% (floor — never tighter)</td><td>entry + 40% of peak gain, ratcheting</td></tr>
+</tbody>
+</table>
+<p>Two calibration rules protect the schedule from noise: the distance never goes below <b>0.5 × ATR14</b> (jumpy names get breathing room even when the percentage says tighter), and the percentage itself never goes below 0.22% (a single bar's wiggle cannot kill a runner). Fire = <code>last ≤ max(trail, hard bottom)</code>. The hard bottom is a pure function of entry and the highest price — it needs no storage and can never move down.</p>
+<div class="note"><p class="t">No broker-side stop-loss</p>
+<p>In IMMEDIATE_TRAIL mode there is deliberately no broker-side stop-loss at all — the software trail and hard bottom govern everything, which removes any confusion about two competing stop authorities. The disaster stop (Section 6) still rests far below as crash insurance on live brokers.</p></div>
+</div>
+
+<div class="section" id="sec4">
+<h1 class="sec">4&nbsp;&nbsp;Automatic scale-outs at T1 and T2</h1>
+<p>The spec's floors assumed T1/T2 scale-outs would fill — but until v2.4 nothing placed them. The exit engine closes that gap:</p>
+<ul>
+<li><b>Trigger.</b> After the fire check (protection always wins), if <code>last ≥ T1</code> at stage 0 → sell <code>round(qty/3)</code> at market. If <code>last ≥ T2</code> at stage 1 → sell <code>floor(remaining/2)</code>. Positions under 3 shares skip scaling — the trail runs everything.</li>
+<li><b>Plumbing.</b> Engine proposals carry both targets: <code>monitor.ts</code> passes <code>proposal.targets[1]</code> into the ticket's new <code>target2</code> column, and <code>recordFill</code> seeds <code>positions.t2Price</code> from it. T1 already flowed the same way.</li>
+<li><b>Booking.</b> Fills go through the same submission/poll path as protective exits; <code>bookScaleOut()</code> splits the position row (realized P&amp;L on the closed tranche, stage advanced on the remainder), and the alert records entry, target, fill, realized P&amp;L, and the new floor ("BREAKEVEN" after T1, "T1 PRICE" after T2).</li>
+<li><b>Manual sells count too.</b> A partial sell via a confirmed ticket also advances the stage — the floor rules activate no matter who scaled.</li>
+</ul>
+</div>
+
+<div class="section" id="sec5">
+<h1 class="sec">5&nbsp;&nbsp;Manual override controls</h1>
+<p>Every open position row in the Orders &amp; P&amp;L panel carries three actions. The governing invariant: <b>you can always tighten protection instantly, but loosening requires explicitly taking the position out of the module's hands</b> — a moment of emotion can never silently strip a position of protection.</p>
+<table>
+<caption data-label="Table 3">Override actions (all user-scoped, all write an audit alert)</caption>
+<thead><tr><th style="width:16%">Action</th><th style="width:44%">Behaviour</th><th style="width:40%">Validation</th></tr></thead>
+<tbody>
+<tr><td>TIGHTEN</td><td>Raise the flat stop (pre-arm) or the trail (armed) toward the current price. Setting a trail on an unarmed position arms it at your level; the module ratchets upward from there.</td><td>New level must be above the current one (the ratchet never moves down) and below the live mark — at/above the mark suggests Flatten instead.</td></tr>
+<tr><td>MANUAL / AUTO</td><td>Take full ownership of the exit: the module stands down for that position — no trail updates, no fires, no scale-outs, no safety flatten — and a red MANUAL badge shows on the row. Press AUTO to hand it back.</td><td>Per-position toggle (<code>positions.overrideMode</code>). The resting disaster stop stays in place as insurance even under manual control.</td></tr>
+<tr class="last"><td>FLATTEN</td><td>Market-sell the entire position now, through the same audited fire path as any module exit (same broker, same polling, same fill/slippage logging).</td><td>Browser confirm first. Works any time, including off-hours — <code>requestFlatten</code> calls the broker directly rather than waiting for the loop.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="section" id="sec6">
+<h1 class="sec">6&nbsp;&nbsp;Broker-side reconciliation — cancel-and-govern and the disaster stop</h1>
+<p>Once per position (its first management cycle), the module reconciles the broker's world with ours.</p>
+<h2>6.1 Cancel-and-govern</h2>
+<p>A stop-loss placed outside our system — keyed into TWS by hand, left by another tool — can fire before the trail and sell the position out from under the ledger, leaving our books showing a position that no longer exists. To prevent exactly one exit authority per position:</p>
+<ol>
+<li>The broker adapter contract gains an optional <code>getOpenOrders(accountId)</code> capability, implemented for IBKR (Client Portal <code>/iserver/account/orders</code>, live statuses only).</li>
+<li>The module lists open orders and cancels every resting SELL stop on the position's symbol that it did not create — anything not tagged with our <code>TRAIL-</code>/<code>DSTR-</code> client-order-id prefixes and not our own disaster order.</li>
+<li>Each cancellation posts a confirmation alert naming the order and its level ("Broker-side stop canceled — trailing module governs this exit"). A failed cancel escalates to CRITICAL with instructions to cancel manually. Brokers without an open-orders endpoint get a one-time "verify manually" alert instead — nothing is silently skipped.</li>
+</ol>
+<h2>6.2 Disaster stop</h2>
+<p>Pure crash insurance, deliberately non-overlapping with the working stops:</p>
+<ul>
+<li><b>Placement.</b> One resting STP sell, GTC, at <code>flat stop − max(1% of entry, ATR14)</code> — far below everything the module manages. Tagged <code>DSTR-{positionId}</code>, its order id and price stored on the position row. Skipped on the paper adapter (the simulator fills resting orders instantly, which would book a fake loss).</li>
+<li><b>Supervision.</b> Polled once a minute. If it ever FILLED, the broker closed the position — the books close honestly as <code>DISASTER_STOP</code> with a CRITICAL alert telling you to investigate the feed/module. If it vanishes (cancelled/rejected), the module re-places it.</li>
+<li><b>Cleanup.</b> Cancelled automatically the moment the position closes by any other path — no orphan resting orders are ever left behind. Rows carrying one show a +D badge in the UI.</li>
+</ul>
+</div>
+
+<div class="section" id="sec7">
+<h1 class="sec">7&nbsp;&nbsp;Live trade stream</h1>
+<p>The Autonomous page gains a <b>Live trade stream</b> panel — the "watch the bot buying and selling" view. It polls <code>engine.activity</code> every 5 seconds and renders the execution-relevant alert feed (entries, scale-outs, trail fires, cancellations, overrides, safety events) newest-first with ET timestamps, severity colour coding (teal fills, sky scale-outs, amber stops, red criticals), and a pulsing live indicator. No new storage — it projects the alert feed that the exit engine and ticket layer already write, so the stream can never disagree with the audit trail. Source: <code>streamActivity()</code> in portfolio.ts (Appendix B) and <code>src/components/LiveStream.tsx</code> (Appendix J).</p>
+</div>
+
+<div class="section" id="sec8">
+<h1 class="sec">8&nbsp;&nbsp;Safety invariants</h1>
+<table>
+<caption data-label="Table 4">Invariants of the exit engine — a change that breaks one is a regression</caption>
+<thead><tr><th style="width:30%">Invariant</th><th style="width:70%">Mechanism</th></tr></thead>
+<tbody>
+<tr><td>Exits only</td><td>The module submits SELL orders against existing positions only. There is no code path that opens or adds.</td></tr>
+<tr><td>Ratchets never move down</td><td>Trail and hard bottom are computed with <code>max()</code> against stored state; manual lowers are rejected and require MANUAL control instead.</td></tr>
+<tr><td>Protection first</td><td>The fire check runs before scale-out evaluation every cycle — profit-taking never precedes protection.</td></tr>
+<tr><td>One authority per position</td><td>Foreign broker-side stops are cancelled on first management; the disaster stop sits deliberately far below the working levels.</td></tr>
+<tr><td>Kill switch wins</td><td>Checked every 5-second cycle per user; ON = the bot takes zero actions for that user.</td></tr>
+<tr><td>UNKNOWN is a dead end</td><td>An unresolvable broker state is never resubmitted — position stays open, CRITICAL alert demands manual reconciliation, the position is excluded from retries.</td></tr>
+<tr><td>Bookkeeping never blocks execution</td><td>Ledger writes are failure-isolated from broker calls; the alert trail preserves fill facts independently.</td></tr>
+<tr class="last"><td>Off-hours honesty</td><td>The loop sleeps outside the session; no fabricated marks, no stall false-alarms at night. The disaster stop remains the overnight insurance.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="section" id="sec9">
+<h1 class="sec">9&nbsp;&nbsp;Execution flow</h1>
+<p>One 5-second cycle for one position (market hours, kill switch off):</p>
+<div class="flow">
+  <div class="fbox">In-flight order? → poll broker until FILLED, then book</div><div class="farr">→</div>
+  <div class="fbox">First cycle: cancel foreign stops + place disaster stop</div><div class="farr">→</div>
+  <div class="fbox">MANUAL override? → stand down (insurance stays)</div><div class="farr">→</div>
+  <div class="fbox">Feed stalled &gt;60s? → safety flatten + CRITICAL alert</div>
+</div>
+<div class="flow">
+  <div class="fbox">Update highest; compute fire level by stop mode (CLASSIC arm/ATR trail · IMMEDIATE pct trail + hard bottom)</div><div class="farr">→</div>
+  <div class="fbox hot">last ≤ fire level? → MKT sell everything, log entry/trail/fill/slippage</div><div class="farr">→</div>
+  <div class="fbox">else last ≥ T1/T2? → scale tranche, advance floor stage</div><div class="farr">→</div>
+  <div class="fbox">Stream + alerts update; next cycle in 5s</div>
+</div>
+</div>
+
+<div class="section" id="sec10">
+<h1 class="sec">10&nbsp;&nbsp;Database migration</h1>
+<p>All changes are applied automatically at boot by the guarded statements in Appendix D — no manual migration. Two batches:</p>
+<h2>10.1 Trailing state (v2.3)</h2>
+<ul>
+<li><code>positions.stopPrice</code> — original flat stop (governs pre-arm in CLASSIC; R reference everywhere).</li>
+<li><code>positions.t1Price</code> / <code>highestPrice</code> / <code>trailPrice</code> / <code>trailArmed</code> / <code>scaleStage</code> / <code>closedBy</code> — trail state machine and close attribution.</li>
+</ul>
+<h2>10.2 Final update (v2.4)</h2>
+<ul>
+<li><code>users.stopMode VARCHAR(16) DEFAULT 'CLASSIC'</code> — per-user stop policy.</li>
+<li><code>order_tickets.target2</code> — the second scale-out target, carried from engine proposals.</li>
+<li><code>positions.t2Price</code>, <code>overrideMode</code> (null = module-managed, MANUAL = human-owned), <code>disasterOrderId</code>, <code>disasterPrice</code>.</li>
+</ul>
+<div class="warn"><p class="t">Deployment reminder</p>
+<p>Unchanged from previous versions: the server only listens under <code>NODE_ENV=production node dist/boot.js</code>; delete stale <code>*.tsbuildinfo</code> before <code>tsc --noEmit</code>; if port 3000 answers with an old build, a respawned dev server is holding it. The trailing loop starts only in the production block — System Check reports "Trailing loop is NOT running" as a FAIL otherwise.</p></div>
+</div>
+
+<div class="section" id="sec11">
+<h1 class="sec">11&nbsp;&nbsp;Implementation steps</h1>
+<p>Apply in this order. Appendices carry full source for new/replaced files and exact snippets for edits — everything is verbatim from the verified v2.4 build.</p>
+<ol>
+<li><b>Schema.</b> Appendix C into <code>db/schema.ts</code> (stopMode, target2, and the full positions column set).</li>
+<li><b>Boot migration.</b> Appendix D into <code>api/lib/ensure-schema.ts</code> (all guarded ALTER statements).</li>
+<li><b>Broker layer.</b> Appendix E — <code>BrokerOpenOrder</code> + optional <code>getOpenOrders</code> in <code>api/brokers/types.ts</code>, and the IBKR implementation.</li>
+<li><b>Portfolio.</b> Replace <code>api/engine/portfolio.ts</code> wholesale with Appendix B (supersedes the v2.2 file — adds trail seeding to recordFill, bookScaleOut, stop mode, overrides, activity stream).</li>
+<li><b>Trailing module.</b> Create <code>api/engine/trailing.ts</code> from Appendix A (new file — the core of this guide).</li>
+<li><b>T2 plumbing.</b> Appendix F into <code>api/queries/tickets.ts</code> and <code>api/engine/monitor.ts</code>.</li>
+<li><b>Router.</b> Appendix G into <code>api/engine-router.ts</code> (trailing status, stop mode, overrides, flatten, activity).</li>
+<li><b>System Check + boot.</b> Appendix H — the 12th probe into <code>api/systemcheck/checks.ts</code>, and <code>ensureTrailingLoop()</code> into the production block of <code>api/boot.ts</code>.</li>
+<li><b>UI.</b> Replace <code>src/components/OrdersPanel.tsx</code> with Appendix I; create <code>src/components/LiveStream.tsx</code> from Appendix J and mount it on the Autonomous page.</li>
+<li><b>Verify.</b> <code>rm -f *.tsbuildinfo && npx tsc --noEmit</code> (silent), <code>npm run build</code>, boot with <code>NODE_ENV=production</code>. Expect <code>schema ensured (16 tables)</code>, HTTP 401 on <code>engine.trailing</code> / <code>engine.getStopMode</code> / <code>engine.activity</code>, and 405 (POST-only) on the mutations.</li>
+<li><b>Exercise.</b> Run the Section 13 test plan against a paper account before any live-broker session.</li>
+</ol>
+</div>
+
+<div class="section" id="sec12">
+<h1 class="sec">12&nbsp;&nbsp;API reference</h1>
+<table>
+<caption data-label="Table 5">tRPC routes added in v2.3 + v2.4 (all user-scoped, auth required)</caption>
+<thead><tr><th style="width:26%">Route</th><th style="width:12%">Kind</th><th style="width:62%">Behaviour</th></tr></thead>
+<tbody>
+<tr><td><code>engine.trailing</code></td><td>query</td><td>Module status: running, marketHours, lastTickAt, managed count, in-flight exits, fires today.</td></tr>
+<tr><td><code>engine.getStopMode</code> / <code>setStopMode</code></td><td>query / mutation</td><td>Per-user CLASSIC vs IMMEDIATE_TRAIL. Read fails to CLASSIC (conservative).</td></tr>
+<tr><td><code>engine.tightenStop</code></td><td>mutation</td><td><code>{ positionId, stopPrice }</code> — raise the flat stop. Rejects lowers and levels at/above the mark.</td></tr>
+<tr><td><code>engine.tightenTrail</code></td><td>mutation</td><td><code>{ positionId, trailPrice }</code> — raise the trail; arms it if unarmed.</td></tr>
+<tr><td><code>engine.setPositionOverride</code></td><td>mutation</td><td><code>{ positionId, manual }</code> — take/return manual control of the exit. Audited.</td></tr>
+<tr><td><code>engine.flattenPosition</code></td><td>mutation</td><td><code>{ positionId }</code> — immediate market flatten via the audited fire path, works off-hours.</td></tr>
+<tr class="last"><td><code>engine.activity</code></td><td>query</td><td>Live stream feed — latest 40 execution-relevant events, newest first.</td></tr>
+</tbody>
+</table>
+<p><code>engine.positions</code> rows now also carry <code>stopPrice</code>, <code>highestPrice</code>, <code>trailPrice</code>, <code>trailArmed</code>, <code>scaleStage</code>, <code>closedBy</code>, <code>t2Price</code>, <code>overrideMode</code>, <code>disasterPrice</code>. No route exposes the module's internal fire path — it is reachable only from the loop and the audited <code>requestFlatten</code>.</p>
+</div>
+
+<div class="section" id="sec13">
+<h1 class="sec">13&nbsp;&nbsp;Test plan</h1>
+<p>Run against a paper account during market hours. Each step names the pass condition.</p>
+<ol>
+<li><b>Arm and ratchet (CLASSIC).</b> Open a small position with a governed stop. Pass: Protection column shows "flat" pre-arm; after price exceeds entry + 1R the TRAIL badge appears; the trail price only moves up on new highs, never down.</li>
+<li><b>Flat-stop fire.</b> On a position that never arms, walk price to the stop (paper). Pass: full market sell, position CLOSED with closedBy FLAT_STOP, alert shows entry / stop at fire / fill / slippage.</li>
+<li><b>Trail fire.</b> On an armed position, let price fall through the trail. Pass: closedBy TRAIL, slippage logged, disaster stop cancelled (no orphan), stream shows the event within seconds.</li>
+<li><b>Scale-outs.</b> Position of 6+ shares reaching T1. Pass: ~1/3 sold, realized P&amp;L booked, floor badge shows BE FLOOR; at T2 another tranche, badge T1 FLOOR. 1–2 share positions skip scaling cleanly.</li>
+<li><b>IMMEDIATE_TRAIL.</b> Switch the Trail toggle; open a position. Pass: TRAIL badge from the first cycle at ~0.5% below price; distance tightens at the gain milestones; bottom reaches breakeven after +1% (a fade to entry closes at ~0, not a loss).</li>
+<li><b>Overrides.</b> TIGHTEN above current level → respected next cycle. TIGHTEN below → rejected with message. MANUAL → badge shows, module ignores the position (no fire even through the trail); AUTO → protection resumes. FLATTEN → immediate market sell with audit.</li>
+<li><b>Cancel-and-govern.</b> Place a manual STP sell at the broker for a managed symbol. Pass: within one cycle it is cancelled and a confirmation alert names the order.</li>
+<li><b>Disaster stop.</b> On a live-broker position: +D badge appears, order visible at the broker far below; close the position → the resting order disappears. On paper: correctly skipped.</li>
+<li><b>Feed stall.</b> Stop the data gateway with a position open. Pass: within ~75s a CRITICAL feed-stall alert and a flatten attempt; broker unreachable → follow-up "flatten manually".</li>
+<li><b>Kill switch.</b> Flip the global kill switch with positions open. Pass: all module action stops immediately; resumes when switched back.</li>
+<li><b>System Check.</b> Manual run from the owner page: the Trailing-stop module probe is OK and reports the managed count.</li>
+</ol>
+</div>
+
+<div class="section" id="appA">
+<h1 class="sec">Appendix A — api/engine/trailing.ts (new file, full source)</h1>
+<p>The complete protective-exit engine, v2.4: classic flat-stop → 1R arm → 2.5×ATR trail, immediate-trail mode with hard bottom, T1/T2 scale-outs, fire locks, broker-side reconciliation, disaster stop, safety flatten, and kill-switch checks every cycle. Create as a new file.</p>
+<div class="codehead">api/engine/trailing.ts — create as a new file</div>
+<pre>import { and, eq } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { alerts, orderTickets, positions, type Position } from &quot;@db/schema&quot;;
+import { etParts } from &quot;../marketdata/indicators&quot;;
+import { isMarketHours, marketDataService } from &quot;../marketdata/service&quot;;
+import { resolveBroker, type BrokerCode } from &quot;../brokers/registry&quot;;
+import type { BrokerAdapter, OrderIntent } from &quot;../brokers/types&quot;;
+import { getAiLimits } from &quot;../queries/autonomous&quot;;
+import { atr } from &quot;./triggers&quot;;
+import {
+  bookScaleOut,
+  closePositionFromFire,
+  getStopMode,
+  listManagedPositions,
+  updateTrailState,
+  type StopMode,
+} from &quot;./portfolio&quot;;
+
+/**
+ * TRAILING MODULE v2 — the complete automatic exit engine.
+ *
+ * Manages any OPEN position that carries a governed stop (all engine and
+ * Intelligence tickets do), regardless of entry path. Exits only — this
+ * module can never open or add to a position.
+ *
+ * STOP MODES (per user, users.stopMode):
+ * - CLASSIC        — flat stop until price reaches entry + 1R, then a
+ *                    2.5×ATR14 trail off the highest price, ratchet-only,
+ *                    with breakeven (post-T1) and T1 (post-T2) floors.
+ * - IMMEDIATE_TRAIL — no flat stop at all: a percentage trail is live from
+ *                    entry at the same 0.5% margin the flat stop would have
+ *                    used, tightening on gain milestones (0.50% → 0.45 → 0.40
+ *                    → 0.32 → 0.27 → 0.22 floor, with a 0.5×ATR14 distance
+ *                    floor for jumpy names), plus a HARD BOTTOM that starts
+ *                    at entry − 0.5%, moves to breakeven at +1%, and locks
+ *                    40% of peak gain beyond +2%. Fire = last ≤ max(trail,
+ *                    bottom). No broker-side stop-loss is used anywhere.
+ *
+ * SCALE-OUTS: at T1 (and T2 when the proposal carried one) the module sells
+ * a tranche at market — 1/3 then 1/2 of the remainder — booking realized
+ * P&amp;L and advancing the floor stage. Positions smaller than 3 shares skip
+ * scaling; the trail runs the whole position.
+ *
+ * BROKER-SIDE RECONCILIATION (once per position, first management cycle):
+ * - Cancel-and-govern: any resting SELL stop on the same symbol that we did
+ *   not create is cancelled, with a confirmation alert — the module is the
+ *   single exit authority.
+ * - Disaster stop: one catastrophic broker-side STP is placed far below the
+ *   flat stop (buffer = max(1% of entry, ATR14)) as pure crash insurance,
+ *   polled once a minute, cancelled when the position closes. Skipped on
+ *   the paper adapter (which fills resting orders instantly).
+ *
+ * SAFETY: feed stall &gt; one refresh cycle (&gt;60s) → attempt to flatten AND
+ * raise a CRITICAL alert (throttled 5 min per position). The per-user kill
+ * switch is checked every cycle — when ON, the bot stands down entirely.
+ * UNKNOWN broker states are dead ends (manual reconciliation, never
+ * resubmitted). Off-hours the module sleeps; positions rest on their stops.
+ */
+
+const TICK_MS = 5_000;
+const STALL_MS = 75_000;
+const RETRY_MS = 60_000;
+const SAFETY_THROTTLE_MS = 300_000;
+const DISASTER_POLL_MS = 60_000;
+const ARM_R = 1.0;
+const TRAIL_ATR_MULT = 2.5;
+
+/* IMMEDIATE_TRAIL schedule */
+const IT_INITIAL_PCT = 0.005; // same margin the flat stop would use
+const IT_MIN_PCT = 0.0022; // never tighter than this — ordinary noise must not kill a runner
+const IT_ATR_FLOOR_MULT = 0.5; // distance never below 0.5×ATR14
+const IT_BREAKEVEN_GAIN = 0.01; // hard bottom → entry at +1%
+const IT_LOCKIN_GAIN = 0.02; // beyond +2% the bottom locks 40% of peak gain
+const IT_LOCKIN_FRAC = 0.4;
+
+type ExitReason = &quot;FLAT_STOP&quot; | &quot;TRAIL&quot; | &quot;SAFETY_FLATTEN&quot; | &quot;MANUAL_FLATTEN&quot; | &quot;SCALE_T1&quot; | &quot;SCALE_T2&quot;;
+
+interface FireLock { at: number; orderId: string | null; reason: ExitReason; qty: number; ref: number }
+const firing = new Map&lt;number, FireLock&gt;();
+const deadEnded = new Set&lt;number&gt;();
+const safetyAt = new Map&lt;number, number&gt;();
+const reconciled = new Set&lt;number&gt;();
+const disasterPollAt = new Map&lt;number, number&gt;();
+
+let loopStarted = false;
+let ticking = false;
+let lastTickAt: number | null = null;
+let lastManagedCount = 0;
+let firedDay = &quot;&quot;;
+let firedToday = 0;
+
+export function trailingStatus(): { running: boolean; marketHours: boolean; lastTickAt: number | null; managed: number; inFlight: number; firedToday: number } {
+  return { running: loopStarted, marketHours: isMarketHours(), lastTickAt, managed: lastManagedCount, inFlight: firing.size, firedToday };
+}
+
+export function ensureTrailingLoop(): void {
+  if (loopStarted) return;
+  loopStarted = true;
+  const t = setInterval(() =&gt; { void tick(); }, TICK_MS);
+  t.unref();
+}
+
+/** Manual flatten from the UI — works any time, even off-hours. Same broker path, same audit. */
+export async function requestFlatten(userId: number, positionId: number): Promise&lt;{ ok: boolean; message: string }&gt; {
+  const db = getDb();
+  const [p] = await db.select().from(positions)
+    .where(and(eq(positions.id, positionId), eq(positions.userId, userId), eq(positions.status, &quot;OPEN&quot;))).limit(1);
+  if (!p) return { ok: false, message: &quot;No open position with that id.&quot; };
+  const last = marketDataService.get(p.symbol)?.indicators?.last ?? Number(p.avgEntry);
+  const ref = p.trailPrice !== null ? Number(p.trailPrice) : p.stopPrice !== null ? Number(p.stopPrice) : Number(p.avgEntry);
+  await submitExit(userId, p, &quot;MANUAL_FLATTEN&quot;, p.quantity, ref, last);
+  return { ok: true, message: `Flatten order submitted for ${p.symbol} (${p.quantity} sh at market) — watch the stream for the fill.` };
+}
+
+async function tick(): Promise&lt;void&gt; {
+  if (ticking) return;
+  ticking = true;
+  try {
+    if (!isMarketHours()) return; // sleeps off-hours — positions rest on their stops
+    lastTickAt = Date.now();
+    const day = etParts(lastTickAt).day;
+    if (day !== firedDay) { firedDay = day; firedToday = 0; }
+
+    const rows = await listManagedPositions();
+    lastManagedCount = rows.length;
+    const byUser = new Map&lt;number, Position[]&gt;();
+    for (const p of rows) {
+      const list = byUser.get(p.userId) ?? [];
+      list.push(p);
+      byUser.set(p.userId, list);
+    }
+    for (const [userId, list] of byUser) {
+      // KILL SWITCH — checked every cycle. When ON the human owns every exit.
+      const limits = await getAiLimits(userId).catch(() =&gt; null);
+      if (limits?.killSwitch === true) continue;
+      const mode = await getStopMode(userId);
+      for (const p of list) await evaluate(userId, p, mode).catch(() =&gt; undefined);
+    }
+  } finally {
+    ticking = false;
+  }
+}
+
+/* ---------- broker resolution (the position&#x27;s own broker, from its source ticket) ---------- */
+
+async function brokerFor(userId: number, p: Position): Promise&lt;{ adapter: BrokerAdapter; effective: string; accountId: string }&gt; {
+  const db = getDb();
+  const [ticket] = p.sourceTicketId
+    ? await db.select().from(orderTickets).where(and(eq(orderTickets.userId, userId), eq(orderTickets.ticketId, p.sourceTicketId))).limit(1)
+    : [undefined];
+  const { adapter, effective } = resolveBroker(((ticket?.broker as BrokerCode | undefined) ?? &quot;PAPER&quot;));
+  const accountId = ticket?.accountId ?? (await adapter.getAccounts().catch(() =&gt; []))[0]?.accountId ?? &quot;PAPER-001&quot;;
+  return { adapter, effective, accountId };
+}
+
+/* ---------- evaluation ---------- */
+
+async function evaluate(userId: number, p: Position, mode: StopMode): Promise&lt;void&gt; {
+  // An in-flight exit/scale order owns the position until the broker resolves it.
+  const lock = firing.get(p.id);
+  if (lock) {
+    if (lock.orderId) await pollInFlight(userId, p, lock).catch(() =&gt; undefined);
+    else if (Date.now() - lock.at &gt; RETRY_MS) firing.delete(p.id);
+    return;
+  }
+  if (deadEnded.has(p.id)) return;
+
+  const { adapter, effective, accountId } = await brokerFor(userId, p);
+
+  // Once per position: cancel foreign stops, place the disaster stop.
+  if (!reconciled.has(p.id)) {
+    reconciled.add(p.id);
+    await reconcileBrokerSide(userId, p, adapter, effective, accountId).catch(() =&gt; undefined);
+  }
+
+  // Disaster-stop poll (once a minute): if the catastrophe order filled, the broker closed the position.
+  if (p.disasterOrderId &amp;&amp; (Date.now() - (disasterPollAt.get(p.id) ?? 0)) &gt; DISASTER_POLL_MS) {
+    disasterPollAt.set(p.id, Date.now());
+    await pollDisaster(userId, p, adapter, effective, accountId).catch(() =&gt; undefined);
+    const [fresh] = await getDb().select().from(positions).where(eq(positions.id, p.id)).limit(1).catch(() =&gt; []);
+    if (!fresh || fresh.status !== &quot;OPEN&quot;) return;
+    p = fresh;
+  }
+
+  // MANUAL override — the human owns this exit. (Disaster insurance above stays active.)
+  if (p.overrideMode === &quot;MANUAL&quot;) return;
+
+  const feed = marketDataService.get(p.symbol);
+  const last = feed?.indicators?.last ?? null;
+  const stalled = !feed
+    || feed.lastRefresh === null
+    || Date.now() - feed.lastRefresh &gt; STALL_MS
+    || feed.error !== null
+    || last === null;
+
+  if (stalled) {
+    await safetyFlatten(userId, p, last ?? Number(p.avgEntry));
+    return;
+  }
+
+  const entry = Number(p.avgEntry);
+  const stop = Number(p.stopPrice);
+  const risk = entry - stop;
+  if (!(risk &gt; 0)) return;
+
+  const atr14 = atr(feed.bars, 14) ?? entry * 0.005;
+  const highest = Math.max(p.highestPrice !== null ? Number(p.highestPrice) : entry, last);
+
+  let armed = p.trailArmed === true;
+  let trail = p.trailPrice !== null ? Number(p.trailPrice) : null;
+  let fireLevel: number;
+  let fireReason: ExitReason;
+
+  if (mode === &quot;IMMEDIATE_TRAIL&quot;) {
+    // Trail is live from entry; distance tightens on gain milestones.
+    armed = true;
+    const peakGainPct = (highest - entry) / entry;
+    const distPct = immediateDistPct(peakGainPct);
+    const distance = Math.max(distPct * highest, IT_ATR_FLOOR_MULT * atr14);
+    const candidate = highest - distance;
+    trail = Math.max(trail ?? Number.NEGATIVE_INFINITY, candidate);
+    trail = +trail.toFixed(4);
+    // HARD BOTTOM — deterministic ratchet off the highest price.
+    let bottom = entry - IT_INITIAL_PCT * entry;
+    if (peakGainPct &gt;= IT_BREAKEVEN_GAIN) bottom = Math.max(bottom, entry);
+    if (peakGainPct &gt;= IT_LOCKIN_GAIN) bottom = Math.max(bottom, entry + IT_LOCKIN_FRAC * (highest - entry));
+    fireLevel = Math.max(trail, bottom);
+    fireReason = &quot;TRAIL&quot;;
+  } else {
+    // CLASSIC — flat stop governs until entry + 1R, then the ATR trail.
+    if (!armed &amp;&amp; last &gt;= entry + ARM_R * risk) {
+      armed = true;
+      trail = highest - TRAIL_ATR_MULT * atr14;
+    }
+    if (armed) {
+      const floor = p.scaleStage &gt;= 2 &amp;&amp; p.t1Price !== null
+        ? Number(p.t1Price)
+        : p.scaleStage &gt;= 1 ? entry : null;
+      const candidate = highest - TRAIL_ATR_MULT * atr14;
+      const next = Math.max(trail ?? Number.NEGATIVE_INFINITY, candidate, floor ?? Number.NEGATIVE_INFINITY);
+      trail = Number.isFinite(next) ? +next.toFixed(4) : trail;
+    }
+    fireLevel = armed &amp;&amp; trail !== null ? trail : stop;
+    fireReason = armed ? &quot;TRAIL&quot; : &quot;FLAT_STOP&quot;;
+  }
+
+  // persist progress when anything moved
+  const changed =
+    highest !== (p.highestPrice !== null ? Number(p.highestPrice) : null)
+    || armed !== (p.trailArmed === true)
+    || trail !== (p.trailPrice !== null ? Number(p.trailPrice) : null);
+  if (changed) {
+    await updateTrailState(p.id, {
+      highestPrice: highest.toFixed(4),
+      trailArmed: armed,
+      ...(trail !== null ? { trailPrice: trail.toFixed(4) } : {}),
+    }).catch(() =&gt; undefined);
+  }
+
+  // 1. Protection first — the fire check always wins.
+  if (last &lt;= fireLevel) {
+    await submitExit(userId, p, fireReason, p.quantity, fireLevel, last);
+    return;
+  }
+
+  // 2. Scale-outs on strength — T1 sells a third, T2 sells half the remainder.
+  if (p.quantity &gt;= 3) {
+    const t1 = p.t1Price !== null ? Number(p.t1Price) : null;
+    const t2 = p.t2Price !== null ? Number(p.t2Price) : null;
+    if (p.scaleStage === 0 &amp;&amp; t1 !== null &amp;&amp; last &gt;= t1) {
+      await submitExit(userId, p, &quot;SCALE_T1&quot;, Math.max(1, Math.round(p.quantity / 3)), t1, last);
+    } else if (p.scaleStage === 1 &amp;&amp; t2 !== null &amp;&amp; last &gt;= t2) {
+      await submitExit(userId, p, &quot;SCALE_T2&quot;, Math.max(1, Math.floor(p.quantity / 2)), t2, last);
+    }
+  }
+}
+
+/** IMMEDIATE_TRAIL distance schedule: 0.50% → 0.45 → 0.40 → 0.32 → 0.27 → 0.22 (floor). */
+function immediateDistPct(peakGainPct: number): number {
+  let d: number;
+  if (peakGainPct &lt;= 0.01) d = 0.005 - 0.1 * peakGainPct;
+  else if (peakGainPct &lt;= 0.015) d = 0.004 - 0.16 * (peakGainPct - 0.01);
+  else d = 0.0032 - 0.1 * (peakGainPct - 0.015);
+  return Math.max(IT_MIN_PCT, Math.min(IT_INITIAL_PCT, d));
+}
+
+/* ---------- order submission ---------- */
+
+/** Market-sell qty through the position&#x27;s own broker. Full exits and scale tranches share this path. */
+async function submitExit(userId: number, p: Position, reason: ExitReason, qty: number, refPrice: number, last: number): Promise&lt;void&gt; {
+  if (firing.has(p.id) || deadEnded.has(p.id)) return;
+  firing.set(p.id, { at: Date.now(), orderId: null, reason, qty, ref: refPrice });
+
+  const { adapter, effective, accountId } = await brokerFor(userId, p);
+  const intent: OrderIntent = {
+    symbol: p.symbol,
+    side: &quot;SELL&quot;,
+    quantity: qty,
+    orderType: &quot;MKT&quot;,
+    tif: &quot;DAY&quot;,
+    clientOrderId: `TRAIL-${p.id}-${Date.now()}`,
+    // the paper simulator fills at limitPrice — pass the mark so paper bookkeeping stays honest;
+    // live brokers get a pure market order (no price fields attached)
+    ...(adapter.code === &quot;PAPER&quot; ? { limitPrice: last } : {}),
+  };
+
+  let ack;
+  try {
+    ack = await adapter.placeOrder(accountId, intent);
+  } catch (e) {
+    firing.delete(p.id);
+    await alertFire(userId, p, &quot;CRITICAL&quot;,
+      `PROTECTIVE EXIT FAILED — flatten manually`,
+      `${reason} for ${p.symbol} ${qty} sh could not reach the broker (${(e as Error).message.slice(0, 160)}). entry ${Number(p.avgEntry).toFixed(2)} · reference ${refPrice.toFixed(2)} · last known ${last.toFixed(2)}. The position is still OPEN — flatten it manually now.`);
+    return;
+  }
+
+  if (ack.status === &quot;UNKNOWN&quot;) {
+    firing.delete(p.id);
+    deadEnded.add(p.id); // dead end — never auto-retry an unknown broker state
+    await alertFire(userId, p, &quot;CRITICAL&quot;,
+      `EXIT STATE UNKNOWN — manual reconciliation required`,
+      `${reason} for ${p.symbol} ${qty} sh: broker returned an unresolvable state (${(ack.message ?? &quot;&quot;).slice(0, 140)}). The order was NOT resubmitted. Reconcile with the broker, then close position #${p.id} manually.`);
+    return;
+  }
+  if (ack.status === &quot;REJECTED&quot;) {
+    firing.delete(p.id);
+    await alertFire(userId, p, &quot;HIGH&quot;,
+      `${reason === &quot;SCALE_T1&quot; || reason === &quot;SCALE_T2&quot; ? &quot;Scale-out&quot; : &quot;Protective exit&quot;} rejected — retrying`,
+      `${reason} for ${p.symbol} ${qty} sh rejected by ${effective}: ${(ack.message ?? &quot;no reason given&quot;).slice(0, 140)}. The module will retry on the next cycle.`);
+    return;
+  }
+
+  if (ack.status === &quot;FILLED&quot;) {
+    const fill = ack.averagePrice !== undefined ? Number(ack.averagePrice) : last;
+    firing.delete(p.id);
+    await bookExit(userId, p, reason, qty, refPrice, fill, ack.brokerOrderId, effective);
+    return;
+  }
+
+  // ACKNOWLEDGED / WORKING — hold the fire lock and poll for the real fill.
+  firing.set(p.id, { at: Date.now(), orderId: ack.brokerOrderId, reason, qty, ref: refPrice });
+  await alertFire(userId, p, reason === &quot;SAFETY_FLATTEN&quot; || reason === &quot;MANUAL_FLATTEN&quot; ? &quot;CRITICAL&quot; : &quot;HIGH&quot;,
+    `${reasonLabel(reason)} fired — order working`,
+    `${reason} for ${p.symbol} ${qty} sh acknowledged by ${effective} (order ${ack.brokerOrderId}) — booking when the broker reports the fill. entry ${Number(p.avgEntry).toFixed(2)} · reference at fire ${refPrice.toFixed(2)} · trigger price ${last.toFixed(2)}.`);
+}
+
+/** Poll a working exit order until the broker reports the fill, then book it. */
+async function pollInFlight(userId: number, p: Position, lock: FireLock): Promise&lt;void&gt; {
+  const { adapter, effective, accountId } = await brokerFor(userId, p);
+  const status = await adapter.getOrderStatus(accountId, lock.orderId ?? &quot;&quot;);
+  if (status.status === &quot;FILLED&quot;) {
+    const fill = status.averagePrice !== undefined ? Number(status.averagePrice) : lock.ref;
+    firing.delete(p.id);
+    await bookExit(userId, p, lock.reason, lock.qty, lock.ref, fill, lock.orderId ?? &quot;&quot;, effective);
+  } else if (status.status === &quot;REJECTED&quot; || status.status === &quot;UNKNOWN&quot;) {
+    firing.delete(p.id);
+    if (status.status === &quot;UNKNOWN&quot;) deadEnded.add(p.id);
+    await alertFire(userId, p, &quot;CRITICAL&quot;,
+      `Working exit ${status.status.toLowerCase()} — manual reconciliation required`,
+      `${p.symbol} ${lock.qty} sh exit order ${lock.orderId} is now ${status.status} (${(status.message ?? &quot;&quot;).slice(0, 140)}). Position #${p.id} remains OPEN — reconcile with the broker and flatten manually if needed.`);
+  }
+  // still WORKING → keep the lock, poll again next cycle
+}
+
+/** Book a fill: full exits close the row (and cancel the disaster stop); scale tranches split it. */
+async function bookExit(userId: number, p: Position, reason: ExitReason, qty: number, refPrice: number, fill: number, brokerOrderId: string, effective: string): Promise&lt;void&gt; {
+  if (reason === &quot;SCALE_T1&quot; || reason === &quot;SCALE_T2&quot;) {
+    const stage = reason === &quot;SCALE_T1&quot; ? 1 : 2;
+    await bookScaleOut(p.id, qty, fill, stage as 1 | 2);
+    firedToday += 1;
+    const pnl = ((fill - Number(p.avgEntry)) * qty).toFixed(2);
+    await alertFire(userId, p, &quot;HIGH&quot;,
+      `Scale-out ${stage === 1 ? &quot;T1&quot; : &quot;T2&quot;} filled — ${p.symbol}`,
+      `${reason} · ${p.symbol} SOLD ${qty} @ ${fill.toFixed(2)} via ${effective} (order ${brokerOrderId}) · entry ${Number(p.avgEntry).toFixed(2)} · target ${refPrice.toFixed(2)} · realized P&amp;L ${Number(pnl) &gt;= 0 ? &quot;+&quot; : &quot;&quot;}${pnl} · trailing floor now ${stage === 1 ? &quot;BREAKEVEN&quot; : &quot;T1 PRICE&quot;} · trail runs the remainder.`);
+    return;
+  }
+
+  await closePositionFromFire(p.id, fill, reason === &quot;MANUAL_FLATTEN&quot; ? &quot;MANUAL_FLATTEN&quot; : reason === &quot;SAFETY_FLATTEN&quot; ? &quot;SAFETY_FLATTEN&quot; : reason);
+  firedToday += 1;
+  const slippage = +(fill - refPrice).toFixed(4);
+  const pnl = ((fill - Number(p.avgEntry)) * qty).toFixed(2);
+  await alertFire(userId, p, reason === &quot;SAFETY_FLATTEN&quot; || reason === &quot;MANUAL_FLATTEN&quot; ? &quot;CRITICAL&quot; : &quot;HIGH&quot;,
+    `${reasonLabel(reason)} — ${p.symbol} closed`,
+    `${reason} · ${p.symbol} SOLD ${qty} @ ${fill.toFixed(2)} via ${effective} (order ${brokerOrderId}) · entry ${Number(p.avgEntry).toFixed(2)} · reference at fire ${refPrice.toFixed(2)} · fill ${fill.toFixed(2)} · slippage ${slippage &gt;= 0 ? &quot;+&quot; : &quot;&quot;}${slippage} · realized P&amp;L ${Number(pnl) &gt;= 0 ? &quot;+&quot; : &quot;&quot;}${pnl}.`);
+
+  // the disaster stop&#x27;s job is done — never leave orphan resting orders
+  if (p.disasterOrderId) {
+    const { adapter, accountId } = await brokerFor(userId, p);
+    await adapter.cancelOrder(accountId, p.disasterOrderId).catch(() =&gt; undefined);
+    await getDb().update(positions).set({ disasterOrderId: null }).where(eq(positions.id, p.id)).catch(() =&gt; undefined);
+  }
+}
+
+/* ---------- broker-side reconciliation (once per position) ---------- */
+
+async function reconcileBrokerSide(userId: number, p: Position, adapter: BrokerAdapter, effective: string, accountId: string): Promise&lt;void&gt; {
+  // CANCEL-AND-GOVERN — remove any resting sell-stop we did not create.
+  if (adapter.getOpenOrders) {
+    try {
+      const open = await adapter.getOpenOrders(accountId);
+      const foreign = open.filter((o) =&gt;
+        o.side === &quot;SELL&quot;
+        &amp;&amp; /STP|STOP|TRAIL/.test(o.orderType)
+        &amp;&amp; o.symbol === p.symbol
+        &amp;&amp; o.brokerOrderId !== p.disasterOrderId
+        &amp;&amp; !(o.clientOrderId ?? &quot;&quot;).startsWith(&quot;TRAIL-&quot;)
+        &amp;&amp; !(o.clientOrderId ?? &quot;&quot;).startsWith(&quot;DSTR-&quot;));
+      for (const o of foreign) {
+        const res = await adapter.cancelOrder(accountId, o.brokerOrderId).catch((e) =&gt; ({ ok: false, message: (e as Error).message }));
+        await alertFire(userId, p, res.ok ? &quot;HIGH&quot; : &quot;CRITICAL&quot;,
+          res.ok ? `Broker-side stop canceled — trailing module governs ${p.symbol}` : `Could NOT cancel broker-side stop on ${p.symbol}`,
+          res.ok
+            ? `Resting ${o.orderType} sell order ${o.brokerOrderId}${o.stopPrice !== null ? ` @ ${o.stopPrice}` : &quot;&quot;} on ${p.symbol} was canceled so it cannot preempt the trailing module. The module now governs this exit${p.disasterPrice !== null ? ` (disaster insurance remains far below)` : &quot;&quot;}.`
+            : `Resting ${o.orderType} sell order ${o.brokerOrderId} on ${p.symbol} could not be canceled (${res.message.slice(0, 120)}). It may fire before the trailing module — cancel it manually to avoid a double exit.`);
+      }
+    } catch (e) {
+      await alertFire(userId, p, &quot;HIGH&quot;,
+        `Could not inspect broker-side orders for ${p.symbol}`,
+        `getOpenOrders failed (${(e as Error).message.slice(0, 140)}). If you placed a stop manually at ${effective}, cancel it — the trailing module is the exit authority for this position.`);
+    }
+  } else if (adapter.code !== &quot;PAPER&quot;) {
+    await alertFire(userId, p, &quot;MEDIUM&quot;,
+      `Broker does not expose open orders — manual check`,
+      `${effective} cannot list resting orders, so the module cannot verify no broker-side stop exists on ${p.symbol}. If you placed one manually, cancel it to avoid a double exit.`);
+  }
+
+  // DISASTER STOP — one catastrophic resting STP far below, pure crash insurance.
+  if (adapter.code !== &quot;PAPER&quot; &amp;&amp; !p.disasterOrderId &amp;&amp; p.stopPrice !== null) {
+    const entry = Number(p.avgEntry);
+    const stop = Number(p.stopPrice);
+    const feed = marketDataService.get(p.symbol);
+    const atr14 = (feed ? atr(feed.bars, 14) : null) ?? entry * 0.005;
+    const disaster = +(stop - Math.max(0.01 * entry, atr14)).toFixed(2);
+    if (disaster &gt; 0) {
+      try {
+        const ack = await adapter.placeOrder(accountId, {
+          symbol: p.symbol, side: &quot;SELL&quot;, quantity: p.quantity, orderType: &quot;STP&quot;,
+          stopPrice: disaster, tif: &quot;GTC&quot;, clientOrderId: `DSTR-${p.id}`,
+        });
+        if (ack.brokerOrderId &amp;&amp; ack.status !== &quot;REJECTED&quot; &amp;&amp; ack.status !== &quot;UNKNOWN&quot;) {
+          await getDb().update(positions).set({ disasterOrderId: ack.brokerOrderId, disasterPrice: String(disaster) }).where(eq(positions.id, p.id));
+          await alertFire(userId, p, &quot;LOW&quot;,
+            `Disaster stop resting — ${p.symbol}`,
+            `Catastrophe insurance placed on ${p.symbol}: STP sell ${p.quantity} @ ${disaster} GTC via ${effective} (order ${ack.brokerOrderId}). Far below the working stop (${stop}) — it only fires if the module and its safety net both fail. Canceled automatically when the position closes.`);
+        } else {
+          await alertFire(userId, p, &quot;MEDIUM&quot;, `Disaster stop could not rest — ${p.symbol}`, `${effective} rejected or could not place the catastrophe stop @ ${disaster} (${(ack.message ?? &quot;&quot;).slice(0, 120)}). The module still governs the exit; you simply have no broker-side insurance layer.`);
+        }
+      } catch (e) {
+        await alertFire(userId, p, &quot;MEDIUM&quot;, `Disaster stop placement failed — ${p.symbol}`, `${(e as Error).message.slice(0, 140)}. The module still governs the exit.`);
+      }
+    }
+  }
+}
+
+/** If the disaster stop filled at the broker, the position is gone — close the books honestly. */
+async function pollDisaster(userId: number, p: Position, adapter: BrokerAdapter, effective: string, accountId: string): Promise&lt;void&gt; {
+  const status = await adapter.getOrderStatus(accountId, p.disasterOrderId ?? &quot;&quot;);
+  const db = getDb();
+  if (status.status === &quot;FILLED&quot;) {
+    const fill = status.averagePrice !== undefined ? Number(status.averagePrice) : Number(p.disasterPrice ?? p.stopPrice);
+    await closePositionFromFire(p.id, fill, &quot;DISASTER_STOP&quot;);
+    await db.update(positions).set({ disasterOrderId: null }).where(eq(positions.id, p.id)).catch(() =&gt; undefined);
+    firedToday += 1;
+    await alertFire(userId, p, &quot;CRITICAL&quot;,
+      `DISASTER STOP FILLED — ${p.symbol} closed at broker`,
+      `The catastrophe stop on ${p.symbol} fired @ ${fill.toFixed(2)} via ${effective} (order ${p.disasterOrderId}). This means price collapsed far below the working stop (${Number(p.stopPrice ?? 0).toFixed(2)}) faster than the module could act, or the module was impaired. entry ${Number(p.avgEntry).toFixed(2)} · realized P&amp;L booked. Investigate the feed/module before the next session.`);
+  } else if (/cancel/i.test(status.status) || status.status === &quot;REJECTED&quot;) {
+    // insurance vanished — clear it so reconciliation re-places it next session
+    await db.update(positions).set({ disasterOrderId: null, disasterPrice: null }).where(eq(positions.id, p.id)).catch(() =&gt; undefined);
+    reconciled.delete(p.id);
+    await alertFire(userId, p, &quot;MEDIUM&quot;, `Disaster stop gone — ${p.symbol}`, `The resting catastrophe order ${p.disasterOrderId} is ${status.status}. The module will attempt to re-place insurance; the working stop is unaffected.`);
+  }
+}
+
+/* ---------- safety ---------- */
+
+async function safetyFlatten(userId: number, p: Position, reference: number): Promise&lt;void&gt; {
+  const prev = safetyAt.get(p.id) ?? 0;
+  if (Date.now() - prev &lt; SAFETY_THROTTLE_MS) return;
+  safetyAt.set(p.id, Date.now());
+  await alertFire(userId, p, &quot;CRITICAL&quot;,
+    `FEED STALL — attempting safety flatten`,
+    `${p.symbol} ${p.quantity} sh: price feed stalled for more than one refresh cycle (&gt;60s). Attempting to flatten the position now; if the broker is unreachable you will get a follow-up alert — flatten manually in that case.`);
+  await submitExit(userId, p, &quot;SAFETY_FLATTEN&quot;, p.quantity, reference, reference);
+}
+
+/* ---------- helpers ---------- */
+
+function reasonLabel(reason: ExitReason): string {
+  switch (reason) {
+    case &quot;TRAIL&quot;: return &quot;Trailing stop&quot;;
+    case &quot;FLAT_STOP&quot;: return &quot;Flat stop&quot;;
+    case &quot;SAFETY_FLATTEN&quot;: return &quot;SAFETY FLATTEN&quot;;
+    case &quot;MANUAL_FLATTEN&quot;: return &quot;Manual flatten&quot;;
+    case &quot;SCALE_T1&quot;: return &quot;Scale-out T1&quot;;
+    case &quot;SCALE_T2&quot;: return &quot;Scale-out T2&quot;;
+  }
+}
+
+async function alertFire(userId: number, p: Position, priority: &quot;CRITICAL&quot; | &quot;HIGH&quot; | &quot;MEDIUM&quot; | &quot;LOW&quot;, title: string, body: string): Promise&lt;void&gt; {
+  const db = getDb();
+  await db.insert(alerts).values({
+    userId,
+    type: &quot;EXECUTION&quot;,
+    priority,
+    title,
+    body,
+    symbol: p.symbol,
+    state: &quot;ACTIVE&quot;,
+  }).catch(() =&gt; undefined);
+}
+</pre>
+
+</div>
+
+<div class="section" id="appB">
+<h1 class="sec">Appendix B — api/engine/portfolio.ts (full replacement, v2.4)</h1>
+<p>Replaces the v2.2 file in its entirety. Adds trail-state bookkeeping (<code>updateTrailState</code>, <code>listManagedPositions</code>), scale-out ledgering (<code>bookScaleOut</code>), fire closes (<code>closePositionFromFire</code> with DISASTER_STOP / MANUAL_FLATTEN reasons), stop-mode preference, override controls (<code>tightenStop</code>, <code>tightenTrail</code>, <code>setPositionOverride</code>), and the live-stream projection (<code>streamActivity</code>).</p>
+<div class="codehead">api/engine/portfolio.ts — replace the v2.2 file</div>
+<pre>import { and, desc, eq, ne, sql } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { positions, orderTickets, users, alerts, type OrderTicket } from &quot;@db/schema&quot;;
+import { marketDataService } from &quot;../marketdata/service&quot;;
+
+/**
+ * PORTFOLIO — order history, positions, and P&amp;L.
+ *
+ * Every fill (manual CONFIRM or auto-execute) lands here via recordFill:
+ *   BUY  → open a position (or average into an existing open one)
+ *   SELL → close matching open position(s), booking realized P&amp;L
+ *
+ * Unrealized P&amp;L marks open positions to the live feed&#x27;s last price when
+ * available, and honestly reports when a mark is unavailable (no feed)
+ * instead of inventing a price.
+ */
+
+/* ---------- auto-execute preference ---------- */
+
+export async function isAutoExecuteEnabled(userId: number): Promise&lt;boolean&gt; {
+  try {
+    const db = getDb();
+    const [u] = await db.select({ autoExecute: users.autoExecute }).from(users).where(eq(users.id, userId)).limit(1);
+    return u?.autoExecute === true;
+  } catch {
+    return false; // fail CLOSED — if we can&#x27;t read the flag, confirmation is required
+  }
+}
+
+export async function setAutoExecute(userId: number, enabled: boolean): Promise&lt;{ enabled: boolean }&gt; {
+  const db = getDb();
+  await db.update(users).set({ autoExecute: enabled }).where(eq(users.id, userId));
+  return { enabled };
+}
+
+/* ---------- fill recording ---------- */
+
+export async function recordFill(userId: number, ticket: OrderTicket, fillPrice: number, fillQty: number): Promise&lt;void&gt; {
+  if (!(fillPrice &gt; 0) || fillQty &lt;= 0) return;
+  const db = getDb();
+  try {
+    if (ticket.side === &quot;BUY&quot;) {
+      const [open] = await db
+        .select()
+        .from(positions)
+        .where(and(eq(positions.userId, userId), eq(positions.symbol, ticket.symbol), eq(positions.status, &quot;OPEN&quot;)))
+        .limit(1);
+      if (open) {
+        const totalQty = open.quantity + fillQty;
+        const newAvg = (Number(open.avgEntry) * open.quantity + fillPrice * fillQty) / totalQty;
+        const highest = Math.max(open.highestPrice !== null ? Number(open.highestPrice) : 0, fillPrice);
+        await db.update(positions).set({ quantity: totalQty, avgEntry: newAvg.toFixed(4), highestPrice: highest.toFixed(4) }).where(eq(positions.id, open.id));
+      } else {
+        await db.insert(positions).values({
+          userId,
+          symbol: ticket.symbol,
+          quantity: fillQty,
+          avgEntry: String(fillPrice),
+          sourceTicketId: ticket.ticketId,
+          status: &quot;OPEN&quot;,
+          // seed the trailing-stop state from the ticket&#x27;s governed levels
+          stopPrice: ticket.stop !== null ? String(ticket.stop) : null,
+          t1Price: ticket.target !== null ? String(ticket.target) : null,
+          t2Price: ticket.target2 !== null ? String(ticket.target2) : null,
+          highestPrice: String(fillPrice),
+        });
+      }
+    } else {
+      // SELL — close against the oldest open position for the symbol
+      const [open] = await db
+        .select()
+        .from(positions)
+        .where(and(eq(positions.userId, userId), eq(positions.symbol, ticket.symbol), eq(positions.status, &quot;OPEN&quot;)))
+        .limit(1);
+      if (!open) return; // sell without a tracked position — nothing to match (manual external position)
+      const closingQty = Math.min(fillQty, open.quantity);
+      const realized = (fillPrice - Number(open.avgEntry)) * closingQty;
+      if (closingQty &gt;= open.quantity) {
+        await db.update(positions).set({
+          status: &quot;CLOSED&quot;,
+          closedAt: new Date(),
+          exitPrice: String(fillPrice),
+          realizedPnl: realized.toFixed(2),
+        }).where(eq(positions.id, open.id));
+      } else {
+        // partial close = scale-out → advance the trailing floor stage on the remainder
+        await db.update(positions).set({ quantity: open.quantity - closingQty, scaleStage: open.scaleStage + 1 }).where(eq(positions.id, open.id));
+        await db.insert(positions).values({
+          userId,
+          symbol: open.symbol,
+          quantity: closingQty,
+          avgEntry: open.avgEntry,
+          sourceTicketId: ticket.ticketId,
+          status: &quot;CLOSED&quot;,
+          closedAt: new Date(),
+          exitPrice: String(fillPrice),
+          realizedPnl: realized.toFixed(2),
+        });
+      }
+    }
+  } catch {
+    /* position tracking must never break execution */
+  }
+}
+
+/* ---------- order history ---------- */
+
+export interface OrderHistoryRow {
+  ticketId: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  orderType: string;
+  state: string;
+  autoExecuted: boolean;
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  filledQuantity: number | null;
+  averageFillPrice: number | null;
+  createdAt: Date;
+  submittedAt: Date | null;
+  lastMessage: string | null;
+}
+
+export async function listOrders(userId: number, limit = 50): Promise&lt;OrderHistoryRow[]&gt; {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(orderTickets)
+    .where(and(eq(orderTickets.userId, userId), ne(orderTickets.state, &quot;CREATED&quot;)))
+    .orderBy(desc(orderTickets.id))
+    .limit(Math.min(limit, 200));
+  return rows.map((t) =&gt; ({
+    ticketId: t.ticketId,
+    symbol: t.symbol,
+    side: t.side,
+    quantity: t.quantity,
+    orderType: t.orderType,
+    state: t.state,
+    autoExecuted: t.autoExecuted === true,
+    entry: t.entry !== null ? Number(t.entry) : null,
+    stop: t.stop !== null ? Number(t.stop) : null,
+    target: t.target !== null ? Number(t.target) : null,
+    filledQuantity: t.filledQuantity ?? null,
+    averageFillPrice: t.averageFillPrice !== null ? Number(t.averageFillPrice) : null,
+    createdAt: t.createdAt,
+    submittedAt: t.submittedAt ?? null,
+    lastMessage: t.lastMessage ?? null,
+  }));
+}
+
+/* ---------- positions &amp; P&amp;L ---------- */
+
+export interface PositionRow {
+  id: number;
+  symbol: string;
+  quantity: number;
+  avgEntry: number;
+  status: string;
+  openedAt: Date;
+  closedAt: Date | null;
+  exitPrice: number | null;
+  realizedPnl: number | null;
+  mark: number | null; // live last price when the feed has one
+  unrealizedPnl: number | null; // null when no mark available
+  /* trailing-stop state */
+  stopPrice: number | null;
+  highestPrice: number | null;
+  trailPrice: number | null;
+  trailArmed: boolean;
+  scaleStage: number;
+  closedBy: string | null;
+  t2Price: number | null;
+  overrideMode: string | null;
+  disasterPrice: number | null;
+}
+
+function toPositionRow(p: typeof positions.$inferSelect): PositionRow {
+  const feed = marketDataService.get(p.symbol);
+  const mark = feed?.indicators?.last ?? null;
+  const isOpen = p.status === &quot;OPEN&quot;;
+  return {
+    id: Number(p.id),
+    symbol: p.symbol,
+    quantity: p.quantity,
+    avgEntry: Number(p.avgEntry),
+    status: p.status,
+    openedAt: p.openedAt,
+    closedAt: p.closedAt ?? null,
+    exitPrice: p.exitPrice !== null ? Number(p.exitPrice) : null,
+    realizedPnl: p.realizedPnl !== null ? Number(p.realizedPnl) : null,
+    mark,
+    unrealizedPnl: isOpen &amp;&amp; mark !== null ? +((mark - Number(p.avgEntry)) * p.quantity).toFixed(2) : null,
+    stopPrice: p.stopPrice !== null ? Number(p.stopPrice) : null,
+    highestPrice: p.highestPrice !== null ? Number(p.highestPrice) : null,
+    trailPrice: p.trailPrice !== null ? Number(p.trailPrice) : null,
+    trailArmed: p.trailArmed === true,
+    scaleStage: p.scaleStage,
+    closedBy: p.closedBy ?? null,
+    t2Price: p.t2Price !== null ? Number(p.t2Price) : null,
+    overrideMode: p.overrideMode ?? null,
+    disasterPrice: p.disasterPrice !== null ? Number(p.disasterPrice) : null,
+  };
+}
+
+export async function listPositions(userId: number, limit = 50): Promise&lt;PositionRow[]&gt; {
+  const db = getDb();
+  const rows = await db.select().from(positions).where(eq(positions.userId, userId)).orderBy(desc(positions.id)).limit(Math.min(limit, 200));
+  return rows.map(toPositionRow);
+}
+
+export interface PnlSummary {
+  realizedTotal: number;
+  unrealizedTotal: number;
+  unmarkedPositions: number; // open positions with no live mark
+  openCount: number;
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+  note: string;
+}
+
+export async function getPnlSummary(userId: number): Promise&lt;PnlSummary&gt; {
+  const rows = await listPositions(userId, 200);
+  const closed = rows.filter((r) =&gt; r.status === &quot;CLOSED&quot;);
+  const open = rows.filter((r) =&gt; r.status === &quot;OPEN&quot;);
+  const realizedTotal = +closed.reduce((a, r) =&gt; a + (r.realizedPnl ?? 0), 0).toFixed(2);
+  const unrealizedTotal = +open.reduce((a, r) =&gt; a + (r.unrealizedPnl ?? 0), 0).toFixed(2);
+  const unmarkedPositions = open.filter((r) =&gt; r.unrealizedPnl === null).length;
+  return {
+    realizedTotal,
+    unrealizedTotal,
+    unmarkedPositions,
+    openCount: open.length,
+    closedCount: closed.length,
+    winCount: closed.filter((r) =&gt; (r.realizedPnl ?? 0) &gt; 0).length,
+    lossCount: closed.filter((r) =&gt; (r.realizedPnl ?? 0) &lt;= 0).length,
+    note: unmarkedPositions &gt; 0
+      ? `${unmarkedPositions} open position(s) have no live mark — unrealized P&amp;L excludes them (track the symbol in the data feed).`
+      : &quot;All open positions marked to live feed prices.&quot;,
+  };
+}
+
+/* ---------- trailing-stop support ---------- */
+
+/** Every OPEN position carrying a governed stop, across all users — the trailing module&#x27;s universe. */
+export async function listManagedPositions(): Promise&lt;Array&lt;typeof positions.$inferSelect&gt;&gt; {
+  const db = getDb();
+  return db.select().from(positions).where(and(eq(positions.status, &quot;OPEN&quot;), sql`${positions.stopPrice} IS NOT NULL`));
+}
+
+/** Book a trailing-module exit: close the row at the actual fill with the fire reason. */
+export async function closePositionFromFire(positionId: number, fillPrice: number, reason: &quot;FLAT_STOP&quot; | &quot;TRAIL&quot; | &quot;SAFETY_FLATTEN&quot; | &quot;MANUAL_FLATTEN&quot; | &quot;DISASTER_STOP&quot;): Promise&lt;void&gt; {
+  const db = getDb();
+  const [p] = await db.select().from(positions).where(eq(positions.id, positionId)).limit(1);
+  if (!p || p.status !== &quot;OPEN&quot;) return;
+  const realized = (fillPrice - Number(p.avgEntry)) * p.quantity;
+  await db.update(positions).set({
+    status: &quot;CLOSED&quot;,
+    closedAt: new Date(),
+    exitPrice: String(fillPrice),
+    realizedPnl: realized.toFixed(2),
+    closedBy: reason,
+  }).where(eq(positions.id, positionId));
+}
+
+/** Persist trailing-state progress (highest / trail / armed) after each evaluation. */
+export async function updateTrailState(positionId: number, fields: { highestPrice?: string; trailPrice?: string; trailArmed?: boolean }): Promise&lt;void&gt; {
+  const db = getDb();
+  await db.update(positions).set(fields).where(eq(positions.id, positionId));
+}
+
+/** Book a T1/T2 scale-out: split qty off the open row into a CLOSED row, advance the trailing floor stage. */
+export async function bookScaleOut(positionId: number, qty: number, fillPrice: number, stage: 1 | 2): Promise&lt;void&gt; {
+  const db = getDb();
+  const [p] = await db.select().from(positions).where(eq(positions.id, positionId)).limit(1);
+  if (!p || p.status !== &quot;OPEN&quot;) return;
+  const closingQty = Math.min(qty, p.quantity);
+  if (closingQty &lt;= 0) return;
+  const realized = (fillPrice - Number(p.avgEntry)) * closingQty;
+  if (closingQty &gt;= p.quantity) {
+    await db.update(positions).set({
+      status: &quot;CLOSED&quot;, closedAt: new Date(), exitPrice: String(fillPrice),
+      realizedPnl: realized.toFixed(2), closedBy: stage === 1 ? &quot;SCALE_T1&quot; : &quot;SCALE_T2&quot;, scaleStage: stage,
+    }).where(eq(positions.id, p.id));
+    return;
+  }
+  await db.update(positions).set({ quantity: p.quantity - closingQty, scaleStage: stage }).where(eq(positions.id, p.id));
+  await db.insert(positions).values({
+    userId: p.userId, symbol: p.symbol, quantity: closingQty, avgEntry: p.avgEntry,
+    sourceTicketId: p.sourceTicketId, status: &quot;CLOSED&quot;, closedAt: new Date(),
+    exitPrice: String(fillPrice), realizedPnl: realized.toFixed(2),
+    closedBy: stage === 1 ? &quot;SCALE_T1&quot; : &quot;SCALE_T2&quot;,
+  });
+}
+
+/* ---------- stop mode (per user) ---------- */
+
+export type StopMode = &quot;CLASSIC&quot; | &quot;IMMEDIATE_TRAIL&quot;;
+
+export async function getStopMode(userId: number): Promise&lt;StopMode&gt; {
+  try {
+    const db = getDb();
+    const [u] = await db.select({ stopMode: users.stopMode }).from(users).where(eq(users.id, userId)).limit(1);
+    return u?.stopMode === &quot;IMMEDIATE_TRAIL&quot; ? &quot;IMMEDIATE_TRAIL&quot; : &quot;CLASSIC&quot;;
+  } catch {
+    return &quot;CLASSIC&quot;; // fail to the conservative mode
+  }
+}
+
+export async function setStopMode(userId: number, mode: StopMode): Promise&lt;{ mode: StopMode }&gt; {
+  const db = getDb();
+  await db.update(users).set({ stopMode: mode }).where(eq(users.id, userId));
+  return { mode };
+}
+
+/* ---------- manual overrides ---------- */
+
+async function ownedOpen(userId: number, positionId: number): Promise&lt;typeof positions.$inferSelect | null&gt; {
+  const db = getDb();
+  const [p] = await db.select().from(positions)
+    .where(and(eq(positions.id, positionId), eq(positions.userId, userId), eq(positions.status, &quot;OPEN&quot;))).limit(1);
+  return p ?? null;
+}
+
+async function overrideAlert(userId: number, symbol: string, title: string, body: string): Promise&lt;void&gt; {
+  const db = getDb();
+  await db.insert(alerts).values({ userId, type: &quot;POSITION_UPDATE&quot;, priority: &quot;HIGH&quot;, title, body, symbol, state: &quot;ACTIVE&quot; }).catch(() =&gt; undefined);
+}
+
+/** Tighten the flat stop upward (toward price). Never lowers it — loosening requires manual control. */
+export async function tightenStop(userId: number, positionId: number, newStop: number): Promise&lt;{ ok: boolean; message: string }&gt; {
+  const p = await ownedOpen(userId, positionId);
+  if (!p) return { ok: false, message: &quot;No open position with that id.&quot; };
+  if (!(newStop &gt; 0)) return { ok: false, message: &quot;Stop must be positive.&quot; };
+  const mark = marketDataService.get(p.symbol)?.indicators?.last ?? null;
+  if (mark !== null &amp;&amp; newStop &gt;= mark) return { ok: false, message: `Stop ${newStop} is at/above the current mark ${mark} — use Flatten if you want out now.` };
+  const cur = p.stopPrice !== null ? Number(p.stopPrice) : null;
+  if (cur !== null &amp;&amp; newStop &lt;= cur) return { ok: false, message: `New stop must be ABOVE the current ${cur} — tightening only. Take manual control to loosen.` };
+  const db = getDb();
+  await db.update(positions).set({ stopPrice: newStop.toFixed(4) }).where(eq(positions.id, p.id));
+  await overrideAlert(userId, p.symbol, `Stop tightened — ${p.symbol}`, `Flat stop moved ${cur !== null ? `${cur} → ` : &quot;to &quot;}${newStop} by the user. Note: changing the stop changes 1R, which moves the trail&#x27;s arm threshold (CLASSIC mode).`);
+  return { ok: true, message: `Stop tightened to ${newStop}.` };
+}
+
+/** Tighten the trail upward. Setting a trail on an unarmed position arms it at that level. */
+export async function tightenTrail(userId: number, positionId: number, newTrail: number): Promise&lt;{ ok: boolean; message: string }&gt; {
+  const p = await ownedOpen(userId, positionId);
+  if (!p) return { ok: false, message: &quot;No open position with that id.&quot; };
+  if (!(newTrail &gt; 0)) return { ok: false, message: &quot;Trail must be positive.&quot; };
+  const mark = marketDataService.get(p.symbol)?.indicators?.last ?? null;
+  if (mark !== null &amp;&amp; newTrail &gt;= mark) return { ok: false, message: `Trail ${newTrail} is at/above the current mark ${mark} — use Flatten if you want out now.` };
+  const cur = p.trailPrice !== null ? Number(p.trailPrice) : null;
+  if (cur !== null &amp;&amp; newTrail &lt;= cur) return { ok: false, message: `New trail must be ABOVE the current ${cur} — the ratchet never moves down. Take manual control to loosen.` };
+  const db = getDb();
+  await db.update(positions).set({ trailPrice: newTrail.toFixed(4), trailArmed: true }).where(eq(positions.id, p.id));
+  await overrideAlert(userId, p.symbol, `Trail tightened — ${p.symbol}`, `Trail ${cur !== null ? `${cur} → ` : &quot;set at &quot;}${newTrail} by the user${p.trailArmed !== true ? &quot; (trail now armed at your level)&quot; : &quot;&quot;}. The module ratchets upward from here.`);
+  return { ok: true, message: `Trail set to ${newTrail}.` };
+}
+
+/** Take or return manual control of a position&#x27;s exit. MANUAL = the module stands down entirely. */
+export async function setPositionOverride(userId: number, positionId: number, manual: boolean): Promise&lt;{ ok: boolean; message: string }&gt; {
+  const p = await ownedOpen(userId, positionId);
+  if (!p) return { ok: false, message: &quot;No open position with that id.&quot; };
+  const db = getDb();
+  await db.update(positions).set({ overrideMode: manual ? &quot;MANUAL&quot; : null }).where(eq(positions.id, p.id));
+  await overrideAlert(userId, p.symbol,
+    manual ? `MANUAL CONTROL — ${p.symbol}` : `Module control resumed — ${p.symbol}`,
+    manual
+      ? `Position #${p.id} (${p.symbol} ${p.quantity} sh) exit is now HUMAN-MANAGED — no trail updates, no automatic fires, no scale-outs, no safety flatten. Any resting disaster stop stays in place as insurance. Return control to resume automatic protection.`
+      : `Position #${p.id} (${p.symbol}) returned to the trailing module — automatic protection resumes next cycle.`);
+  return { ok: true, message: manual ? &quot;You now own this exit — the module has stood down.&quot; : &quot;Automatic protection resumed.&quot; };
+}
+
+/* ---------- live activity stream ---------- */
+
+export interface ActivityEvent {
+  id: number;
+  kind: string; // alert type
+  priority: string;
+  title: string;
+  body: string | null;
+  symbol: string | null;
+  at: Date;
+}
+
+/** The live trade stream: execution-relevant alerts, newest first. */
+export async function streamActivity(userId: number, limit = 30): Promise&lt;ActivityEvent[]&gt; {
+  const db = getDb();
+  const rows = await db.select().from(alerts)
+    .where(and(eq(alerts.userId, userId), sql`${alerts.type} IN (&#x27;EXECUTION&#x27;,&#x27;PROTECTION&#x27;,&#x27;POSITION_UPDATE&#x27;,&#x27;CONFIRMATION_REQUEST&#x27;,&#x27;RISK&#x27;)`))
+    .orderBy(desc(alerts.id))
+    .limit(Math.min(limit, 100));
+  return rows.map((a) =&gt; ({
+    id: Number(a.id),
+    kind: a.type,
+    priority: a.priority,
+    title: a.title,
+    body: a.body ?? null,
+    symbol: a.symbol ?? null,
+    at: a.createdAt,
+  }));
+}
+</pre>
+
+</div>
+
+<div class="section" id="appC">
+<h1 class="sec">Appendix C — db/schema.ts edits</h1>
+<p>Three edits: the per-user stop-mode preference, the second target on order tickets, and the full trailing column set on positions (this supersedes the v2.3 column list — apply all of them).</p>
+<div class="codehead">db/schema.ts — users table: add stopMode</div>
+<pre>  stopMode: varchar(&quot;stopMode&quot;, { length: 16 }).notNull().default(&quot;CLASSIC&quot;), // CLASSIC (flat stop → 1R arm → ATR trail) | IMMEDIATE_TRAIL (0.5% trail from entry + moving hard bottom)</pre>
+
+<div class="codehead">db/schema.ts — order_tickets table: add target2</div>
+<pre>  target2: decimal(&quot;target2&quot;, { precision: 12, scale: 2 }), // second scale-out target (engine proposals)</pre>
+
+<div class="codehead">db/schema.ts — positions table: trailing &amp; exit columns</div>
+<pre>/* ---------- Portfolio: positions opened from fills, for P&amp;L ---------- */
+
+export const positions = mysqlTable(&quot;positions&quot;, {
+  id: serial(&quot;id&quot;).primaryKey(),
+  userId: bigint(&quot;userId&quot;, { mode: &quot;number&quot;, unsigned: true }).notNull(),
+  symbol: varchar(&quot;symbol&quot;, { length: 16 }).notNull(),
+  quantity: int(&quot;quantity&quot;).notNull(),
+  avgEntry: decimal(&quot;avgEntry&quot;, { precision: 12, scale: 4 }).notNull(),
+  sourceTicketId: varchar(&quot;sourceTicketId&quot;, { length: 64 }),
+  status: mysqlEnum(&quot;status&quot;, [&quot;OPEN&quot;, &quot;CLOSED&quot;]).notNull().default(&quot;OPEN&quot;),
+  openedAt: timestamp(&quot;openedAt&quot;).defaultNow().notNull(),
+  closedAt: timestamp(&quot;closedAt&quot;),
+  exitPrice: decimal(&quot;exitPrice&quot;, { precision: 12, scale: 4 }),
+  realizedPnl: decimal(&quot;realizedPnl&quot;, { precision: 12, scale: 2 }),
+  /* --- trailing-stop state (api/engine/trailing.ts) --- */
+  stopPrice: decimal(&quot;stopPrice&quot;, { precision: 12, scale: 4 }), // original flat stop — governs until the trail arms
+  t1Price: decimal(&quot;t1Price&quot;, { precision: 12, scale: 4 }), // first target — floor reference after scale-outs
+  highestPrice: decimal(&quot;highestPrice&quot;, { precision: 12, scale: 4 }), // highest price since entry
+  trailPrice: decimal(&quot;trailPrice&quot;, { precision: 12, scale: 4 }), // current trail (never moves down)
+  trailArmed: boolean(&quot;trailArmed&quot;).notNull().default(false), // armed once price reaches entry + 1R (CLASSIC) or at entry (IMMEDIATE_TRAIL)
+  scaleStage: int(&quot;scaleStage&quot;).notNull().default(0), // 0 = full size, 1 = after T1 scale-out, 2 = after T2
+  closedBy: varchar(&quot;closedBy&quot;, { length: 24 }), // FLAT_STOP | TRAIL | SAFETY_FLATTEN | MANUAL_FLATTEN | DISASTER_STOP | null (ticket close)
+  t2Price: decimal(&quot;t2Price&quot;, { precision: 12, scale: 4 }), // second target — T2 scale-out trigger
+  overrideMode: varchar(&quot;overrideMode&quot;, { length: 16 }), // null = module-managed | MANUAL = human owns the exit
+  disasterOrderId: varchar(&quot;disasterOrderId&quot;, { length: 64 }), // resting broker-side catastrophe stop (null on paper)
+  disasterPrice: decimal(&quot;disasterPrice&quot;, { precision: 12, scale: 4 }),
+  createdAt: timestamp(&quot;createdAt&quot;).defaultNow().notNull(),
+});
+export type Position = typeof positions.$inferSelect;</pre>
+
+</div>
+
+<div class="section" id="appD">
+<h1 class="sec">Appendix D — api/lib/ensure-schema.ts additions</h1>
+<p>Guarded ALTER statements, appended to the existing boot-time migration block. Each is idempotent (duplicate-column errors are swallowed), so first boot upgrades the live database and reboots are no-ops.</p>
+<div class="codehead">api/lib/ensure-schema.ts — append to the ALTER list</div>
+<pre>  // Trailing-stop state on positions (trailing module)
+  `ALTER TABLE positions ADD COLUMN stopPrice DECIMAL(12,4) NULL AFTER realizedPnl`,
+  `ALTER TABLE positions ADD COLUMN t1Price DECIMAL(12,4) NULL AFTER stopPrice`,
+  `ALTER TABLE positions ADD COLUMN highestPrice DECIMAL(12,4) NULL AFTER t1Price`,
+  `ALTER TABLE positions ADD COLUMN trailPrice DECIMAL(12,4) NULL AFTER highestPrice`,
+  `ALTER TABLE positions ADD COLUMN trailArmed TINYINT(1) NOT NULL DEFAULT 0 AFTER trailPrice`,
+  `ALTER TABLE positions ADD COLUMN scaleStage INT NOT NULL DEFAULT 0 AFTER trailArmed`,
+  `ALTER TABLE positions ADD COLUMN closedBy VARCHAR(24) NULL AFTER scaleStage`,
+  // Final autonomous update: stop modes, T2 scale-outs, overrides, disaster stop
+  `ALTER TABLE users ADD COLUMN stopMode VARCHAR(16) NOT NULL DEFAULT &#x27;CLASSIC&#x27; AFTER autoExecute`,
+  `ALTER TABLE order_tickets ADD COLUMN target2 DECIMAL(12,2) NULL AFTER target`,
+  `ALTER TABLE positions ADD COLUMN t2Price DECIMAL(12,4) NULL AFTER closedBy`,
+  `ALTER TABLE positions ADD COLUMN overrideMode VARCHAR(16) NULL AFTER t2Price`,
+  `ALTER TABLE positions ADD COLUMN disasterOrderId VARCHAR(64) NULL AFTER overrideMode`,
+  `ALTER TABLE positions ADD COLUMN disasterPrice DECIMAL(12,4) NULL AFTER disasterOrderId`,</pre>
+
+</div>
+
+<div class="section" id="appE">
+<h1 class="sec">Appendix E — broker layer: open-order listing</h1>
+<p>The optional capability that powers cancel-and-govern and disaster-stop polling. Adapters that cannot list open orders simply omit the method — the module degrades to MEDIUM alerts instead of failing.</p>
+<div class="codehead">api/brokers/types.ts — add the BrokerOpenOrder interface</div>
+<pre>export interface BrokerOpenOrder {
+  brokerOrderId: string;
+  symbol: string | null; // ticker when the broker reports one (null = match by other means)
+  side: &quot;BUY&quot; | &quot;SELL&quot; | null;
+  orderType: string; // broker-native string, uppercased by the adapter
+  quantity: number | null;
+  limitPrice: number | null;
+  stopPrice: number | null;
+  clientOrderId: string | null;
+  status: string;</pre>
+
+<div class="codehead">api/brokers/types.ts — add the optional method to BrokerAdapter</div>
+<pre>  /** Live (unfilled, uncancelled) orders — optional; adapters without an open-orders endpoint omit it. */
+  getOpenOrders?(accountId: string): Promise&lt;BrokerOpenOrder[]&gt;;</pre>
+
+<div class="codehead">api/brokers/ibkr.ts — implement getOpenOrders</div>
+<pre>  /** Live orders from the Client Portal — used by the trailing module to reconcile broker-side stops. */
+  async getOpenOrders(accountId: string): Promise&lt;BrokerOpenOrder[]&gt; {
+    const out = await this.req&lt;{ orders?: Array&lt;Record&lt;string, unknown&gt;&gt; }&gt;(&quot;GET&quot;, `/iserver/account/${accountId}/orders`);
+    const rows = out?.orders ?? [];
+    return rows
+      .filter((o) =&gt; !/fill|cancel/i.test(String(o.status ?? &quot;&quot;)))
+      .map((o) =&gt; ({
+        brokerOrderId: String(o.orderId ?? o.order_id ?? &quot;&quot;),
+        symbol: o.ticker !== undefined ? String(o.ticker) : null,
+        side: o.side !== undefined ? (String(o.side).toUpperCase().startsWith(&quot;S&quot;) ? &quot;SELL&quot; : &quot;BUY&quot;) : null,
+        orderType: String(o.orderType ?? o.order_type ?? &quot;&quot;).toUpperCase(),
+        quantity: o.totalSize !== undefined ? Number(o.totalSize) : o.quantity !== undefined ? Number(o.quantity) : null,
+        limitPrice: o.price !== undefined &amp;&amp; o.price !== null ? Number(o.price) : null,
+        stopPrice: o.auxPrice !== undefined &amp;&amp; o.auxPrice !== null ? Number(o.auxPrice) : null,
+        clientOrderId: o.cOID !== undefined &amp;&amp; o.cOID !== null ? String(o.cOID) : null,
+        status: String(o.status ?? &quot;&quot;),
+      }));
+  }</pre>
+
+</div>
+
+<div class="section" id="appF">
+<h1 class="sec">Appendix F — target2 plumbing (tickets & monitor)</h1>
+<p>Two one-line edits so the second target price flows from the scanner's proposal into the ticket row, and from there into <code>recordFill</code> (Appendix B) where it seeds <code>t2Price</code>.</p>
+<div class="codehead">api/queries/tickets.ts — carry target2 on insert</div>
+<pre>  // ProposeInput gains:
+  target2?: number;
+
+  // and the insert carries it:
+    target2: input.target2 !== undefined ? String(input.target2) : null,</pre>
+
+<div class="codehead">api/engine/monitor.ts — proposeTicket call gains target2</div>
+<pre>          entry: proposal.entry,
+          stop: proposal.stop,
+          target: proposal.targets[0]?.price,
+          target2: proposal.targets[1]?.price,
+          origin: &quot;AUTONOMOUS&quot;,
+        });
+        ticket = result.ticket;</pre>
+
+</div>
+
+<div class="section" id="appG">
+<h1 class="sec">Appendix G — api/engine-router.ts additions</h1>
+<p>The new tRPC surface: trailing status, stop-mode get/set, override mutations, manual flatten, and the activity stream. Add inside the existing engine router.</p>
+<div class="codehead">api/engine-router.ts — add these procedures</div>
+<pre>  /** Trailing-stop module status (running, managed positions, fires today). */
+  trailing: authedQuery.query(() =&gt; trailingStatus()),
+
+  /** Per-user stop mode: CLASSIC (flat stop → 1R arm → ATR trail) or IMMEDIATE_TRAIL (0.5% trail from entry + moving hard bottom). */
+  getStopMode: authedQuery.query(async ({ ctx }) =&gt; ({ mode: await getStopMode(ctx.user.id) })),
+  setStopMode: authedQuery
+    .input(z.object({ mode: z.enum([&quot;CLASSIC&quot;, &quot;IMMEDIATE_TRAIL&quot;]) }))
+    .mutation(async ({ ctx, input }) =&gt; setStopMode(ctx.user.id, input.mode)),
+
+  /** Manual overrides — tighten only (ratchet-respecting); loosening requires manual control. */
+  tightenStop: authedQuery
+    .input(z.object({ positionId: z.number().int().positive(), stopPrice: z.number().positive() }))
+    .mutation(({ ctx, input }) =&gt; tightenStop(ctx.user.id, input.positionId, input.stopPrice)),
+  tightenTrail: authedQuery
+    .input(z.object({ positionId: z.number().int().positive(), trailPrice: z.number().positive() }))
+    .mutation(({ ctx, input }) =&gt; tightenTrail(ctx.user.id, input.positionId, input.trailPrice)),
+  setPositionOverride: authedQuery
+    .input(z.object({ positionId: z.number().int().positive(), manual: z.boolean() }))
+    .mutation(({ ctx, input }) =&gt; setPositionOverride(ctx.user.id, input.positionId, input.manual)),
+  /** Flatten an open position now — market sell through the same audited fire path. */
+  flattenPosition: authedQuery
+    .input(z.object({ positionId: z.number().int().positive() }))
+    .mutation(({ ctx, input }) =&gt; requestFlatten(ctx.user.id, input.positionId)),
+
+  /** Live trade stream — execution-relevant events, newest first. */
+  activity: authedQuery.query(({ ctx }) =&gt; streamActivity(ctx.user.id, 40)),</pre>
+
+</div>
+
+<div class="section" id="appH">
+<h1 class="sec">Appendix H — boot wiring & system-check probe</h1>
+<p>Two edits to start the loop in production, and the 12th health probe that FAILs if the loop dies during market hours.</p>
+<div class="codehead">api/boot.ts — import (top of file)</div>
+<pre>import { ensureTrailingLoop } from &quot;./engine/trailing&quot;;</pre>
+
+<div class="codehead">api/boot.ts — inside the production listen block, after ensureSystemCheckLoop()</div>
+<pre>  ensureTrailingLoop(); // 5s protective-exit cycle during market hours — flat stop, 2.5×ATR trail, safety flatten</pre>
+
+<div class="codehead">api/systemcheck/checks.ts — add the checkTrailing probe</div>
+<pre>/* ---------- 12. trailing-stop module ---------- */
+
+const checkTrailing: CheckFn = async () =&gt; {
+  const id = &quot;trailing&quot;;
+  const name = &quot;Trailing-stop module&quot;;
+  try {
+    const s = trailingStatus();
+    if (!s.running) {
+      return fail(id, name, &quot;Trailing loop is NOT running — no protective exits are being managed&quot;,
+        &quot;Boot the server with NODE_ENV=production node dist/boot.js — ensureTrailingLoop() only starts in the production block.&quot;);
+    }
+    if (!s.marketHours) {
+      return ok(id, name, `Trailing loop running (sleeps off-hours by design — positions rest on their flat stops) · ${s.firedToday} fire(s) today`);
+    }
+    const stale = s.lastTickAt === null || Date.now() - s.lastTickAt &gt; 30_000;
+    if (stale) {
+      return fail(id, name, &quot;Trailing loop started but has not ticked in &gt;30s during market hours — protective exits may be stalled&quot;,
+        &quot;Check server logs for tick errors (DB connectivity or market-data service). Restart the production process if ticks do not resume.&quot;);
+    }
+    return ok(id, name, `Managing ${s.managed} open position(s) · ${s.inFlight} exit order(s) in flight · ${s.firedToday} fire(s) today`);
+  } catch (e) {
+    return fail(id, name, `Trailing module error: ${(e as Error).message}`,
+      &quot;Import or evaluation failure in api/engine/trailing.ts — check server logs.&quot;);
+  }
+};</pre>
+
+</div>
+
+<div class="section" id="appI">
+<h1 class="sec">Appendix I — src/components/OrdersPanel.tsx (full replacement)</h1>
+<p>The Orders &amp; P&amp;L panel with the stop-mode toggle, trailing-stops status card, Protection column (trail / floor / disaster / manual badges), and the Actions column (TIGHTEN, MANUAL/AUTO, FLATTEN). Replace the v2.2 file.</p>
+<div class="codehead">src/components/OrdersPanel.tsx — replace the v2.2 file</div>
+<pre>import { trpc } from &#x27;@/providers/trpc&#x27;;
+import { Badge } from &#x27;@/pages/app/owner/shared&#x27;;
+import { Zap, ZapOff, RefreshCw, TrendingUp, TrendingDown } from &#x27;lucide-react&#x27;;
+
+interface OrderRow {
+  ticketId: string; symbol: string; side: string; quantity: number; orderType: string;
+  state: string; autoExecuted: boolean; entry: number | null; stop: number | null;
+  target: number | null; filledQuantity: number | null; averageFillPrice: number | null;
+  createdAt: string | Date; lastMessage: string | null;
+}
+interface PositionRow {
+  id: number; symbol: string; quantity: number; avgEntry: number; status: string;
+  mark: number | null; unrealizedPnl: number | null; realizedPnl: number | null;
+  stopPrice: number | null; highestPrice: number | null; trailPrice: number | null;
+  trailArmed: boolean; scaleStage: number; closedBy: string | null;
+  t2Price: number | null; overrideMode: string | null; disasterPrice: number | null;
+  openedAt: string | Date;
+}
+
+function stateTone(s: string): &#x27;teal&#x27; | &#x27;amber&#x27; | &#x27;red&#x27; | &#x27;slate&#x27; | &#x27;sky&#x27; {
+  if (s === &#x27;FILLED&#x27;) return &#x27;teal&#x27;;
+  if (s === &#x27;WORKING&#x27; || s === &#x27;SUBMITTING&#x27; || s === &#x27;CONFIRMED&#x27;) return &#x27;sky&#x27;;
+  if (s === &#x27;FAILED&#x27; || s === &#x27;REJECTED&#x27;) return &#x27;red&#x27;;
+  if (s === &#x27;EXPIRED&#x27;) return &#x27;amber&#x27;;
+  return &#x27;slate&#x27;;
+}
+
+export default function OrdersPanel() {
+  const utils = trpc.useUtils();
+  const { data: pnl, refetch } = trpc.engine.pnl.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: positions } = trpc.engine.positions.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: orders } = trpc.engine.orders.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: autoExec } = trpc.engine.getAutoExecute.useQuery(undefined);
+  const { data: trailing } = trpc.engine.trailing.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: stopMode } = trpc.engine.getStopMode.useQuery(undefined);
+  const setMode = trpc.engine.setStopMode.useMutation({
+    onSuccess: () =&gt; utils.engine.getStopMode.invalidate(),
+  });
+  const tightenStopMut = trpc.engine.tightenStop.useMutation({ onSuccess: () =&gt; { utils.engine.positions.invalidate(); utils.engine.activity.invalidate(); } });
+  const tightenTrailMut = trpc.engine.tightenTrail.useMutation({ onSuccess: () =&gt; { utils.engine.positions.invalidate(); utils.engine.activity.invalidate(); } });
+  const overrideMut = trpc.engine.setPositionOverride.useMutation({ onSuccess: () =&gt; { utils.engine.positions.invalidate(); utils.engine.activity.invalidate(); } });
+  const flattenMut = trpc.engine.flattenPosition.useMutation({ onSuccess: () =&gt; { utils.engine.positions.invalidate(); utils.engine.activity.invalidate(); utils.engine.pnl.invalidate(); } });
+  const immediate = stopMode?.mode === &#x27;IMMEDIATE_TRAIL&#x27;;
+  const setAuto = trpc.engine.setAutoExecute.useMutation({
+    onSuccess: () =&gt; utils.engine.getAutoExecute.invalidate(),
+  });
+
+  const autoOn = autoExec?.enabled === true;
+  const openPositions = (positions ?? []).filter((p: PositionRow) =&gt; p.status === &#x27;OPEN&#x27;);
+
+  return (
+    &lt;section className=&quot;glass rounded-2xl p-6&quot;&gt;
+      &lt;div className=&quot;mb-4 flex flex-wrap items-center justify-between gap-3&quot;&gt;
+        &lt;div&gt;
+          &lt;h2 className=&quot;font-display text-lg font-bold text-slate-900&quot;&gt;Orders &amp;amp; P&amp;amp;L&lt;/h2&gt;
+          &lt;p className=&quot;text-xs text-slate-500&quot;&gt;Order history, open positions, and the auto-execute switch for autonomous proposals.&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;flex items-center gap-3&quot;&gt;
+          &lt;button onClick={() =&gt; refetch()} className=&quot;inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700&quot;&gt;
+            &lt;RefreshCw className=&quot;h-3.5 w-3.5&quot; /&gt; Refresh
+          &lt;/button&gt;
+          &lt;button
+            onClick={() =&gt; setMode.mutate({ mode: immediate ? &#x27;CLASSIC&#x27; : &#x27;IMMEDIATE_TRAIL&#x27; })}
+            disabled={setMode.isPending}
+            title={immediate ? &#x27;Trail live from entry at 0.5%, tightening on gains, with a moving hard bottom — no flat stop&#x27; : &#x27;Flat stop until +1R, then a 2.5×ATR trail&#x27;}
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition border ${
+              immediate
+                ? &#x27;bg-teal-500/15 text-teal-700 border-teal-500/30 hover:bg-teal-500/25&#x27;
+                : &#x27;bg-slate-900/[0.05] text-slate-600 border-slate-900/10 hover:bg-slate-900/10&#x27;
+            }`}
+          &gt;
+            {immediate ? &#x27;Trail: IMMEDIATE&#x27; : &#x27;Trail: CLASSIC&#x27;}
+          &lt;/button&gt;
+          &lt;button
+            onClick={() =&gt; setAuto.mutate({ enabled: !autoOn })}
+            disabled={setAuto.isPending}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              autoOn
+                ? &#x27;bg-amber-500/15 text-amber-700 border border-amber-500/30 hover:bg-amber-500/25&#x27;
+                : &#x27;bg-slate-900/[0.05] text-slate-600 border border-slate-900/10 hover:bg-slate-900/10&#x27;
+            }`}
+          &gt;
+            {autoOn ? &lt;Zap className=&quot;h-4 w-4&quot; /&gt; : &lt;ZapOff className=&quot;h-4 w-4&quot; /&gt;}
+            Auto-execute {autoOn ? &#x27;ON&#x27; : &#x27;OFF&#x27;}
+          &lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      {autoOn &amp;&amp; (
+        &lt;div className=&quot;mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700&quot;&gt;
+          &lt;b&gt;Auto-execute is ON.&lt;/b&gt; Autonomous engine proposals will buy &lt;b&gt;without&lt;/b&gt; asking for your CONFIRM string — every fill still creates a ticket, an alert, and an order-history entry marked AUTO. Natural-language (chat) trades still always require confirmation. Turn this off anytime to return to confirm-first mode.
+        &lt;/div&gt;
+      )}
+
+      {immediate &amp;&amp; (
+        &lt;div className=&quot;mb-4 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-xs text-teal-700&quot;&gt;
+          &lt;b&gt;Immediate-trail mode.&lt;/b&gt; No flat stop-loss is used anywhere — a software trail is live from entry at 0.5% below price, tightening as the trade gains (0.50 → 0.45 → 0.40 → 0.32 → 0.27 → 0.22%), with a hard bottom that moves from entry −0.5% to breakeven at +1% and locks 40% of peak gains beyond +2%. Both ratchets only move up.
+        &lt;/div&gt;
+      )}
+
+      {/* P&amp;L summary */}
+      &lt;div className=&quot;mb-5 grid gap-3 sm:grid-cols-4&quot;&gt;
+        &lt;div className=&quot;rounded-xl border border-slate-900/10 p-4&quot;&gt;
+          &lt;p className=&quot;text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;Realized P&amp;amp;L&lt;/p&gt;
+          &lt;p className={`mt-1 text-xl font-bold ${(pnl?.realizedTotal ?? 0) &gt;= 0 ? &#x27;text-teal-600&#x27; : &#x27;text-red-600&#x27;}`}&gt;
+            {(pnl?.realizedTotal ?? 0) &gt;= 0 ? &#x27;+&#x27; : &#x27;&#x27;}${(pnl?.realizedTotal ?? 0).toLocaleString()}
+          &lt;/p&gt;
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;{pnl?.closedCount ?? 0} closed · {pnl?.winCount ?? 0}W / {pnl?.lossCount ?? 0}L&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;rounded-xl border border-slate-900/10 p-4&quot;&gt;
+          &lt;p className=&quot;text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;Unrealized P&amp;amp;L&lt;/p&gt;
+          &lt;p className={`mt-1 text-xl font-bold ${(pnl?.unrealizedTotal ?? 0) &gt;= 0 ? &#x27;text-teal-600&#x27; : &#x27;text-red-600&#x27;}`}&gt;
+            {(pnl?.unrealizedTotal ?? 0) &gt;= 0 ? &#x27;+&#x27; : &#x27;&#x27;}${(pnl?.unrealizedTotal ?? 0).toLocaleString()}
+          &lt;/p&gt;
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;{(pnl?.unmarkedPositions ?? 0) &gt; 0 ? `${pnl?.unmarkedPositions} unmarked` : &#x27;marked to feed&#x27;}&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;rounded-xl border border-slate-900/10 p-4&quot;&gt;
+          &lt;p className=&quot;text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;Open positions&lt;/p&gt;
+          &lt;p className=&quot;mt-1 text-xl font-bold text-slate-900&quot;&gt;{pnl?.openCount ?? 0}&lt;/p&gt;
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;{openPositions.map((p: PositionRow) =&gt; p.symbol).slice(0, 4).join(&#x27;, &#x27;) || &#x27;—&#x27;}&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;rounded-xl border border-slate-900/10 p-4&quot;&gt;
+          &lt;p className=&quot;text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;Trailing stops&lt;/p&gt;
+          &lt;p className={`mt-1 text-xl font-bold ${trailing?.running ? &#x27;text-teal-600&#x27; : &#x27;text-red-600&#x27;}`}&gt;
+            {trailing?.running ? (trailing.marketHours ? &#x27;LIVE&#x27; : &#x27;ARMED&#x27;) : &#x27;DOWN&#x27;}
+          &lt;/p&gt;
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;
+            {trailing?.running
+              ? `${trailing.managed} protected · ${trailing.firedToday} fired today${trailing.marketHours ? &#x27;&#x27; : &#x27; · sleeps off-hours&#x27;}`
+              : &#x27;not running — check System Check&#x27;}
+          &lt;/p&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;rounded-xl border border-slate-900/10 p-4&quot;&gt;
+          &lt;p className=&quot;text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;Execution mode&lt;/p&gt;
+          &lt;p className={`mt-1 text-xl font-bold ${autoOn ? &#x27;text-amber-600&#x27; : &#x27;text-slate-900&#x27;}`}&gt;{autoOn ? &#x27;AUTO&#x27; : &#x27;CONFIRM&#x27;}&lt;/p&gt;
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;{autoOn ? &#x27;no confirmation required&#x27; : &#x27;CONFIRM string required&#x27;}&lt;/p&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      {/* open positions */}
+      {openPositions.length &gt; 0 &amp;&amp; (
+        &lt;div className=&quot;mb-5&quot;&gt;
+          &lt;h3 className=&quot;mb-2 text-sm font-semibold text-slate-800&quot;&gt;Open positions&lt;/h3&gt;
+          &lt;div className=&quot;overflow-x-auto&quot;&gt;
+            &lt;table className=&quot;w-full text-sm&quot;&gt;
+              &lt;thead&gt;
+                &lt;tr className=&quot;border-b border-slate-900/5 text-left text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;
+                  &lt;th className=&quot;px-3 py-2&quot;&gt;Symbol&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Qty&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Avg entry&lt;/th&gt;
+                  &lt;th className=&quot;px-3 py-2&quot;&gt;Mark&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Protection&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Unrealized&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Actions&lt;/th&gt;
+                &lt;/tr&gt;
+              &lt;/thead&gt;
+              &lt;tbody&gt;
+                {openPositions.map((p: PositionRow) =&gt; (
+                  &lt;tr key={p.id} className=&quot;border-b border-slate-900/[0.04] last:border-0&quot;&gt;
+                    &lt;td className=&quot;px-3 py-2 font-semibold text-slate-800&quot;&gt;{p.symbol}&lt;/td&gt;
+                    &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;{p.quantity}&lt;/td&gt;
+                    &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;${p.avgEntry.toFixed(2)}&lt;/td&gt;
+                    &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;{p.mark !== null ? `$${p.mark.toFixed(2)}` : &#x27;no mark&#x27;}&lt;/td&gt;
+                    &lt;td className=&quot;px-3 py-2&quot;&gt;
+                      {p.overrideMode === &#x27;MANUAL&#x27; ? (
+                        &lt;span className=&quot;rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700&quot;&gt;MANUAL — module OFF&lt;/span&gt;
+                      ) : p.trailArmed &amp;&amp; p.trailPrice !== null ? (
+                        &lt;span className=&quot;inline-flex items-center gap-1&quot;&gt;
+                          &lt;span className=&quot;rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700&quot;&gt;TRAIL&lt;/span&gt;
+                          &lt;span className=&quot;text-slate-700&quot;&gt;${p.trailPrice.toFixed(2)}&lt;/span&gt;
+                          {p.scaleStage &gt; 0 &amp;&amp; &lt;span className=&quot;rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700&quot;&gt;{p.scaleStage &gt;= 2 ? &#x27;T1 FLOOR&#x27; : &#x27;BE FLOOR&#x27;}&lt;/span&gt;}
+                          {p.disasterPrice !== null &amp;&amp; &lt;span className=&quot;rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500&quot; title={`Disaster stop resting at broker @ $${p.disasterPrice.toFixed(2)}`}&gt;+D&lt;/span&gt;}
+                        &lt;/span&gt;
+                      ) : p.stopPrice !== null ? (
+                        &lt;span className=&quot;inline-flex items-center gap-1&quot;&gt;
+                          &lt;span className=&quot;text-slate-500&quot;&gt;flat ${p.stopPrice.toFixed(2)}&lt;/span&gt;
+                          {p.disasterPrice !== null &amp;&amp; &lt;span className=&quot;rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500&quot; title={`Disaster stop resting at broker @ $${p.disasterPrice.toFixed(2)}`}&gt;+D&lt;/span&gt;}
+                        &lt;/span&gt;
+                      ) : (
+                        &lt;span className=&quot;text-slate-400&quot;&gt;—&lt;/span&gt;
+                      )}
+                    &lt;/td&gt;
+                    &lt;td className={`px-3 py-2 font-semibold ${(p.unrealizedPnl ?? 0) &gt;= 0 ? &#x27;text-teal-600&#x27; : &#x27;text-red-600&#x27;}`}&gt;
+                      {p.unrealizedPnl !== null ? (
+                        &lt;span className=&quot;inline-flex items-center gap-1&quot;&gt;
+                          {p.unrealizedPnl &gt;= 0 ? &lt;TrendingUp className=&quot;h-3.5 w-3.5&quot; /&gt; : &lt;TrendingDown className=&quot;h-3.5 w-3.5&quot; /&gt;}
+                          {p.unrealizedPnl &gt;= 0 ? &#x27;+&#x27; : &#x27;&#x27;}${p.unrealizedPnl.toFixed(2)}
+                        &lt;/span&gt;
+                      ) : &#x27;—&#x27;}
+                    &lt;/td&gt;
+                    &lt;td className=&quot;px-3 py-2&quot;&gt;
+                      &lt;span className=&quot;inline-flex items-center gap-1&quot;&gt;
+                        &lt;button
+                          onClick={() =&gt; {
+                            const v = window.prompt(`Tighten protection for ${p.symbol} (must be ABOVE current level, below mark). Enter new ${p.trailArmed ? &#x27;trail&#x27; : &#x27;stop&#x27;} price:`);
+                            if (v === null) return;
+                            const n = Number(v);
+                            if (!(n &gt; 0)) { window.alert(&#x27;Invalid price.&#x27;); return; }
+                            if (p.trailArmed) tightenTrailMut.mutate({ positionId: p.id, trailPrice: n });
+                            else tightenStopMut.mutate({ positionId: p.id, stopPrice: n });
+                          }}
+                          className=&quot;rounded-md bg-slate-900/[0.05] px-1.5 py-0.5 text-[9px] font-bold text-slate-600 hover:bg-slate-900/10&quot;
+                        &gt;TIGHTEN&lt;/button&gt;
+                        &lt;button
+                          onClick={() =&gt; overrideMut.mutate({ positionId: p.id, manual: p.overrideMode !== &#x27;MANUAL&#x27; })}
+                          className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${p.overrideMode === &#x27;MANUAL&#x27; ? &#x27;bg-teal-100 text-teal-700 hover:bg-teal-200&#x27; : &#x27;bg-amber-100 text-amber-700 hover:bg-amber-200&#x27;}`}
+                          title={p.overrideMode === &#x27;MANUAL&#x27; ? &#x27;Return to automatic protection&#x27; : &#x27;Take manual control — module stands down (only way to loosen a stop)&#x27;}
+                        &gt;{p.overrideMode === &#x27;MANUAL&#x27; ? &#x27;AUTO&#x27; : &#x27;MANUAL&#x27;}&lt;/button&gt;
+                        &lt;button
+                          onClick={() =&gt; { if (window.confirm(`Flatten ${p.symbol} — market-sell all ${p.quantity} shares now?`)) flattenMut.mutate({ positionId: p.id }); }}
+                          className=&quot;rounded-md bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 hover:bg-red-200&quot;
+                        &gt;FLATTEN&lt;/button&gt;
+                      &lt;/span&gt;
+                    &lt;/td&gt;
+                  &lt;/tr&gt;
+                ))}
+              &lt;/tbody&gt;
+            &lt;/table&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      )}
+
+      {/* order history */}
+      &lt;h3 className=&quot;mb-2 text-sm font-semibold text-slate-800&quot;&gt;Order history&lt;/h3&gt;
+      {!orders || orders.length === 0 ? (
+        &lt;p className=&quot;py-6 text-center text-sm text-slate-500&quot;&gt;No orders yet — confirmed and auto-executed tickets will appear here.&lt;/p&gt;
+      ) : (
+        &lt;div className=&quot;overflow-x-auto&quot;&gt;
+          &lt;table className=&quot;w-full text-sm&quot;&gt;
+            &lt;thead&gt;
+              &lt;tr className=&quot;border-b border-slate-900/5 text-left text-[11px] uppercase tracking-wide text-slate-500&quot;&gt;
+                &lt;th className=&quot;px-3 py-2&quot;&gt;Ticket&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Symbol&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Side&lt;/th&gt;
+                &lt;th className=&quot;px-3 py-2&quot;&gt;Qty&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;State&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;Fill&lt;/th&gt;
+                &lt;th className=&quot;px-3 py-2&quot;&gt;Stop / Target&lt;/th&gt;&lt;th className=&quot;px-3 py-2&quot;&gt;When&lt;/th&gt;
+              &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+              {(orders as OrderRow[]).map((o) =&gt; (
+                &lt;tr key={o.ticketId} className=&quot;border-b border-slate-900/[0.04] last:border-0&quot;&gt;
+                  &lt;td className=&quot;px-3 py-2 font-mono text-xs text-slate-600&quot;&gt;
+                    {o.ticketId}
+                    {o.autoExecuted &amp;&amp; &lt;Badge tone=&quot;amber&quot;&gt;AUTO&lt;/Badge&gt;}
+                  &lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 font-semibold text-slate-800&quot;&gt;{o.symbol}&lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;{o.side}&lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;{o.quantity}&lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2&quot;&gt;&lt;Badge tone={stateTone(o.state)}&gt;{o.state}&lt;/Badge&gt;&lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 text-slate-600&quot;&gt;
+                    {o.averageFillPrice !== null ? `${o.filledQuantity ?? o.quantity} @ $${o.averageFillPrice.toFixed(2)}` : &#x27;—&#x27;}
+                  &lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 text-xs text-slate-500&quot;&gt;
+                    {o.stop !== null ? `$${o.stop.toFixed(2)}` : &#x27;—&#x27;} / {o.target !== null ? `$${o.target.toFixed(2)}` : &#x27;—&#x27;}
+                  &lt;/td&gt;
+                  &lt;td className=&quot;px-3 py-2 text-xs text-slate-500&quot;&gt;{new Date(o.createdAt).toLocaleString()}&lt;/td&gt;
+                &lt;/tr&gt;
+              ))}
+            &lt;/tbody&gt;
+          &lt;/table&gt;
+        &lt;/div&gt;
+      )}
+    &lt;/section&gt;
+  );
+}
+</pre>
+
+</div>
+
+<div class="section" id="appJ">
+<h1 class="sec">Appendix J — src/components/LiveStream.tsx (new file) + mount</h1>
+<p>The live trade stream: polls <code>engine.activity</code> every 5 seconds and renders executions, scale-outs, fires, disaster events, and risk alerts with priority-styled icons. Create the component, then mount it on the Autonomous page directly after <code>&lt;OrdersPanel /&gt;</code>.</p>
+<div class="codehead">src/components/LiveStream.tsx — create as a new file</div>
+<pre>import { useEffect, useRef } from &#x27;react&#x27;;
+import { Activity, ArrowDownUp, Flame, ShieldAlert, ShieldCheck, Info } from &#x27;lucide-react&#x27;;
+import { trpc } from &#x27;@/providers/trpc&#x27;;
+
+interface ActivityEvent {
+  id: number;
+  kind: string;
+  priority: string;
+  title: string;
+  body: string | null;
+  symbol: string | null;
+  at: string | Date;
+}
+
+function etTime(d: string | Date): string {
+  return new Date(d).toLocaleTimeString(&#x27;en-US&#x27;, { timeZone: &#x27;America/New_York&#x27;, hour12: false });
+}
+
+function styleFor(e: ActivityEvent): { icon: JSX.Element; bar: string; text: string } {
+  if (e.priority === &#x27;CRITICAL&#x27;) {
+    return { icon: &lt;ShieldAlert className=&quot;h-3.5 w-3.5 text-red-500&quot; /&gt;, bar: &#x27;border-red-500/60&#x27;, text: &#x27;text-red-700&#x27; };
+  }
+  if (/scale-out/i.test(e.title)) {
+    return { icon: &lt;ArrowDownUp className=&quot;h-3.5 w-3.5 text-sky-500&quot; /&gt;, bar: &#x27;border-sky-500/60&#x27;, text: &#x27;text-sky-700&#x27; };
+  }
+  if (/stop|trail|flatten|disaster/i.test(e.title)) {
+    return { icon: &lt;Flame className=&quot;h-3.5 w-3.5 text-amber-500&quot; /&gt;, bar: &#x27;border-amber-500/60&#x27;, text: &#x27;text-amber-700&#x27; };
+  }
+  if (/filled|executed|closed|confirmed/i.test(e.title)) {
+    return { icon: &lt;ShieldCheck className=&quot;h-3.5 w-3.5 text-teal-500&quot; /&gt;, bar: &#x27;border-teal-500/60&#x27;, text: &#x27;text-teal-700&#x27; };
+  }
+  return { icon: &lt;Info className=&quot;h-3.5 w-3.5 text-slate-400&quot; /&gt;, bar: &#x27;border-slate-300&#x27;, text: &#x27;text-slate-600&#x27; };
+}
+
+/**
+ * LIVE TRADE STREAM — the &quot;watch the bot buy and sell&quot; feed.
+ * Entries, scale-outs, trail fires, safety events and overrides as they
+ * happen, newest first, polling every 5 seconds.
+ */
+export default function LiveStream() {
+  const { data: events } = trpc.engine.activity.useQuery(undefined, { refetchInterval: 5000 });
+  const topRef = useRef&lt;HTMLDivElement&gt;(null);
+
+  useEffect(() =&gt; {
+    topRef.current?.scrollTo({ top: 0 });
+  }, [events?.length]);
+
+  const live = (events ?? []).length &gt; 0;
+
+  return (
+    &lt;section className=&quot;glass rounded-2xl p-6&quot;&gt;
+      &lt;div className=&quot;mb-3 flex items-center justify-between&quot;&gt;
+        &lt;div className=&quot;flex items-center gap-2&quot;&gt;
+          &lt;Activity className=&quot;h-4 w-4 text-slate-500&quot; /&gt;
+          &lt;h2 className=&quot;font-display text-lg font-bold text-slate-900&quot;&gt;Live trade stream&lt;/h2&gt;
+          &lt;span className=&quot;relative flex h-2 w-2&quot;&gt;
+            &lt;span className=&quot;absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-400 opacity-75&quot;&gt;&lt;/span&gt;
+            &lt;span className=&quot;relative inline-flex h-2 w-2 rounded-full bg-teal-500&quot;&gt;&lt;/span&gt;
+          &lt;/span&gt;
+        &lt;/div&gt;
+        &lt;p className=&quot;text-[11px] text-slate-400&quot;&gt;updates every 5s · times ET&lt;/p&gt;
+      &lt;/div&gt;
+
+      &lt;div ref={topRef} className=&quot;max-h-72 space-y-1.5 overflow-y-auto pr-1&quot;&gt;
+        {!live &amp;&amp; (
+          &lt;p className=&quot;py-6 text-center text-xs text-slate-400&quot;&gt;
+            Nothing yet — entries, scale-outs, trailing-stop fires and overrides appear here the moment they happen.
+          &lt;/p&gt;
+        )}
+        {(events ?? []).map((e: ActivityEvent) =&gt; {
+          const s = styleFor(e);
+          return (
+            &lt;div key={e.id} className={`rounded-lg border-l-2 bg-white/60 px-3 py-2 ${s.bar}`}&gt;
+              &lt;div className=&quot;flex items-center gap-2&quot;&gt;
+                {s.icon}
+                &lt;span className=&quot;font-mono text-[10px] text-slate-400&quot;&gt;{etTime(e.at)}&lt;/span&gt;
+                {e.symbol &amp;&amp; &lt;span className=&quot;rounded bg-slate-900/[0.05] px-1 py-0.5 text-[9px] font-bold text-slate-600&quot;&gt;{e.symbol}&lt;/span&gt;}
+                &lt;span className={`text-[11px] font-semibold ${s.text}`}&gt;{e.title}&lt;/span&gt;
+              &lt;/div&gt;
+              {e.body &amp;&amp; &lt;p className=&quot;mt-0.5 pl-6 text-[10px] leading-snug text-slate-500&quot;&gt;{e.body}&lt;/p&gt;}
+            &lt;/div&gt;
+          );
+        })}
+      &lt;/div&gt;
+    &lt;/section&gt;
+  );
+}
+</pre>
+
+<div class="codehead">src/pages/app/Autonomous.tsx — import (top of file)</div>
+<pre>import LiveStream from &#x27;@/components/LiveStream&#x27;;</pre>
+
+<div class="codehead">src/pages/app/Autonomous.tsx — render immediately after &lt;OrdersPanel /&gt;</div>
+<pre>&lt;LiveStream /&gt;</pre>
+
+</div>
+
+</main>
+</body>
+</html>

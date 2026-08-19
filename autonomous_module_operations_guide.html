@@ -1,0 +1,440 @@
+<!DOCTYPE html><html><head><meta charset='utf-8'/>
+<style>
+@page {
+  size: Letter;
+  margin: 22mm 18mm 20mm 18mm;
+  @top-left { content: "Requi Trading — Autonomous Module Operations Guide"; font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+  @top-right { content: "Paper vs Live · Data Lineage · Deployment · Troubleshooting"; font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+  @bottom-center { content: "CONFIDENTIAL — INTERNAL ENGINEERING"; font: 600 7pt 'Inter', sans-serif; color: #94a3b8; letter-spacing: 0.12em; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+}
+@page cover { margin: 0; @top-left { content: none; } @top-right { content: none; } @bottom-center { content: none; } @bottom-right { content: none; } }
+* { box-sizing: border-box; }
+body { font-family: 'Inter', 'Segoe UI', sans-serif; color: #1e293b; font-size: 9.5pt; line-height: 1.55; margin: 0; }
+.cover { page: cover; height: 100vh; background: linear-gradient(150deg, #0b1220 0%, #132038 45%, #123a35 100%); color: #fff; padding: 34mm 24mm; page-break-after: always; position: relative; }
+.cover .kicker { font-size: 10pt; letter-spacing: 0.35em; color: #34d399; font-weight: 700; text-transform: uppercase; }
+.cover h1 { font-size: 29pt; line-height: 1.15; margin: 10mm 0 6mm; font-weight: 800; }
+.cover h1 .accent { color: #34d399; }
+.cover .sub { font-size: 11.5pt; color: #cbd5e1; max-width: 150mm; line-height: 1.6; }
+.cover .meta { position: absolute; bottom: 30mm; left: 24mm; right: 24mm; display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.25); padding-top: 6mm; font-size: 9pt; color: #94a3b8; }
+.cover .badges { margin-top: 10mm; display: flex; gap: 4mm; flex-wrap: wrap; }
+.cover .badge { border: 1px solid rgba(52,211,153,0.5); color: #6ee7b7; border-radius: 999px; padding: 2mm 5mm; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.05em; }
+h2 { font-size: 15pt; font-weight: 800; color: #0f172a; margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 2.5px solid #10b981; page-break-after: avoid; }
+h2 .no { color: #10b981; margin-right: 3mm; }
+h3 { font-size: 11pt; font-weight: 700; color: #0f172a; margin: 5mm 0 2mm; page-break-after: avoid; }
+p { margin: 0 0 2.6mm; text-align: justify; }
+.section { page-break-before: always; }
+ul, ol { margin: 0 0 3mm 5mm; padding-left: 4mm; }
+li { margin-bottom: 1.2mm; }
+pre.code { background: #0f172a; color: #e2e8f0; border-radius: 3mm; padding: 4mm 5mm; font-size: 7.8pt; line-height: 1.5; font-family: 'JetBrains Mono', 'Fira Code', monospace; margin: 0 0 3.5mm; white-space: pre-wrap; word-break: break-word; }
+code.inl { background: #f1f5f9; color: #0f172a; border-radius: 1.2mm; padding: 0.3mm 1.5mm; font-family: 'JetBrains Mono', monospace; font-size: 8.3pt; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 4mm; font-size: 8.6pt; }
+th { background: #0f172a; color: #fff; text-align: left; padding: 2mm 2.5mm; font-size: 8pt; letter-spacing: 0.03em; }
+td { border-bottom: 1px solid #e2e8f0; padding: 1.8mm 2.5mm; vertical-align: top; }
+tr { page-break-inside: avoid; }
+.callout { border-left: 3.5px solid #10b981; background: #ecfdf5; border-radius: 0 2.5mm 2.5mm 0; padding: 3mm 4mm; margin: 0 0 3.5mm; }
+.callout.warn { border-color: #f59e0b; background: #fffbeb; }
+.callout.crit { border-color: #ef4444; background: #fef2f2; }
+.callout.info { border-color: #0ea5e9; background: #f0f9ff; }
+.callout .t { font-weight: 800; font-size: 8.5pt; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1mm; }
+.toc { page-break-after: always; }
+ul.toc { list-style: none; margin: 0; padding: 0; }
+ul.toc li { margin-bottom: 2.4mm; font-size: 10pt; }
+ul.toc a { color: #0f172a; text-decoration: none; display: flex; }
+ul.toc a::after { content: target-counter(attr(href), page); margin-left: auto; color: #10b981; font-weight: 700; }
+ul.toc .l1 { font-weight: 700; }
+.tag { display: inline-block; border-radius: 999px; padding: 0.4mm 2.4mm; font-size: 7.4pt; font-weight: 800; letter-spacing: 0.04em; }
+.tag.paper { background: #e0f2fe; color: #075985; }
+.tag.live { background: #d1fae5; color: #065f46; }
+.tag.g { background: #d1fae5; color: #065f46; } .tag.a { background: #fef3c7; color: #92400e; }
+.tag.r { background: #fee2e2; color: #991b1b; }
+.formula { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 2.5mm; padding: 3mm 4mm; font-family: 'JetBrains Mono', monospace; font-size: 8.4pt; margin: 0 0 3.5mm; white-space: pre-wrap; }
+.chk { list-style: none; margin: 0 0 3mm; padding: 0; }
+.chk li { margin-bottom: 3.2mm; padding: 2.5mm 3mm; border: 1px solid #e2e8f0; border-radius: 2mm; page-break-inside: avoid; }
+.chk .box { font-size: 11pt; margin-right: 2mm; }
+.chk .note { margin-top: 1.6mm; border-top: 1px dashed #cbd5e1; padding-top: 1.6mm; color: #64748b; font-size: 8.2pt; }
+.chk .note .line { display: inline-block; border-bottom: 1px solid #cbd5e1; min-width: 120mm; height: 3.2mm; }
+.q li { margin-bottom: 3mm; }
+.q .exp { color: #065f46; font-size: 8.4pt; }
+</style></head><body>
+
+<div class="cover">
+  <div class="kicker">Requi Trading · Operations</div>
+  <h1>Autonomous Module<br/><span class="accent">Operations Guide</span></h1>
+  <p class="sub">Paper vs. live trading with IBKR, explained once and precisely. How every trade — Intelligence,
+  Autonomous, or Manual — flows through one ticket pipeline into orders, positions, P&amp;L, and reporting
+  metrics, with paper and live modes always separable. Includes the deployment confirmation checklist with
+  completion notes, the troubleshooting manual, and the accuracy questionnaire.</p>
+  <div class="badges">
+    <span class="badge">PAPER / LIVE MODE LINEAGE</span>
+    <span class="badge">ONE TICKET PIPELINE</span>
+    <span class="badge">DEPLOYMENT CHECKLIST</span>
+    <span class="badge">TROUBLESHOOTING</span>
+    <span class="badge">ACCURACY QUESTIONNAIRE</span>
+  </div>
+  <div class="meta">
+    <span>Audience: Engineering / DevOps</span>
+    <span>Companion to DevOps Guides v2.2–v2.5</span>
+    <span>August 2026 · CONFIDENTIAL</span>
+  </div>
+</div>
+
+<div class="toc"><h2>Contents</h2><ul class="toc"><li class="l1"><a href="#s1">1 · Paper mode vs. live mode — the one-paragraph answer</a></li>
+<li class="l1"><a href="#s2">2 · The golden rule: everything is a ticket (data lineage)</a></li>
+<li class="l1"><a href="#s3">3 · Mode lineage — how paper/live is marked everywhere</a></li>
+<li class="l1"><a href="#s4">4 · Where every number comes from (metrics dictionary)</a></li>
+<li class="l1"><a href="#s5">5 · Deployment confirmation checklist</a></li>
+<li class="l1"><a href="#s6">6 · Troubleshooting manual</a></li>
+<li class="l1"><a href="#s7">7 · Accuracy questionnaire</a></li>
+<li class="l1"><a href="#axa">Appendix A · Verification SQL &amp; endpoint smoke list</a></li>
+<li class="l1"><a href="#axb">Appendix B · The mode-lineage change (what shipped, exact diffs)</a></li></ul></div>
+
+<div class="section" id="s1">
+<h2><span class="no">1</span>Paper mode vs. live mode — the one-paragraph answer</h2>
+<p><b>Paper mode</b> means the platform runs the complete trading pipeline — scanning, state machines, risk
+gates, tickets, confirmations, fills, positions, trailing stops, P&amp;L — but the "broker" on the ticket is
+<code class="inl">PAPER</code>: a simulated execution venue inside our own server. Fills are computed, not
+received; the account is a fixed paper equity of <b>$100,000</b> used for position sizing; no money exists and
+nothing leaves the building. <b>Live mode</b> means the ticket's broker is a real connected broker account —
+today <code class="inl">IBKR</code> (Interactive Brokers, via the TWS/Gateway over the Model Context Protocol).
+The identical pipeline runs, but the order is transmitted to IBKR, the fill comes back from the exchange, the
+position is real, and the P&amp;L is real money. <b>The engine does not have two code paths. It has one pipeline
+with a broker field on the ticket — and that field is the mode.</b></p>
+<h3>1.1 Side by side</h3>
+<table>
+<tr><th style="width:24%"></th><th>Paper mode</th><th>Live mode (IBKR)</th></tr>
+<tr><td><b>Ticket broker field</b></td><td><span class="tag paper">PAPER</span></td><td><span class="tag live">IBKR</span> (or the connected broker's name)</td></tr>
+<tr><td><b>Where the order goes</b></td><td>Nowhere — simulated inside our server</td><td>Transmitted to IBKR TWS/Gateway via MCP</td></tr>
+<tr><td><b>Fill price</b></td><td>Computed (stop/market simulation)</td><td>Real exchange fill from the broker ACK</td></tr>
+<tr><td><b>Account equity for sizing</b></td><td>Fixed $100,000 paper equity</td><td>Real account equity from the broker</td></tr>
+<tr><td><b>Positions &amp; P&amp;L</b></td><td>Real rows in the same tables — flagged PAPER</td><td>Real rows in the same tables — flagged with the broker name</td></tr>
+<tr><td><b>Disaster stop (resting broker-side)</b></td><td>Not placed (<code class="inl">disasterOrderId</code> stays null)</td><td>Placed at IBKR as a resting catastrophe stop</td></tr>
+<tr><td><b>Risk gates, governance, CONFIRM string, trailing engine</b></td><td colspan="2"><b>Identical in both modes — that is the point of the design</b></td></tr>
+</table>
+<h3>1.2 Why the modes can never silently mix</h3>
+<p>Every position inherits its mode at fill time from the ticket that created it — copied onto the position row
+itself (<code class="inl">positions.broker</code>). From that moment the mode is a fact of the data, not a UI
+setting: order history shows it, the positions table shows it, and the P&amp;L engine splits on it. A paper
+position can never be marked as live and a live position can never be averaged into a paper one, because the
+mode travels with the row, not with a toggle.</p>
+<div class="callout info"><div class="t">Current default</div>
+Today the Intelligence chat proposes with broker = <code class="inl">PAPER</code>, and the autonomous engine
+proposes paper tickets until a live broker account is bound. If a real broker call degrades mid-flight, the
+system falls back to paper <i>and says so on the ticket</i> ("paper fallback" in the confirmation message).
+Nothing ever silently pretends to be live.</div>
+</div>
+
+
+<div class="section" id="s2">
+<h2><span class="no">2</span>The golden rule: everything is a ticket (data lineage)</h2>
+<p>There is exactly one way for any trade to exist in Requi — whether it came from the Intelligence chat, the
+Autonomous engine, or a human clicking manual order: <b>it becomes an order ticket, and only a ticket may
+reach a broker.</b> Once you know the lineage, every screen and every number in the product is just a view
+over the same chain:</p>
+<div class="formula">INTELLIGENCE (chat)  ─┐
+AUTONOMOUS (engine) ─┼─► proposeTicket() ─► order_tickets row (state: CREATED)
+MANUAL (operator)    ─┘                        │ broker = PAPER | IBKR   ← THE MODE
+                                               ▼
+                              CONFIRM string (or auto-execute, AUTONOMOUS only)
+                                               ▼
+                              SUBMITTING → WORKING → FILLED (or FAILED/REJECTED/EXPIRED)
+                                               ▼
+                              recordFill() ─► positions row  (broker copied from ticket ← MODE LINEAGE)
+                                               ▼
+                    ┌──────────────────────────┼───────────────────────────┐
+                    ▼                          ▼                           ▼
+            ORDER HISTORY                POSITIONS & PROTECTION        P&amp;L &amp; METRICS
+            engine.orders                engine.positions              engine.pnl
+            (tickets where               (open rows marked to feed;    (realized from CLOSED rows,
+             state ≠ CREATED)             trailing engine guards them)  unrealized from marks)
+                    └──────────────────────────┴───────────────────────────┘
+                                               ▼
+                              REPORTING — always splittable by mode:
+                              pnl.byMode.paper  ·  pnl.byMode.live</div>
+<h3>2.1 The five facts that make the lineage trustworthy</h3>
+<ol>
+<li><b>One writer per stage.</b> Only <code class="inl">proposeTicket()</code> creates tickets; only the
+confirmation/auto-execute path submits them; only <code class="inl">recordFill()</code> opens positions. Three
+functions, one chain — there is no side door.</li>
+<li><b>The position remembers its ticket.</b> <code class="inl">positions.sourceTicketId</code> points back to
+the ticket that opened it; <code class="inl">positions.broker</code> freezes the mode at fill time.</li>
+<li><b>Scale-outs keep the parent's mode.</b> When a T1/T2 scale-out closes part of a position, the closed
+child row carries the <i>original position's</i> broker — never the sell ticket's.</li>
+<li><b>Order history is tickets, not a separate log.</b> The Orders panel is literally the ticket table minus
+unsubmitted drafts — so "did the order connect?" is answered by one row's state field.</li>
+<li><b>P&amp;L is computed from positions, never from tickets.</b> Realized P&amp;L comes only from CLOSED
+position rows; unrealized comes only from open rows marked to the live feed. Tickets tell you <i>what was
+attempted</i>; positions tell you <i>what is true</i>.</li>
+</ol>
+<div class="callout"><div class="t">How to audit any trade in 30 seconds</div>
+Find the ticket in Orders → note its state and broker badge → find the position it opened
+(<code class="inl">sourceTicketId</code>) → its broker badge matches the ticket's → its realized/unrealized P&amp;L
+appears in the matching mode bucket of the P&amp;L panel. If any link is missing, §6 (Troubleshooting) has the
+exact failure table.</div>
+</div>
+
+
+<div class="section" id="s3">
+<h2><span class="no">3</span>Mode lineage — how paper/live is marked everywhere</h2>
+<p>This release (snapshot <code class="inl">4896a72</code>) makes the mode visible at every layer of the stack.
+The rule the whole system now obeys: <b>a number on any screen must be answerable to one mode or be an
+explicit, labeled combination of both.</b></p>
+<h3>3.1 The lineage chain</h3>
+<table>
+<tr><th style="width:26%">Layer</th><th>Where the mode lives</th><th>How you see it</th></tr>
+<tr><td>Ticket (order_tickets)</td><td><code class="inl">broker</code> column — <code class="inl">PAPER</code> default, live broker name when bound</td><td>PAPER / LIVE badge in Orders, next to the ticket id</td></tr>
+<tr><td>Position (positions)</td><td><code class="inl">broker</code> column — copied from the source ticket at fill time <i>(new column, this release)</i></td><td>PAPER / LIVE badge in Positions, next to the symbol</td></tr>
+<tr><td>P&amp;L summary</td><td><code class="inl">byMode.paper</code> / <code class="inl">byMode.live</code> — realized, unrealized, open, closed, W/L per mode <i>(new, this release)</i></td><td>Two mode cards under the P&amp;L strip: sky = paper, teal = live</td></tr>
+<tr><td>Combined totals</td><td>Unchanged, back-compatible</td><td>The four original P&amp;L cards = paper + live combined, labeled as such</td></tr>
+</table>
+<h3>3.2 What the mode badges mean operationally</h3>
+<ul>
+<li><span class="tag paper">PAPER</span> — simulated fill, $100k paper equity sizing, no broker-side disaster
+stop, no money at risk. Used for validation, demos, UAT, and the engine's default until a live account binds.</li>
+<li><span class="tag live">LIVE</span> — real broker execution, real equity, resting disaster stop at IBKR,
+real P&amp;L. Every protection (governance, gates, CONFIRM, trailing) is identical.</li>
+</ul>
+<h3>3.3 The three mode questions you can now answer instantly</h3>
+<ol>
+<li><b>"Is this trade real?"</b> → look at the badge on the ticket or position. Badge is the mode; the mode is the broker column; the column is set once at fill time and never edited.</li>
+<li><b>"What did we make on paper vs live?"</b> → the two mode cards under P&amp;L. They never mix.</li>
+<li><b>"Did anything trade live that shouldn't have?"</b> → <code class="inl">SELECT * FROM positions WHERE broker != 'PAPER'</code> — if the answer surprises you, §6.7 is the incident path.</li>
+</ol>
+<div class="callout warn"><div class="t">Pre-existing rows</div>
+Positions created before this release have no broker value on the row; the guarded migration backfills them to
+<code class="inl">PAPER</code> — which is factually correct for every fill this platform has produced to date
+(no live account has been bound). If a live account was bound before this release, update those rows manually
+using the ticket lineage (<code class="inl">sourceTicketId → order_tickets.broker</code>) — SQL in Appendix A.4.</div>
+</div>
+
+
+<div class="section" id="s4">
+<h2><span class="no">4</span>Where every number comes from (metrics dictionary)</h2>
+<p>When a metric "doesn't look right", it is always one of these definitions being misunderstood. This table
+is the contract — if a screen ever disagrees with it, the screen is wrong and this section is the fix target.</p>
+<table>
+<tr><th style="width:22%">Metric</th><th>Definition (the contract)</th><th style="width:26%">Source</th></tr>
+<tr><td><b>Realized P&amp;L</b></td><td>Σ <code class="inl">realizedPnl</code> over CLOSED position rows only. A trade is not real P&amp;L until it is closed.</td><td>positions, status=CLOSED</td></tr>
+<tr><td><b>Unrealized P&amp;L</b></td><td>Σ (live mark − avgEntry) × qty over OPEN rows <i>that have a mark</i>. Rows without a feed are excluded and counted, never estimated.</td><td>positions OPEN × feed last price</td></tr>
+<tr><td><b>Unmarked positions</b></td><td>Open rows with no tracked feed. The P&amp;L note names the count; the fix is tracking the symbol, not editing the number.</td><td>positions × marketDataService</td></tr>
+<tr><td><b>Win / Loss</b></td><td>CLOSED rows with realizedPnl &gt; 0 / ≤ 0. Breakeven exits count as losses — deliberate, conservative.</td><td>positions</td></tr>
+<tr><td><b>Order history row</b></td><td>A ticket whose state ≠ CREATED. States: SUBMITTING, WORKING, FILLED, FAILED, REJECTED, EXPIRED.</td><td>order_tickets</td></tr>
+<tr><td><b>Fill price</b></td><td><code class="inl">averageFillPrice</code> on the ticket; paper = simulated, live = broker-reported. The position's avgEntry is the VWAP of all its fills.</td><td>order_tickets → positions</td></tr>
+<tr><td><b>Mode of any row</b></td><td>The <code class="inl">broker</code> column. PAPER = simulated; anything else = the named live broker.</td><td>positions.broker / order_tickets.broker</td></tr>
+<tr><td><b>Paper P&amp;L / Live P&amp;L</b></td><td>The same metrics computed over rows of one mode only. Combined cards = both modes, labeled.</td><td>pnl.byMode</td></tr>
+<tr><td><b>Position risk (heat)</b></td><td>qty × (avgEntry − protective stop); unprotected = full notional. Used by the 10% heat gate.</td><td>positions + stops</td></tr>
+<tr><td><b>Paper equity</b></td><td>Fixed $100,000 — sizing base in paper mode until a live account binds. Not a P&amp;L input.</td><td>engine constant</td></tr>
+</table>
+<div class="callout crit"><div class="t">The three classic "wrong metrics" bugs — and why they can't happen here</div>
+<b>1. Mixing attempted with executed</b> — impossible: metrics read positions, attempts read tickets, different tables.
+<b>2. Mixing paper with live</b> — impossible as of this release: every row carries its mode and the split is structural.
+<b>3. Inventing marks</b> — impossible: unmarked rows are excluded and disclosed, never estimated (§5 of the Strategy
+Specification). If a metric ever seems wrong, first check <i>which mode bucket you're looking at</i> and <i>whether
+the position is marked</i> — those two checks resolve 95% of "wrong number" reports.</div>
+</div>
+
+
+<div class="section" id="s5">
+<h2><span class="no">5</span>Deployment confirmation checklist</h2>
+<p>Work top to bottom against the deployment guide. Every item has a confirmation line — date and initial it —
+and a notes line for <i>how</i> it was completed (command output, screenshot ref, observation). An item without
+a note is an item not done.</p>
+<ul class="chk"><li><span class="box">☐</span><b>A1 — Version snapshot noted</b> — record the previous snapshot id (current: 4896a72) as the rollback point in the deploy ticket<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>A2 — Build succeeds clean</b> — npm run build completes with dist/boot.js + dist/public; no type errors<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>A3 — No new env vars required</b> — this release adds none — confirm GOVERNANCE_VAULT_KEY and existing vars already set<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>B1 — Restart production</b> — NODE_ENV=production node dist/boot.js on port 3000<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>B2 — Boot log clean</b> — expect [db] schema ensured (16 tables) → Server running on http://localhost:3000/<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>B3 — Schema ALTERs applied</b> — DESCRIBE positions shows broker VARCHAR(24) NOT NULL DEFAULT 'PAPER' after sourceTicketId; DESCRIBE users shows autoUniverse + autoUniverseMax<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>B4 — Prior rows backfilled</b> — SELECT COUNT(*) FROM positions WHERE broker IS NULL → 0; all pre-existing rows read PAPER<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>C1 — engine.pnl</b> — 401 signed out; signed in → payload contains byMode.paper and byMode.live blocks<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>C2 — engine.orders</b> — each row carries a broker field<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>C3 — engine.positions</b> — each row carries a broker field<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>C4 — engine.strategyStats</b> — 401 signed out → confirms v2.5 strategy registry present (100 strategies, 2 eligible)<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>C5 — engine.universe</b> — 401 signed out → confirms auto-universe engine present<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>D1 — Orders badges</b> — every order row shows a PAPER (sky) or LIVE (teal) badge beside the ticket id<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>D2 — Positions badges</b> — every open position shows the mode badge beside the symbol<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>D3 — Mode split cards</b> — two cards under the P&L strip: Paper mode (sky) and Live mode (teal), each with realized, unrealized, open/closed, W/L<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>D4 — Combined cards labeled</b> — the four original P&L cards are understood as paper + live combined<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>D5 — Universe panel renders</b> — Autonomous page shows the auto-universe engine card + 100-strategy registry<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>E1 — Paper trade end-to-end</b> — propose via Intelligence chat (PAPER) → CONFIRM ORDER [id] → FILLED → position opens with PAPER badge<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>E2 — Lineage audit</b> — position.sourceTicketId = the ticket id; positions.broker = order_tickets.broker = PAPER<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>E3 — Metrics reflect mode</b> — the paper mode card's open count increments; live card unchanged; combined card increments<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>E4 — Close the trade</b> — flatten → realized P&L appears in the PAPER card only; win/loss counts update<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>E5 — Order history connects</b> — the closing SELL ticket appears in Orders with PAPER badge and FILLED state<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>F1 — Heartbeat ticking</b> — during market hours a monitor's timerCount advances with no UI clicks (60s cycle)<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>F2 — Trailing loop running</b> — System Check shows the 5s protective cycle LIVE/ARMED; disasterOrderId is null on paper positions<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>F3 — Governance verified</b> — boot shows governance ready; a tampered/unsigned package would halt — do not test on production<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>F4 — Market-hours stand-down</b> — outside 09:30–16:00 ET the heartbeat sleeps; screens show MARKET CLOSED, not errors<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul><ul class="chk"><li><span class="box">☐</span><b>G1 — Questionnaire complete</b> — Section 7 answered in full; every answer matches its expected value or has an open ticket<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>G2 — Rollback rehearsed (verbally)</b> — the deployer can state the rollback path without looking it up (snapshot id + one command)<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li>
+<li><span class="box">☐</span><b>G3 — Deploy record filed</b> — this checklist, completed, attached to the deploy ticket<div class="note">Completed (date / initials): <span class="line"></span></div><div class="note">How it was completed / notes: <span class="line"></span></div></li></ul>
+</div>
+
+
+<div class="section" id="s6">
+<h2><span class="no">6</span>Troubleshooting manual</h2>
+<p>Symptom → cause → fix. Every entry names the check that proves the diagnosis before the fix is applied.</p>
+<table>
+<tr><th style="width:24%">Symptom</th><th style="width:36%">Most likely cause</th><th>Prove it, then fix it</th></tr>
+<tr><td><b>6.1 Screen looks "stuck"</b></td><td>Market closed (heartbeat stands down) — or pre-v2.5 build (no heartbeat at all)</td><td>Check the MARKET OPEN/CLOSED badge. Closed = correct behavior. Open + frozen: confirm the build is ≥ v2.5 (engine.universe must 401, not 404) and restart.</td></tr>
+<tr><td><b>6.2 "No bars" on a symbol</b></td><td>Gateway down, no market-data subscription, or symbol not tracked</td><td>Feed row shows the exact error string. Track the symbol; check IBKR Gateway login; verify the symbol's subscription tier. Never fabricate bars — the engine refuses to.</td></tr>
+<tr><td><b>6.3 Monitor not proposing</b></td><td>A gate is doing its job: OCO per-day, portfolio heat, correlation, timer not met, or chase limit</td><td>Read the monitor's detail string — it names the gate verbatim ("blocked by PORTFOLIO HEAT gate…", "already proposed for this symbol today…"). The reason IS the diagnosis.</td></tr>
+<tr><td><b>6.4 Ticket stuck awaiting confirmation</b></td><td>CONFIRM string mismatch, or ticket expired (5:00 window)</td><td>String must be exact: CONFIRM ORDER [TICKET_ID]. Governance validates it against the signed package; STALE_OR_MISMATCHED_TICKET means retype exactly or re-propose.</td></tr>
+<tr><td><b>6.5 P&L looks wrong</b></td><td>Wrong mode bucket, or unmarked positions</td><td>Check the two mode cards vs combined. Then the "unmarked" note — unrealized excludes positions with no feed by design (§4). Track the symbol; do not edit numbers.</td></tr>
+<tr><td><b>6.6 Paper/live numbers mixed</b></td><td>Pre-4896a72 build, or rows predating the broker column</td><td>positions must have broker NOT NULL DEFAULT 'PAPER' (B3). Old rows backfill to PAPER automatically; if any pre-release row was actually live, fix via Appendix A.4.</td></tr>
+<tr><td><b>6.7 Something traded live unexpectedly</b></td><td>Incident — stop the line</td><td>SELECT * FROM positions WHERE broker != 'PAPER'. If real: operator-kill the strategy, flatten via the position's flatten control, preserve the ticket chain (sourceTicketId) for forensics, then call the owner before any cleanup.</td></tr>
+<tr><td><b>6.8 Auto-universe not scanning</b></td><td>Not opted in, market closed, or roster read failed (fail-closed)</td><td>Enable auto-universe in the UI; check MARKET badge; engine.universe → preference.enabled. Fail-closed roster means a DB issue — check connection, not the engine.</td></tr>
+<tr><td><b>6.9 404 on a new endpoint</b></td><td>Stale deployment</td><td>401 = route exists, auth blocked (good). 404 = old build. Redeploy; confirm dist/boot.js timestamp.</td></tr>
+<tr><td><b>6.10 Schema column missing after deploy</b></td><td>ensureSchema guard skipped or errored</td><td>Boot log must show "[db] schema ensured". Re-run boot; the ALTERs are idempotent. Apply manually from Appendix A.3 only if boot cannot run.</td></tr>
+<tr><td><b>6.11 Trailing not firing</b></td><td>Market closed, loop down, or position is MANUAL override</td><td>System Check → trailing LIVE/ARMED/DOWN. Check overrideMode on the row — MANUAL means the human owns the exit by design. Paper positions never have disaster stops (disasterOrderId null is correct).</td></tr>
+<tr><td><b>6.12 "GOVERNANCE_UNAVAILABLE" anywhere</b></td><td>No signed active package, or integrity failure</td><td>Do not bypass. Boot runs ensureGovernanceReady (genesis compile on first boot). Integrity failure = the vault/package was touched — treat as §6.7-class incident.</td></tr>
+</table>
+<div class="callout warn"><div class="t">The two rules of Requi troubleshooting</div>
+<b>1. Read the reason string first.</b> The engine narrates every refusal — gates, monitors, tickets all carry a
+verbatim reason. The message is the diagnosis; don't guess around it.
+<b>2. Never "fix" by editing data.</b> Numbers are derived from the ticket→fill→position chain. If the chain is
+wrong, fix the chain; if the number is wrong, find which link disagrees. Editing a derived number destroys the
+audit trail and converts a bug into a lie.</div>
+</div>
+
+
+<div class="section" id="s7">
+<h2><span class="no">7</span>Accuracy questionnaire</h2>
+<p>Answer after the checklist. Each question has its expected answer printed beneath — if yours differs, that
+is a finding: open a ticket, do not proceed to sign-off. Space is left for your written answer.</p>
+<ol class="q">
+<li><b>What single field determines whether any trade is paper or live?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: the broker column on the ticket (PAPER | IBKR), inherited by the position at fill time.</span></li>
+<li><b>Where does the $100,000 figure come from, and what is it used for?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: the paper-equity engine constant — position sizing in paper mode only; never a P&amp;L input.</span></li>
+<li><b>Name the three functions that are the only writers in the trade chain.</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: proposeTicket() creates, the confirm/auto-execute path submits, recordFill() opens positions.</span></li>
+<li><b>A scale-out closes half a position. Which broker value does the closed child row get, and why?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: the ORIGINAL position's broker — the mode belongs to the position's birth, not to the closing ticket.</span></li>
+<li><b>Why does the Orders panel exclude CREATED tickets?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: CREATED = unconfirmed draft, never submitted; order history shows what actually reached a broker path.</span></li>
+<li><b>Realized P&amp;L is computed from which table and which rows?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: positions where status = CLOSED — never from tickets.</span></li>
+<li><b>An open position has no feed. What happens to its unrealized P&amp;L?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: excluded from unrealized totals and counted in "unmarked" — never estimated.</span></li>
+<li><b>Where on the P&amp;L panel do you read paper-only results? Live-only?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: the sky Paper mode card and the teal Live mode card under the main strip (byMode.paper / byMode.live).</span></li>
+<li><b>What does a PAPER badge on a position guarantee about its disaster stop?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: none resting broker-side — disasterOrderId is null on paper; the in-server trailing engine still protects it.</span></li>
+<li><b>Which two badges must match for a lineage audit to pass?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: the ticket's broker badge and the position's broker badge (via sourceTicketId).</span></li>
+<li><b>One of your checks returns 404 instead of 401. What does that mean and what do you do?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: stale deployment — redeploy; 401 means the route exists and auth blocked correctly.</span></li>
+<li><b>What are the heartbeat's three steps, and its frequency?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: refresh all feeds → evaluate every monitor → auto-universe cycles; every 60s, market hours only.</span></li>
+<li><b>The trailing engine's cycle time, and what it owns exclusively?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: 5 seconds, market hours; it owns every protective exit — no strategy may move a stop but tighter.</span></li>
+<li><b>Name the four states a ticket can end in without filling.</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: FAILED, REJECTED, EXPIRED (and CREATED drafts that never submitted).</span></li>
+<li><b>Why can the Intelligence chat never auto-execute, even if a user asks nicely?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: auto-execute is scoped to AUTONOMOUS-origin tickets only; INTELLIGENCE and MANUAL always require the CONFIRM string — code-enforced.</span></li>
+<li><b>Which ALTER must exist for mode lineage, and what is its default?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: positions.broker VARCHAR(24) NOT NULL DEFAULT 'PAPER' — applied by the guarded ensure-schema migration.</span></li>
+<li><b>A monitor's detail says "blocked by CORRELATION gate — cannot verify vs open position XYZ". Is this a bug?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: no — §5 never-estimate rule; unverifiable correlation data rejects the proposal by design.</span></li>
+<li><b>What two pieces of evidence must accompany every checked checklist item?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: date + initials on the confirmation line, and a written "how it was completed" note.</span></li>
+<li><b>When is editing a P&amp;L number directly in the database acceptable?</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: never. Fix the chain (ticket → fill → position); derived numbers are recomputed, not edited.</span></li>
+<li><b>State the rollback path for this release.</b><br/>Your answer: ______________________________<br/><span class="exp">Expected: restore snapshot 4896a72 (or the prior one recorded at A1) via the version manager — one step.</span></li>
+</ol>
+<div class="callout"><div class="t">Scoring</div>
+20/20 matching expected answers → sign off. Any mismatch → the mismatch is a defect report: quote the question
+number, your answer, and the observed evidence. Do not average, do not proceed.</div>
+</div>
+
+
+<div class="section" id="axa">
+<h2><span class="no">A</span>Appendix A · Verification SQL &amp; endpoint smoke list</h2>
+<h3>A.1 Mode-lineage audit (the 30-second trade audit)</h3>
+<pre class="code"><code>-- Trace one position back to its ticket and confirm the modes match
+SELECT p.id, p.symbol, p.broker AS position_mode,
+       p.sourceTicketId, t.broker AS ticket_mode, t.state, t.averageFillPrice
+FROM positions p
+LEFT JOIN order_tickets t ON t.ticketId = p.sourceTicketId
+ORDER BY p.id DESC
+LIMIT 20;
+-- PASS rule: position_mode = ticket_mode on every row.</code></pre>
+<h3>A.2 Mode-separated P&amp;L (server computes this — use it to cross-check)</h3>
+<pre class="code"><code>SELECT broker AS mode, status,
+       COUNT(*) AS rows_n,
+       ROUND(SUM(COALESCE(realizedPnl, 0)), 2) AS realized
+FROM positions
+GROUP BY broker, status
+ORDER BY broker, status;
+-- Compare against the Paper/Live cards on the P&amp;L panel. Must agree.</code></pre>
+<h3>A.3 Schema verification</h3>
+<pre class="code"><code>DESCRIBE positions;   -- expect: broker VARCHAR(24) NOT NULL DEFAULT 'PAPER' AFTER sourceTicketId
+DESCRIBE users;       -- expect: autoUniverse TINYINT(1) DEFAULT 0, autoUniverseMax INT DEFAULT 5
+SELECT COUNT(*) AS missing_mode FROM positions WHERE broker IS NULL;  -- expect 0</code></pre>
+<h3>A.4 Manual backfill (only if a pre-release row was genuinely live)</h3>
+<pre class="code"><code>-- Fix one position's mode from its ticket lineage (incident-path only, log the change)
+UPDATE positions p
+JOIN order_tickets t ON t.ticketId = p.sourceTicketId
+SET p.broker = t.broker
+WHERE p.id = &lt;position_id&gt; AND t.broker != 'PAPER';</code></pre>
+<h3>A.5 Unexpected-live check (run after every deploy until live binding is intentional)</h3>
+<pre class="code"><code>SELECT * FROM positions WHERE broker != 'PAPER';
+-- Expect: zero rows until a live IBKR account is deliberately bound.
+-- Any row = incident path §6.7.</code></pre>
+<h3>A.6 Endpoint smoke list (signed out → 401; signed in → payload shape)</h3>
+<table>
+<tr><th>Endpoint</th><th>Signed-in payload must contain</th></tr>
+<tr><td><code class="inl">engine.pnl</code></td><td><code class="inl">byMode.paper</code> + <code class="inl">byMode.live</code>, each with realizedTotal, unrealizedTotal, openCount, closedCount, winCount, lossCount</td></tr>
+<tr><td><code class="inl">engine.orders</code></td><td>rows with <code class="inl">broker</code>, <code class="inl">state</code>, <code class="inl">averageFillPrice</code></td></tr>
+<tr><td><code class="inl">engine.positions</code></td><td>rows with <code class="inl">broker</code>, <code class="inl">mark</code>, trailing fields</td></tr>
+<tr><td><code class="inl">engine.strategyStats</code></td><td>total 100 · eligible 2 · firstRelease 10</td></tr>
+<tr><td><code class="inl">engine.universe</code></td><td>seeds · marketHours · preference · lastCycle</td></tr>
+</table>
+</div>
+
+
+<div class="section" id="axb">
+<h2><span class="no">B</span>Appendix B · The mode-lineage change (exact diffs that shipped in 4896a72)</h2>
+<p>Six surgical edits. Everything else in the pipeline is untouched — that is deliberate: mode lineage is a
+data property, so the change lives in the schema, the fill recorder, the projections, and the badges.</p>
+<h3>B.1 db/schema.ts — the column</h3>
+<pre class="code"><code>  /** Execution venue copied from the source ticket at fill time — PAPER | IBKR (mode lineage for reporting). */
+  broker: varchar("broker", { length: 24 }).notNull().default("PAPER"),</code></pre>
+<h3>B.2 api/lib/ensure-schema.ts — the guarded migration</h3>
+<pre class="code"><code>  // Mode lineage on positions (PAPER | live broker) — copied from the source ticket at fill time
+  `ALTER TABLE positions ADD COLUMN broker VARCHAR(24) NOT NULL DEFAULT 'PAPER' AFTER sourceTicketId`,</code></pre>
+<h3>B.3 api/engine/portfolio.ts — recordFill stamps the mode (new position)</h3>
+<pre class="code"><code>          sourceTicketId: ticket.ticketId,
+          broker: ticket.broker, // mode lineage: PAPER | live broker — reporting splits on this</code></pre>
+<h3>B.4 api/engine/portfolio.ts — scale-out child keeps the parent's mode</h3>
+<pre class="code"><code>          sourceTicketId: ticket.ticketId,
+          broker: open.broker, // scale-out child keeps the ORIGINAL position's mode, not the sell ticket's</code></pre>
+<h3>B.5 api/engine/portfolio.ts — mode-aware P&amp;L split</h3>
+<pre class="code"><code>export interface ModePnl {
+  realizedTotal: number;
+  unrealizedTotal: number;
+  openCount: number;
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+}
+
+function summarize(rows: PositionRow[]): ModePnl {</code></pre>
+<pre class="code"><code>  /* Mode-aware reporting: paper and live P&amp;L are ALWAYS separable.
+   * Combined totals above remain for back-compat; the byMode split is the
+   * authoritative view — a position's mode is fixed at fill time from its
+   * source ticket's broker (PAPER | live broker name). */
+  const byMode = {
+    paper: summarize(rows.filter((r) =&gt; r.broker.toUpperCase() === "PAPER")),
+    live: summarize(rows.filter((r) =&gt; r.broker.toUpperCase() !== "PAPER")),
+  };</code></pre>
+<h3>B.6 Projections — broker on every row</h3>
+<pre class="code"><code>    avgEntry: Number(p.avgEntry),
+    broker: p.broker ?? "PAPER",</code></pre>
+<pre class="code"><code>    side: t.side,
+    broker: t.broker ?? "PAPER",</code></pre>
+<h3>B.7 src/components/OrdersPanel.tsx — badges + mode cards</h3>
+<pre class="code"><code>                      {p.symbol} &lt;Badge tone={p.broker === 'PAPER' ? 'sky' : 'teal'}&gt;{p.broker === 'PAPER' ? 'PAPER' : 'LIVE'}&lt;/Badge&gt;
+                    &lt;/td&gt;</code></pre>
+<pre class="code"><code>                    &lt;Badge tone={o.broker === 'PAPER' ? 'sky' : 'teal'}&gt;{o.broker === 'PAPER' ? 'PAPER' : 'LIVE'}&lt;/Badge&gt;
+</code></pre>
+<pre class="code"><code>      {/* Mode-aware P&amp;L split — paper and live are always separable (positions carry broker lineage from the source ticket) */}
+      {pnl?.byMode &amp;&amp; (
+        &lt;div className="mb-5 grid gap-3 sm:grid-cols-2"&gt;
+          &lt;div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3"&gt;
+            &lt;p className="text-[11px] font-bold uppercase tracking-wide text-sky-700"&gt;Paper mode (PAPER broker)&lt;/p&gt;
+            &lt;p className="mt-1 text-sm text-slate-700"&gt;
+              Realized &lt;b className={(pnl.byMode.paper.realizedTotal ?? 0) &gt;= 0 ? 'text-teal-600' : 'text-red-600'}&gt;{(pnl.byMode.paper.realizedTotal ?? 0) &gt;= 0 ? '+' : ''}${(pnl.byMode.paper.realizedTotal ?? 0).toLocaleString()}&lt;/b&gt;
+              {' · '}Unrealized &lt;b className={(pnl.byMode.paper.unrealizedTotal ?? 0) &gt;= 0 ? 'text-teal-600' : 'text-red-600'}&gt;{(pnl.byMode.paper.unrealizedTotal ?? 0) &gt;= 0 ? '+' : ''}${(pnl.byMode.paper.unrealizedTotal ?? 0).toLocaleString()}&lt;/b&gt;
+            &lt;/p&gt;
+            &lt;p className="text-[11px] text-slate-500"&gt;{pnl.byMode.paper.openCount} open · {pnl.byMode.paper.closedCount} closed · {pnl.byMode.paper.winCount}W / {pnl.byMode.paper.lossCount}L&lt;/p&gt;
+          &lt;/div&gt;
+          &lt;div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3"&gt;
+            &lt;p className="text-[11px] font-bold uppercase tracking-wide text-teal-700"&gt;Live mode (IBKR / real broker)&lt;/p&gt;
+            &lt;p className="mt-1 text-sm text-slate-700"&gt;
+              Realized &lt;b className={(pnl.byMode.live.realizedTotal ?? 0) &gt;= 0 ? 'text-teal-600' : 'text-red-600'}&gt;{(pnl.byMode.live.realizedTotal ?? 0) &gt;= 0 ? '+' : ''}${(pnl.byMode.live.realizedTotal ?? 0).toLocaleString()}&lt;/b&gt;
+              {' · '}Unrealized &lt;b className={(pnl.byMode.live.unrealizedTotal ?? 0) &gt;= 0 ? 'text-teal-600' : 'text-red-600'}&gt;{(pnl.byMode.live.unrealizedTotal ?? 0) &gt;= 0 ? '+' : ''}${(pnl.byMode.live.unrealizedTotal ?? 0).toLocaleString()}&lt;/b&gt;
+            &lt;/p&gt;
+            &lt;p className="text-[11px] text-slate-500"&gt;{pnl.byMode.live.openCount} open · {pnl.byMode.live.closedCount} closed · {pnl.byMode.live.winCount}W / {pnl.byMode.live.lossCount}L&lt;/p&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      )}
+</code></pre>
+</div>
+</body></html>

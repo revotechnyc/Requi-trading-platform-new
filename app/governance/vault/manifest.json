@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "docKey": "constitution",
+      "title": "Institutional Trading Constitution",
+      "version": "2.1.0",
+      "sha256": "dd6c51bc5d173d143c2be77b211f00b971d984dedc037db0f1f96f160f0c8557",
+      "file": "constitution.enc",
+      "bytes": 1048972,
+      "registeredAt": "2026-07-27T19:57:07.085Z"
+    },
+    {
+      "docKey": "rti-kernel",
+      "title": "RTI Runtime Kernel",
+      "version": "3.0",
+      "sha256": "4e28f3f905d4cd063b7d3b46aab453b0b23f7890ef5715824b91019d949c34a1",
+      "file": "rti-kernel.enc",
+      "bytes": 277208,
+      "registeredAt": "2026-07-27T19:57:07.165Z"
+    },
+    {
+      "docKey": "icos-vol-xvi",
+      "title": "ICOS — Volume XVI: Autonomous Decision Authority",
+      "version": "2.1.0",
+      "sha256": "2cfd3d70856bb16f28ac37f1085d925e1133b6b69dd6fee66e748efb38fcf036",
+      "file": "icos-vol-xvi.enc",
+      "bytes": 84826,
+      "registeredAt": "2026-07-27T19:57:07.225Z"
+    },
+    {
+      "docKey": "formula-appendix-f",
+      "title": "Trading Formula Handbook — Appendix F",
+      "version": "2.0+F",
+      "sha256": "bd316cdf12164a67711b8b08f4ed9b957bb75b90272c8c06b1aa645780ef40ab",
+      "file": "formula-appendix-f.enc",
+      "bytes": 66272,
+      "registeredAt": "2026-07-27T19:57:07.280Z"
+    },
+    {
+      "docKey": "playbook-s1",
+      "title": "Strategy Playbook — Supplement S1: Strategy Contract",
+      "version": "1.1",
+      "sha256": "a09b15a8e3a37960fad32d32bd544dcab412be5e9e3ae5eb47d091cb6224de61",
+      "file": "playbook-s1.enc",
+      "bytes": 66404,
+      "registeredAt": "2026-07-27T19:57:07.336Z"
+    },
+    {
+      "docKey": "approved-sources",
+      "title": "Requi Approved Public Sources",
+      "version": "2.0",
+      "sha256": "c32e8edaadbb42d92bb58e57e001d43df6aea83abdbd115f5239485f99d7237d",
+      "file": "approved-sources.enc",
+      "bytes": 71740,
+      "registeredAt": "2026-07-27T19:57:07.392Z"
+    },
+    {
+      "docKey": "strategy-ncpm",
+      "title": "Negative Catalyst Put Monitor",
+      "version": "1.1",
+      "sha256": "418b1f22d5aa1acaf0ddd97b02dff29d9aeacb0476cd4ae92746e8eca768ba97",
+      "file": "strategy-ncpm.enc",
+      "bytes": 171095,
+      "registeredAt": "2026-07-27T19:57:07.447Z"
+    },
+    {
+      "docKey": "strategy-pre-earnings",
+      "title": "Pre-Earnings Sentiment Trade",
+      "version": "1.1",
+      "sha256": "051552932ed3594aabc5f51adef86bc620bb5a6b674631f0203cca37a80e4da8",
+      "file": "strategy-pre-earnings.enc",
+      "bytes": 64293,
+      "registeredAt": "2026-07-27T19:57:07.504Z"
+    },
+    {
+      "docKey": "amendment-ii",
+      "title": "Amendment II Implementation Package",
+      "version": "2026-07-28",
+      "sha256": "7b4d1b210a84e314730074163868bd03af8858b830ae27f5fde2ca653b83326f",
+      "file": "amendment-ii.enc",
+      "bytes": 83207,
+      "registeredAt": "2026-07-27T19:57:07.563Z"
+    }
+  ]
+}

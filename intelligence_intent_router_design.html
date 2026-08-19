@@ -1,0 +1,525 @@
+<!DOCTYPE html><html><head><meta charset='utf-8'/>
+<style>
+@page {
+  size: Letter;
+  margin: 22mm 18mm 20mm 18mm;
+  @top-left { content: "Requi Trading — Intelligence Intent Router"; font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+  @top-right { content: "Design Specification & Implementation Guide v1.0"; font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+  @bottom-center { content: "CONFIDENTIAL — INTERNAL ENGINEERING"; font: 600 7pt 'Inter', sans-serif; color: #94a3b8; letter-spacing: 0.12em; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 600 8pt 'Inter', sans-serif; color: #64748b; }
+}
+@page cover { margin: 0; @top-left { content: none; } @top-right { content: none; } @bottom-center { content: none; } @bottom-right { content: none; } }
+* { box-sizing: border-box; }
+body { font-family: 'Inter', 'Segoe UI', sans-serif; color: #1e293b; font-size: 9.5pt; line-height: 1.55; margin: 0; }
+.cover { page: cover; height: 100vh; background: linear-gradient(150deg, #120b20 0%, #241538 45%, #3a1230 100%); color: #fff; padding: 34mm 24mm; page-break-after: always; position: relative; }
+.cover .kicker { font-size: 10pt; letter-spacing: 0.35em; color: #c084fc; font-weight: 700; text-transform: uppercase; }
+.cover h1 { font-size: 29pt; line-height: 1.15; margin: 10mm 0 6mm; font-weight: 800; }
+.cover h1 .accent { color: #c084fc; }
+.cover .sub { font-size: 11.5pt; color: #cbd5e1; max-width: 150mm; line-height: 1.6; }
+.cover .meta { position: absolute; bottom: 30mm; left: 24mm; right: 24mm; display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.25); padding-top: 6mm; font-size: 9pt; color: #94a3b8; }
+.cover .badges { margin-top: 10mm; display: flex; gap: 4mm; flex-wrap: wrap; }
+.cover .badge { border: 1px solid rgba(192,132,252,0.5); color: #d8b4fe; border-radius: 999px; padding: 2mm 5mm; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.05em; }
+h2 { font-size: 15pt; font-weight: 800; color: #0f172a; margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 2.5px solid #a855f7; page-break-after: avoid; }
+h2 .no { color: #a855f7; margin-right: 3mm; }
+h3 { font-size: 11pt; font-weight: 700; color: #0f172a; margin: 5mm 0 2mm; page-break-after: avoid; }
+p { margin: 0 0 2.6mm; text-align: justify; }
+.section { page-break-before: always; }
+ul, ol { margin: 0 0 3mm 5mm; padding-left: 4mm; }
+li { margin-bottom: 1.2mm; }
+pre.code { background: #0f172a; color: #e2e8f0; border-radius: 3mm; padding: 4mm 5mm; font-size: 7.8pt; line-height: 1.5; font-family: 'JetBrains Mono', monospace; margin: 0 0 3.5mm; white-space: pre-wrap; word-break: break-word; }
+code.inl { background: #f1f5f9; color: #0f172a; border-radius: 1.2mm; padding: 0.3mm 1.5mm; font-family: 'JetBrains Mono', monospace; font-size: 8.3pt; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 4mm; font-size: 8.6pt; }
+th { background: #0f172a; color: #fff; text-align: left; padding: 2mm 2.5mm; font-size: 8pt; letter-spacing: 0.03em; }
+td { border-bottom: 1px solid #e2e8f0; padding: 1.8mm 2.5mm; vertical-align: top; }
+tr { page-break-inside: avoid; }
+.callout { border-left: 3.5px solid #a855f7; background: #faf5ff; border-radius: 0 2.5mm 2.5mm 0; padding: 3mm 4mm; margin: 0 0 3.5mm; }
+.callout.warn { border-color: #f59e0b; background: #fffbeb; }
+.callout.crit { border-color: #ef4444; background: #fef2f2; }
+.callout.good { border-color: #10b981; background: #ecfdf5; }
+.callout .t { font-weight: 800; font-size: 8.5pt; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1mm; }
+.toc { page-break-after: always; }
+ul.toc { list-style: none; margin: 0; padding: 0; }
+ul.toc li { margin-bottom: 2.4mm; font-size: 10pt; }
+ul.toc a { color: #0f172a; text-decoration: none; display: flex; }
+ul.toc a::after { content: target-counter(attr(href), page); margin-left: auto; color: #a855f7; font-weight: 700; }
+ul.toc .l1 { font-weight: 700; }
+.tag { display: inline-block; border-radius: 999px; padding: 0.4mm 2.4mm; font-size: 7.4pt; font-weight: 800; }
+.tag.chat { background: #e0f2fe; color: #075985; } .tag.trade { background: #f3e8ff; color: #6b21a8; }
+.tag.cmd { background: #fef3c7; color: #92400e; } .tag.stat { background: #d1fae5; color: #065f46; }
+.formula { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 2.5mm; padding: 3mm 4mm; font-family: 'JetBrains Mono', monospace; font-size: 8.4pt; margin: 0 0 3.5mm; white-space: pre-wrap; }
+.dialog { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 2.5mm; padding: 3mm 4mm; margin: 0 0 3.5mm; font-size: 8.8pt; }
+.dialog .u { color: #6b21a8; font-weight: 700; } .dialog .b { color: #0f172a; }
+.dialog .mode { float: right; font-size: 7.4pt; font-weight: 800; color: #94a3b8; }
+</style></head><body>
+
+<div class="cover">
+  <div class="kicker">Requi Trading · Intelligence</div>
+  <h1>Intelligence Intent Router<br/><span class="accent">Design Specification — Implemented Edition</span></h1>
+  <p class="sub">One chat, three modes, zero confusion. A deterministic router decides — in code — whether a
+  message is conversation, a trade intent, or an order command. Trade intent triggers the advisory-first
+  pipeline: analyze the market, check the protocol, deliver a verdict (favorable / unfavorable / wait), then
+  stage a ticket. The model narrates; the router decides. Includes implementation guide, acceptance tests,
+  and the addendum of what shipped in snapshot 4896a72.</p>
+  <div class="badges">
+    <span class="badge">DETERMINISTIC INTENT ROUTER</span>
+    <span class="badge">ADVISORY-FIRST TRADING</span>
+    <span class="badge">CONVERSATION STATE MACHINE</span>
+    <span class="badge">IMPLEMENTATION GUIDE</span>
+    <span class="badge">ACCEPTANCE TESTS</span>
+    <span class="badge">SHIPPED — SNAPSHOT 656528f</span>
+    <span class="badge">DEPLOYMENT &amp; VERIFICATION</span>
+  </div>
+  <div class="meta">
+    <span>Audience: Engineering — Intelligence module owner</span>
+    <span>Companion to Operations Guide &amp; DevOps Guides v2.2–v2.5</span>
+    <span>August 14, 2026 · Snapshot 656528f · CONFIDENTIAL</span>
+  </div>
+</div>
+
+<div class="toc"><h2>Contents</h2><ul class="toc"><li class="l1"><a href="#s1">1 · The problem, in the user's own words</a></li>
+<li class="l1"><a href="#s2">2 · Root cause: the model is currently the router</a></li>
+<li class="l1"><a href="#s3">3 · The design: a deterministic intent router</a></li>
+<li class="l1"><a href="#s4">4 · Advisory-first: the trade-intent pipeline</a></li>
+<li class="l1"><a href="#s5">5 · The conversation state machine</a></li>
+<li class="l1"><a href="#s6">6 · Implementation guide — files, functions, wiring</a></li>
+<li class="l1"><a href="#s7">7 · Acceptance tests &amp; edge cases</a></li>
+<li class="l1"><a href="#s8">8 · As-built: shipped code, deployment &amp; verification</a></li>
+<li class="l1"><a href="#axa">Appendix A · What already shipped (mode lineage, snapshot 4896a72)</a></li>
+<li class="l1"><a href="#axb">Appendix B · Checklist &amp; questionnaire addendum for this feature</a></li></ul></div>
+
+<div class="section" id="s1">
+<h2><span class="no">1</span>The problem, in the user's own words</h2>
+<p>The Intelligence chat cannot hold two thoughts at once. Today it behaves like this:</p>
+<div class="dialog">
+<p><span class="u">User:</span> <b>"buy Apple"</b> <span class="mode">SYMPTOM 1</span></p>
+<p><span class="b">Intelligence:</span> locks into trade mode — asks for quantity, stop, ticket strings. Every
+follow-up question ("wait — why that stop?", "actually what do you think of the market today?") is treated as
+more trade input. There is no way back to a normal conversation without abandoning the thread.</p>
+</div>
+<div class="dialog">
+<p><span class="u">User:</span> <b>"what do you think about this market, should I be buying here?"</b> <span class="mode">SYMPTOM 2</span></p>
+<p><span class="b">Intelligence:</span> has a lovely conversation — and never touches the trade tools. The user
+who then says "okay, do it" often gets more conversation instead of a staged ticket.</p>
+</div>
+<p><b>The required behavior</b> (the product owner's words, cleaned up): the default is intelligence — a real
+conversation. But when the message carries a trade trigger, the system must switch modes deliberately: before
+anything is staged, it <b>analyzes the market, checks against the protocol, and tells the user whether it's a
+good buy, a bad buy, or when to buy</b> — and only then moves toward a ticket. The switch between chatting,
+buying, and selling must be explicit and code-driven, not a vibe the model is having.</p>
+<div class="callout"><div class="t">Design principle (unchanged house rule)</div>
+The model narrates; code decides. Mode selection is a decision — therefore it moves from the prompt into the
+router, where it is deterministic, testable, and auditable. This is the same separation the rest of the
+platform already enforces: AI proposes, code disposes.</div>
+</div>
+
+
+<div class="section" id="s2">
+<h2><span class="no">2</span>Root cause: the model is currently the router</h2>
+<p>The Intelligence runtime is well-built — live state snapshot, whitelisted tools, a single write tool
+(<code class="inl">proposeTrade</code>) that lands in the same confirmation gate as everything else. The defect
+is one layer up: <b>nothing in code decides what kind of message arrived.</b> The system prompt's Rule 2
+("when the user expresses a trade… extract… ask… only then call proposeTrade") is <i>advice to the model</i>,
+and like all prompt-layer rules it is probabilistic:</p>
+<table>
+<tr><th style="width:30%">What should happen</th><th>What governs it today</th><th>Why it fails</th></tr>
+<tr><td>Recognize "buy X" as trade intent</td><td>Model judgment under a 2,000-word system prompt</td><td>Over-trigger: trade framing hijacks the whole thread — the model keeps extracting parameters instead of conversing</td></tr>
+<tr><td>Stay conversational by default</td><td>Model judgment</td><td>Under-trigger: in a conversational flow the model never reaches for the tool, even when the user says "do it"</td></tr>
+<tr><td>Analyze before staging</td><td>Suggested, not sequenced</td><td>Nothing forces market analysis → protocol check → verdict <i>before</i> proposeTrade; the model can jump straight to staging</td></tr>
+<tr><td>One clean switch per message</td><td>None — the model re-decides every turn</td><td>Mode flickers mid-thread; context from one mode leaks into the other</td></tr>
+</table>
+<div class="callout crit"><div class="t">The diagnosis in one sentence</div>
+A load-bearing decision — <i>is this message conversation, trade intent, or an order command?</i> — is
+currently made by the least deterministic component in the system. Everything else in Requi that is
+load-bearing was moved into code for exactly this reason; the chat mode switch is the last one left in the
+prompt. This specification moves it.</div>
+<p style="margin-top:2mm"><b>Non-goals for this fix:</b> no changes to the ticket pipeline, the confirmation
+gate, proposeTrade's validation, the snapshot, or the tool whitelist — they are correct and stay. The change
+is a pre-classifier and a conversation state machine <i>in front of</i> the existing runtime, plus an
+advisory composer that runs the deterministic analysis before any staging is allowed.</p>
+</div>
+
+
+<div class="section" id="s3">
+<h2><span class="no">3</span>The design: a deterministic intent router</h2>
+<p>Every incoming chat message passes through <code class="inl">classifyIntent()</code> — a pure function, no
+model call, no network — <b>before</b> the LLM is invoked. The router returns one of four modes, and the mode
+shapes everything downstream: which prompt addendum is used, which tools are offered, and whether staging is
+even possible this turn.</p>
+<div class="formula">message ─► classifyIntent() ─► one of:
+
+  CHAT            default. conversation, questions, analysis, reviews.
+                  proposeTrade is NOT offered this turn.
+
+  TRADE_INTENT    an instruction to transact ("buy ...", "sell ...", "flatten ...").
+                  ► enters the advisory-first pipeline (§4). proposeTrade is
+                    offered ONLY after the advisory has been delivered.
+
+  ORDER_COMMAND   "CONFIRM ORDER ..." / "REJECT ORDER ..." / "cancel ...".
+                  ► handled by the existing confirmation path, no advisory.
+
+  STATUS_QUERY    "what's open / P&L / positions / monitors / tickets".
+                  ► data tools only; read-only turn.</div>
+<h3>3.1 The trigger lexicon (deterministic, versioned, testable)</h3>
+<table>
+<tr><th style="width:22%">Class</th><th>Triggers (case-insensitive, word-boundary)</th><th style="width:30%">Notes</th></tr>
+<tr><td><span class="tag cmd">ORDER_COMMAND</span></td><td><code class="inl">confirm order</code> · <code class="inl">reject order</code> · <code class="inl">cancel order</code> · <code class="inl">cancel tkt-</code></td><td>Checked FIRST — these hit the existing confirmation path verbatim</td></tr>
+<tr><td><span class="tag trade">TRADE_INTENT</span></td><td><code class="inl">buy</code> · <code class="inl">sell</code> · <code class="inl">long</code> · <code class="inl">short</code> · <code class="inl">flatten</code> · <code class="inl">close (my|the) position</code> · <code class="inl">add to</code> · <code class="inl">exit</code></td><td>Must co-occur with a symbol token (or an open position, for exits) to qualify</td></tr>
+<tr><td><span class="tag stat">STATUS_QUERY</span></td><td><code class="inl">p&amp;l</code> · <code class="inl">positions</code> · <code class="inl">orders</code> · <code class="inl">tickets</code> · <code class="inl">monitors</code> · <code class="inl">what's open</code> · <code class="inl">how am i doing</code></td><td>Read-only tools only</td></tr>
+<tr><td><span class="tag chat">CHAT</span></td><td colspan="2">Everything else — including market opinions, "what do you think", strategy questions, post-trade reviews</td></tr>
+</table>
+<h3>3.2 Negation &amp; question guards — where routers usually break</h3>
+<p>A trigger word inside a <b>question or a conditional</b> is not an instruction — it's conversation ABOUT
+trading, and the correct mode is CHAT with a full analysis (the user is asking "good buy or bad buy?"). The
+guard is deliberately simple and conservative:</p>
+<table>
+<tr><th>Message</th><th>Mode</th><th>Why</th></tr>
+<tr><td>"buy Apple"</td><td><span class="tag trade">TRADE_INTENT</span></td><td>imperative + symbol</td></tr>
+<tr><td>"buy 100 Apple"</td><td><span class="tag trade">TRADE_INTENT</span></td><td>imperative + quantity + symbol</td></tr>
+<tr><td>"should I buy Apple?"</td><td><span class="tag chat">CHAT</span> (+analysis)</td><td>question form — advise, don't stage</td></tr>
+<tr><td>"is it a good time to buy?"</td><td><span class="tag chat">CHAT</span> (+analysis)</td><td>question form</td></tr>
+<tr><td>"what happens if I buy here?"</td><td><span class="tag chat">CHAT</span></td><td>hypothetical</td></tr>
+<tr><td>"don't buy yet"</td><td><span class="tag chat">CHAT</span></td><td>negated imperative — acknowledge, stand down</td></tr>
+<tr><td>"why did it buy?"</td><td><span class="tag chat">CHAT</span> (post-trade review)</td><td>past tense — review, not instruction</td></tr>
+<tr><td>"okay, do it — buy it"</td><td><span class="tag trade">TRADE_INTENT</span></td><td>imperative; "it" resolves to the symbol under discussion (§5 context)</td></tr>
+<tr><td>"CONFIRM ORDER TKT-12345"</td><td><span class="tag cmd">ORDER_COMMAND</span></td><td>existing confirmation path</td></tr>
+</table>
+<div class="callout warn"><div class="t">Conservatism rule</div>
+Ambiguous → CHAT. A missed trade intent costs the user one more sentence ("yes, buy it"); a false trade intent
+costs a staged ticket they never asked for. The router always errs toward conversation.</div>
+</div>
+
+
+<div class="section" id="s4">
+<h2><span class="no">4</span>Advisory-first: the trade-intent pipeline</h2>
+<p>When the router returns TRADE_INTENT, the turn runs a fixed sequence <b>in code</b>. The model's only job
+in this mode is to narrate the result honestly. Nothing can be staged before the advisory exists — the tool
+list for this turn simply doesn't include proposeTrade until step 4 completes.</p>
+<div class="formula">TRADE_INTENT(message)
+  │
+  ├─ 1. EXTRACT      symbol · side · quantity? · stop?   (deterministic parse)
+  │     └─ symbol missing/ambiguous → ask, stay in ADVISORY
+  │
+  ├─ 2. ANALYZE      marketDataService.track(symbol) → indicators
+  │     scanner.identifyStrategy(feed) → best-fit setup + confidence + reasons
+  │     data checks (§5 spec): fresh feed? enough bars? market open?
+  │     └─ stale/missing data → verdict UNFAVORABLE with the exact reason
+  │
+  ├─ 3. PROTOCOL     governance package active? risk preview via sizePosition()
+  │     CHECK        portfolio heat gate · correlation gate (same functions the
+  │                    monitor uses — one implementation, two callers)
+  │     └─ any gate blocks → verdict BLOCKED with the gate's verbatim reason
+  │
+  ├─ 4. VERDICT      compose Advisory:
+  │       FAVORABLE   — setup identified, gates pass, data fresh
+  │       WAIT        — no setup yet; includes WHAT TO WATCH + when to re-ask
+  │       UNFAVORABLE — data/quality reasons
+  │       BLOCKED     — a protocol gate forbids it (heat, correlation, governance)
+  │
+  ├─ 5. NARRATE      model receives the Advisory object + snapshot and writes
+  │     the answer in plain language — verdict, evidence, proposed parameters,
+  │     and "say the word and I'll stage it"
+  │
+  └─ 6. STAGE        ONLY on a follow-up imperative ("do it", "stage it", "buy")
+        (opt-in)     does the next turn offer proposeTrade → ticket → CONFIRM</div>
+<h3>4.1 The Advisory object (the contract between code and narration)</h3>
+<pre class="code"><code>interface Advisory {
+  symbol: string; side: "BUY" | "SELL";
+  verdict: "FAVORABLE" | "WAIT" | "UNFAVORABLE" | "BLOCKED";
+  reasons: string[];              // verbatim engine evidence — trigger states, gate reasons
+  dataQuality: { fresh: boolean; bars: number; marketOpen: boolean; delaySeconds: number };
+  setup: { strategyId: string; confidence: number; state: string } | null;
+  sizingPreview: { qty: number; dollarRisk: number; cappedBy: string } | null;
+  proposed: { entry: number | null; stop: number | null; target: number | null } | null;
+  watchFor: string | null;        // WAIT verdicts: exactly what would change the answer
+  governanceVersion: string;
+}</code></pre>
+<h3>4.2 What the user experiences</h3>
+<div class="dialog">
+<p><span class="u">User:</span> "buy Apple" <span class="mode">TRADE_INTENT</span></p>
+<p><span class="b">Intelligence:</span> "Analysis before anything is staged — Apple is trading 0.8% above VWAP
+with RSI 61; the engine's best-fit setup is VWAP-reclaim but the hold-timer hasn't confirmed (6 of 10
+minutes). Verdict: <b>WAIT</b> — a confirmed hold for 4 more minutes flips this to favorable. Proposed when it
+confirms: entry 214.30 stop 211.80 (risk 0.5% of equity, 200 shares). Say <b>'stage it'</b> and I'll put the
+ticket up, or ask me anything else first."</p>
+</div>
+<div class="dialog">
+<p><span class="u">User:</span> "actually what do you think of the overall market?" <span class="mode">CHAT — the switch works</span></p>
+<p><span class="b">Intelligence:</span> normal conversation, full snapshot available, zero trade framing.</p>
+</div>
+<div class="dialog">
+<p><span class="u">User:</span> "okay stage it" <span class="mode">TRADE_INTENT (follow-up imperative)</span></p>
+<p><span class="b">Intelligence:</span> "Staged — ticket TKT-4471. Reply exactly <b>CONFIRM ORDER TKT-4471</b> to
+authorize, or REJECT ORDER TKT-4471 to cancel. Nothing reaches a broker until you confirm."</p>
+</div>
+<div class="callout good"><div class="t">Why advisory-first is the institutional pattern</div>
+It mirrors the risk-desk workflow the whole platform is modeled on: analysis → desk check → recommendation →
+execution authorization. It also kills the two symptoms at once: "buy X" no longer hijacks the thread (the
+advisory closes with an invitation, not an interrogation), and a conversational user who says "do it" gets a
+deterministic escalation path instead of hoping the model notices.</div>
+</div>
+
+
+<div class="section" id="s5">
+<h2><span class="no">5</span>The conversation state machine</h2>
+<p>Mode is per-message from the router; <b>context</b> is per-thread from a small state machine. This is what
+makes "it", "stage it", and "cancel that" resolve correctly without asking the model to remember.</p>
+<div class="formula">                    ┌────────────────────────────────────┐
+                    ▼                                    │
+              CONVERSING ──TRADE_INTENT──► ADVISORY ──follow-up imperative──► STAGED
+                    ▲                          │                                  │
+                    │                          │ "never mind" / timeout           │ CONFIRM / REJECT
+                    │                          ▼                                  ▼
+                    └──────────────────────────┴──────────────────────────────────┘
+                                     (always lands back in CONVERSING)
+
+  STAGED holds: ticketId, symbol, side, proposed params, advisory, expiresAt (5:00)</div>
+<h3>5.1 State contents &amp; rules</h3>
+<table>
+<tr><th style="width:20%">State</th><th>What the thread remembers</th><th>Rules</th></tr>
+<tr><td><b>CONVERSING</b> (default)</td><td>last discussed symbol (if any)</td><td>proposeTrade never offered; all read tools available</td></tr>
+<tr><td><b>ADVISORY</b></td><td>the Advisory object + symbol/side under discussion</td><td>"it" / "that" resolves to the advisory symbol; "stage/do it/buy it" escalates to STAGED; any new topic returns to CONVERSING</td></tr>
+<tr><td><b>STAGED</b></td><td>ticketId + expiry</td><td>only ORDER_COMMAND or cancel language applies to the ticket; expiry (5:00) auto-returns to CONVERSING with a one-line notice</td></tr>
+</table>
+<h3>5.2 The clear switch, stated as invariants</h3>
+<ol>
+<li><b>Default is CHAT.</b> Every thread starts CONVERSING; every completed or expired trade flow ends CONVERSING.</li>
+<li><b>One mode per message,</b> chosen by the router — never mid-turn, never by the model.</li>
+<li><b>Staging requires an imperative in TRADE_INTENT mode.</b> Questions, conditionals, and hypotheticals can never stage.</li>
+<li><b>Advisory precedes staging.</b> proposeTrade is physically absent from the tool list until an Advisory exists for that symbol+side in this thread.</li>
+<li><b>Timeouts are loud, not silent.</b> An expired staged ticket says so in one line and stands down.</li>
+</ol>
+<div class="callout"><div class="t">Persistence</div>
+Thread state lives in the existing chat memory layer (per user, per thread, JSON blob beside the message
+history). No new tables: <code class="inl">chatState = { mode, advisory?, stagedTicketId?, expiresAt? }</code>.
+On any read error the state defaults to CONVERSING — fail-safe toward conversation.</div>
+</div>
+
+
+<div class="section" id="s6">
+<h2><span class="no">6</span>Implementation guide — files, functions, wiring</h2>
+<p>Sized for one focused engineer: one new module, two small edits to existing files, one prompt edit.
+Nothing in the ticket pipeline, confirmation gate, or tool executors changes.</p>
+<h3>6.1 New file: <code class="inl">api/intelligence/intent.ts</code> (~200 lines)</h3>
+<table>
+<tr><th style="width:34%">Export</th><th>Contract</th></tr>
+<tr><td><code class="inl">classifyIntent(message, threadState)</code></td><td>Pure function → <code class="inl">{ mode: "CHAT" | "TRADE_INTENT" | "ORDER_COMMAND" | "STATUS_QUERY", symbol?, side?, quantity?, reason }</code>. Lexicon + negation/question guards from §3. Word-boundary regex; symbol = 1–5 uppercase letters or a known tracked symbol; "it/that" resolves from threadState.advisory.</td></tr>
+<tr><td><code class="inl">TRADE_TRIGGERS / STATUS_TRIGGERS / COMMAND_TRIGGERS</code></td><td>Exported constants — the versioned lexicon. Changing a trigger is a code edit with a test, never a prompt edit.</td></tr>
+<tr><td><code class="inl">composeAdvisory(userId, symbol, side)</code></td><td>Runs §4 steps 2–4: track → indicators → identifyStrategy → governance status → sizePosition preview → portfolioHeatPct / returnCorrelation gates (imported from <code class="inl">api/engine/risk.ts</code> — the same functions the monitor uses). Returns the Advisory object; never throws on data failure — returns UNFAVORABLE with the reason (§5 spec never-estimate rule).</td></tr>
+</table>
+<h3>6.2 Edit: <code class="inl">api/intelligence/tools.ts</code> — the chat loop (three precise changes)</h3>
+<ol>
+<li><b>Route before the loop.</b> First statement of the chat handler: <code class="inl">const intent = classifyIntent(message, threadState)</code>. Branch on <code class="inl">intent.mode</code>.</li>
+<li><b>Per-mode tool lists.</b> CHAT/STATUS_QUERY → all read tools, proposeTrade removed. ORDER_COMMAND → bypass the model entirely, straight to the existing confirmation path (exact-string handling already lives there). TRADE_INTENT → first call <code class="inl">composeAdvisory()</code>, inject the Advisory object into the snapshot, and offer proposeTrade <i>only</i> when the thread already holds a matching advisory (follow-up imperative) — otherwise the turn ends after narration.</li>
+<li><b>Thread state write-back.</b> Persist <code class="inl">{ mode, advisory?, stagedTicketId?, expiresAt? }</code> via <code class="inl">memory.ts</code> beside the message; on any read error default to CONVERSING.</li>
+</ol>
+<h3>6.3 Edit: <code class="inl">RUNTIME_ADDENDUM</code> — Rule 2 replaced</h3>
+<p>The prompt stops being the router. Rule 2 becomes narration discipline, not mode selection:</p>
+<pre class="code"><code>2. MODES ARE SET BY THE SERVER, NEVER BY YOU. Each turn arrives with a mode:
+   CHAT — converse normally; you have no staging tool this turn.
+   TRADE_INTENT — an ADVISORY object is in your snapshot. Narrate it faithfully:
+   verdict, the engine's evidence (every reason string), proposed parameters, and
+   close with "say 'stage it' and I'll put the ticket up". Never invent numbers
+   beyond the object; never skip to staging language the object doesn't support.
+   STAGED — show the ticket id and the exact CONFIRM/REJECT strings. Say "staged",
+   never "bought/sold/executed".</code></pre>
+<h3>6.4 What is deliberately NOT touched</h3>
+<ul>
+<li><code class="inl">proposeTrade</code> executor and its validation (stop required, quantity bounds, origin INTELLIGENCE) — correct as-is.</li>
+<li>The confirmation path and exact-string governance check — ORDER_COMMAND routes to it unchanged.</li>
+<li><code class="inl">buildSnapshot()</code> — the Advisory object is appended per-turn, the base snapshot is unchanged.</li>
+<li>Autonomous engine, monitors, trailing — this feature is Intelligence-module only.</li>
+</ul>
+<div class="callout warn"><div class="t">Effort &amp; risk</div>
+~1 day including tests. Risk: LOW — additive layer in front of a stable runtime; worst-case fallback is a
+feature flag (<code class="inl">INTENT_ROUTER=off</code>) that restores current behavior by skipping the
+classifier and offering today's full tool list.</div>
+</div>
+
+
+<div class="section" id="s7">
+<h2><span class="no">7</span>Acceptance tests &amp; edge cases</h2>
+<p>The router is deterministic, so it is unit-testable without a model. These are the shipping gate — every
+row must pass before the feature flag defaults to on.</p>
+<h3>7.1 Router unit tests (no LLM involved)</h3>
+<table>
+<tr><th style="width:38%">Input (thread state)</th><th>Expected mode</th><th>Expected behavior</th></tr>
+<tr><td>"buy Apple" (CONVERSING)</td><td>TRADE_INTENT</td><td>advisory composed; proposeTrade NOT offered; verdict narrated</td></tr>
+<tr><td>"should I buy Apple?" (CONVERSING)</td><td>CHAT</td><td>analysis allowed via read tools; nothing staged; no ticket language</td></tr>
+<tr><td>"don't buy yet" (ADVISORY)</td><td>CHAT</td><td>stands down; advisory cleared or parked; conversation continues</td></tr>
+<tr><td>"stage it" (ADVISORY, symbol=AAPL)</td><td>TRADE_INTENT</td><td>"it" → AAPL; advisory already exists → proposeTrade offered → ticket staged</td></tr>
+<tr><td>"stage it" (CONVERSING, no advisory)</td><td>TRADE_INTENT→advisory first</td><td>NO direct staging — advisory composed first (§4 step order is enforced by tool availability)</td></tr>
+<tr><td>"CONFIRM ORDER TKT-1" (any state)</td><td>ORDER_COMMAND</td><td>bypasses model; hits confirmation path; exact-string rule unchanged</td></tr>
+<tr><td>"what's my p&amp;l?" (any state)</td><td>STATUS_QUERY</td><td>read tools only; zero staging capability</td></tr>
+<tr><td>"why did it buy?" (CONVERSING)</td><td>CHAT</td><td>post-trade review via getTickets/getMonitors; past tense never stages</td></tr>
+<tr><td>"buy" (no symbol, CONVERSING)</td><td>TRADE_INTENT, symbol=null</td><td>asks which symbol; stays in advisory; nothing staged</td></tr>
+<tr><td>"buy 100 Apple" mid-conversation about Tesla</td><td>TRADE_INTENT (AAPL)</td><td>explicit symbol beats thread context — the new advisory is for Apple</td></tr>
+</table>
+<h3>7.2 Advisory quality tests</h3>
+<ol>
+<li><b>Data failure honesty.</b> Symbol with a dead feed → verdict UNFAVORABLE, reason = the feed's error string, sizingPreview null.</li>
+<li><b>Gate passthrough.</b> Heat at 9.8% + proposed 0.5% risk → verdict BLOCKED with the heat gate's verbatim reason — the same string the monitor would produce.</li>
+<li><b>Market closed.</b> dataQuality.marketOpen=false → verdict WAIT with "market opens 09:30 ET" in watchFor.</li>
+<li><b>No setup.</b> identifyStrategy returns nothing → WAIT with watchFor describing the missing condition in plain language.</li>
+</ol>
+<h3>7.3 Conversation-flow test (the owner's two symptoms, as scripted UAT)</h3>
+<ol>
+<li>"buy Apple" → advisory narrated, <i>then</i> "what do you think of the market?" → clean conversation with no trade framing. <b>Symptom 1 dead.</b></li>
+<li>Long conversation → "okay, do it" → deterministic escalation to advisory/staging without the model guessing. <b>Symptom 2 dead.</b></li>
+</ol>
+<div class="callout good"><div class="t">Definition of done</div>
+7.1 all green · 7.2 all green · 7.3 both scripts pass on screen recording · no changes observed in the ticket
+pipeline's behavior (existing trades flow identically) · feature flag documented in the runbook.</div>
+</div>
+
+
+
+<div class="section" id="s8">
+<h2><span class="no">8</span>As-built: shipped code, deployment &amp; verification</h2>
+<p>Sections 1–7 were the design. This section is the record of what actually shipped in snapshot
+<b>656528f</b> (August 14, 2026), exactly how to deploy it, and exactly how to prove it works. Where the
+as-built differs from the §6 plan, the delta is called out and the reason given.</p>
+
+<h3>8.1 What shipped — three files</h3>
+<table>
+<tr><th style="width:30%">File</th><th>Change</th></tr>
+<tr><td><code class="inl">api/intelligence/intent.ts</code><br/><b>NEW</b> (~230 lines)</td><td>
+The deterministic router. <code class="inl">classifyIntent(text, thread)</code> → five modes:
+<b>CHAT</b> (default), <b>TRADE_INTENT</b>, <b>ORDER_COMMAND</b>, <b>STATUS_QUERY</b>, <b>STRATEGIZE</b>.
+Exported versioned lexicon (<code class="inl">TRADE_TRIGGERS</code>, <code class="inl">STATUS_TRIGGERS</code>,
+<code class="inl">STRATEGIZE_TRIGGERS</code>, <code class="inl">ORDER_COMMAND_RE</code>,
+<code class="inl">STAGE_FOLLOWUP_RE</code>) plus the question/negation guard. Thread state per user
+(<code class="inl">getThreadState / setThreadState / clearThreadState</code>). The <b>Advisory</b> contract and
+<code class="inl">composeAdvisory(userId, symbol, side)</code> — the 4-step pipeline: <b>DATA</b>
+(track/refresh; failure → UNFAVORABLE with the verbatim error, never estimated), <b>ANALYZE</b>
+(identifyStrategy setup + reasons), <b>PROTOCOL</b> (governance active/version + <i>the same</i>
+portfolioHeatPct / returnCorrelation functions the live monitor uses), <b>VERDICT</b>
+(FAVORABLE / WAIT / UNFAVORABLE / BLOCKED). Sizing preview only on FAVORABLE, and it is honest: the engine
+sizes from YOUR stop at staging, never an invented one.</td></tr>
+<tr><td><code class="inl">api/intelligence/tools.ts</code><br/>EDIT</td><td>
+<code class="inl">agentChat(userId, text, opts?)</code> gains <code class="inl">AgentChatOptions</code>:
+<b>allowTradeTool</b> — when <code class="inl">false</code>, proposeTrade is <i>physically filtered out</i> of
+the tool list for that turn (the model cannot call what it cannot see); <b>advisory</b> — the engine's
+Advisory object is appended verbatim to the system message with narration discipline ("narrate faithfully,
+never invent or alter its numbers").</td></tr>
+<tr><td><code class="inl">api/intelligence-router.ts</code><br/>EDIT</td><td>
+The chat endpoint wires the router behind the feature flag
+(<code class="inl">process.env.INTENT_ROUTER !== "off"</code>). Order: exposure guard → CONFIRM/REJECT ORDER
+(untouched) → <b>classifyIntent</b> → TRADE_INTENT: fresh imperative → composeAdvisory → narrate with the
+write tool removed (NO ticket this turn); imperative follow-up on a fresh advisory → the single staging turn
+(allowTradeTool: true) then the thread is cleared — fail-safe toward CONVERSING. STRATEGIZE → the existing
+strategy-builder branch. CHAT / STATUS_QUERY → agentChat with the write tool removed. If the model is
+unreachable, a deterministic fallback narrates the engine's verdict directly — the numbers still come from
+the engine.</td></tr>
+</table>
+
+<h3>8.2 As-built deltas from the §6 plan (and why)</h3>
+<table>
+<tr><th style="width:34%">Plan (§6)</th><th>As-built</th><th>Why</th></tr>
+<tr><td>Thread state persisted via memory.ts blob</td><td>In-memory Map per process, 5-minute advisory TTL</td><td>Simpler and self-healing: a restart clears stale advisories; the TTL already bounded their life. Read errors cannot corrupt mode — the default is always CONVERSING.</td></tr>
+<tr><td>Four modes</td><td>Five — <b>STRATEGIZE</b> added</td><td>"strategize / build me a strategy / backtest" now routes deterministically to the strategy-builder branch instead of relying on the model to notice.</td></tr>
+<tr><td>Flag restores "current behavior"</td><td><code class="inl">INTENT_ROUTER=off</code> restores the exact legacy path (direct trade-match staging), preserved verbatim in the else-branch</td><td>Rollback must be behavior-identical, not approximate.</td></tr>
+<tr><td>Model narrates or nothing</td><td>Deterministic fallback narration when the model call fails</td><td>The engine's verdict is the product; the model is the voice. No voice ≠ no verdict.</td></tr>
+</table>
+
+<h3>8.3 Deployment steps (production)</h3>
+<ol>
+<li><b>Snapshot / pull</b> the release at version <b>656528f</b>. Confirm the three files above are present and the working tree is clean.</li>
+<li><b>Environment:</b> <code class="inl">OPENAI_API_KEY</code> set (required for narration); <code class="inl">OPENAI_MODEL</code> optional (default gpt-5.6); <b>leave <code class="inl">INTENT_ROUTER</code> unset</b> — the router is ON by default. Set <code class="inl">INTENT_ROUTER=off</code> only to roll back.</li>
+<li><b>Build:</b> <code class="inl">rm -f *.tsbuildinfo &amp;&amp; npm run build</code> → expect the Vite client build and <code class="inl">dist/boot.js</code> (~3.7 MB) with no type errors.</li>
+<li><b>Verify the bundle carries the router</b> (all four must print a non-zero count):<br/>
+<code class="inl">grep -c classifyIntent dist/boot.js</code> ·
+<code class="inl">grep -c composeAdvisory dist/boot.js</code> ·
+<code class="inl">grep -c allowTradeTool dist/boot.js</code> ·
+<code class="inl">grep -c INTENT_ROUTER dist/boot.js</code></li>
+<li><b>Restart</b> production: stop the old process, then
+<code class="inl">NODE_ENV=production setsid nohup node dist/boot.js &gt; /tmp/boot.log 2&gt;&amp;1 &lt; /dev/null &amp;</code></li>
+<li><b>Boot log:</b> expect <code class="inl">[db] schema ensured</code> and <code class="inl">Server running</code> — no stack traces.</li>
+<li><b>Smoke contract:</b> root returns 200; signed-out
+<code class="inl">POST /api/trpc/intelligence.chat</code> returns <b>401</b> (a 404 means a stale deploy — rebuild).
+Note the mount path is <code class="inl">/api/trpc</code>.</li>
+</ol>
+
+<h3>8.4 Verification — the five-message proof script</h3>
+<p>Run signed-in, in order. This is the observable contract of the switch; every line is checkable from the
+chat UI plus the Tickets panel.</p>
+<table>
+<tr><th style="width:26%">You say</th><th style="width:40%">Expected behavior</th><th>Proof it worked</th></tr>
+<tr><td>"what do you think of the market today?"</td><td>CHAT — normal conversation via the AI model; no advisory, no trade language</td><td>Tickets panel: nothing created</td></tr>
+<tr><td>"should I buy Apple?"</td><td>CHAT — question form; discussion allowed, nothing staged</td><td>Tickets panel: nothing created</td></tr>
+<tr><td>"buy AAPL"</td><td>TRADE_INTENT — the deterministic engine composes an Advisory; the model narrates verdict + the engine's own reasons; <b>no ticket this turn</b></td><td>Reply contains a verdict (FAVORABLE / WAIT / UNFAVORABLE / BLOCKED) with reason bullets; Tickets panel: still nothing</td></tr>
+<tr><td>"stage it"</td><td>Follow-up on the fresh advisory → the single staging turn creates a ticket with a CONFIRM string</td><td>Ticket appears in Tickets panel / notification center, state CREATED; nothing submitted to any broker</td></tr>
+<tr><td>"CONFIRM ORDER &lt;id&gt;"</td><td>ORDER_COMMAND — existing confirmation path, unchanged</td><td>Ticket submits; execution alerts follow as before</td></tr>
+</table>
+<div class="callout info"><div class="t">Rollback check</div>Set <code class="inl">INTENT_ROUTER=off</code>, restart, send
+"buy 10 AAPL" → a ticket stages immediately with no advisory (legacy behavior). Unset the variable, restart —
+the five-message script passes again. Both directions must work before sign-off.</div>
+
+<h3>8.5 Deployment checklist — sign-off</h3>
+<table>
+<tr><th style="width:8%">#</th><th>Confirmation item</th><th style="width:30%">Evidence</th></tr>
+<tr><td>D1</td><td>Snapshot 656528f deployed; three changed files confirmed in the tree</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D2</td><td>OPENAI_API_KEY present; INTENT_ROUTER unset (router ON by default)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D3</td><td>Clean build; all four bundle greps non-zero</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D4</td><td>Boot log clean; root 200; signed-out chat returns 401 at /api/trpc mount</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D5</td><td>Five-message proof script passes end-to-end (§8.4), Tickets panel verified at each step</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D6</td><td>Rollback drill: INTENT_ROUTER=off restores legacy staging; router re-enabled afterward</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D7</td><td>§7 acceptance suite green against the deployed build</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>D8</td><td>Regression: an existing paper trade still flows ticket → fill → position → P&amp;L mode cards identically</td><td>Completed: ____________<br/>How: ____________</td></tr>
+</table>
+</div>
+
+<div class="section" id="axa">
+<h2><span class="no">A</span>Appendix A · What already shipped (mode lineage, snapshot 4896a72)</h2>
+<p>Context for the same engineer: the previous issue — paper vs. live mode mixing — is <b>already fixed and
+deployed</b>. This section is the summary of what changed so it doesn't get re-litigated or accidentally
+reverted during the intent-router work.</p>
+<table>
+<tr><th style="width:30%">Change</th><th>Where</th><th>Effect</th></tr>
+<tr><td><code class="inl">positions.broker</code> column</td><td>db/schema.ts + guarded ALTER</td><td>Every position carries its mode, copied from the source ticket at fill time; existing rows backfilled to PAPER</td></tr>
+<tr><td>Mode stamped at fill</td><td>portfolio.ts recordFill</td><td>New positions get ticket.broker; scale-out children keep the ORIGINAL position's mode</td></tr>
+<tr><td>Broker projected everywhere</td><td>listOrders, listPositions</td><td>Every order row and position row exposes <code class="inl">broker</code></td></tr>
+<tr><td>Mode-split P&amp;L</td><td>getPnlSummary → byMode</td><td><code class="inl">byMode.paper</code> / <code class="inl">byMode.live</code> — realized, unrealized, open/closed, W/L per mode; combined cards remain, labeled</td></tr>
+<tr><td>UI badges + mode cards</td><td>OrdersPanel.tsx</td><td>PAPER (sky) / LIVE (teal) badges on orders and positions; two mode cards under the P&amp;L strip</td></tr>
+</table>
+<p><b>Full documentation:</b> the <i>Autonomous Module Operations Guide</i> (21 pages) covers §1 paper-vs-live,
+§2 the ticket lineage, §4 the metrics dictionary, §5 a 22-item deployment checklist with completion notes, §6
+the troubleshooting manual, §7 the 20-question accuracy questionnaire, and appendices with verification SQL
+and the exact diffs. <b>Read it before starting the intent-router work</b> — the intent router's
+<code class="inl">composeAdvisory</code> reuses the same risk-gate functions that guide documents.</p>
+<div class="callout"><div class="t">Do not regress</div>
+The intent router touches api/intelligence only. If any diff touches portfolio.ts, schema.ts, or the P&amp;L
+projections, stop and re-read this appendix — those layers shipped and are under the Operations Guide's
+checklist, not this one.</div>
+</div>
+
+
+<div class="section" id="axb">
+<h2><span class="no">B</span>Appendix B · Checklist &amp; questionnaire addendum (intent router)</h2>
+<p>Same discipline as the Operations Guide: every item gets a date/initials line and a "how completed" note.</p>
+<h3>B.1 Deployment checklist addendum</h3>
+<table>
+<tr><th style="width:8%">#</th><th>Item</th><th style="width:34%">Confirmation / notes</th></tr>
+<tr><td>R1</td><td><code class="inl">api/intelligence/intent.ts</code> exists; classifyIntent + composeAdvisory exported; lexicon constants exported</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R2</td><td>Chat loop routes before the model; per-mode tool lists verified in code review</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R3</td><td>ORDER_COMMAND bypasses the model and hits the existing confirmation path (diff shows no changes to that path)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R4</td><td>proposeTrade provably absent from the tool list in CHAT and STATUS_QUERY turns (log the per-turn tool list)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R5</td><td>Advisory-first enforced: staging physically impossible before an Advisory exists for that symbol+side in the thread</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R6</td><td>Thread state persists via memory.ts; read error → defaults to CONVERSING (test by corrupting the blob)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R7</td><td>Rule 2 in RUNTIME_ADDENDUM replaced with the narration-discipline text (§6.3)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R8</td><td>§7.1 router unit tests all green (paste the run output)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R9</td><td>§7.2 advisory quality tests all green</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R10</td><td>§7.3 both symptom scripts pass — screen recording attached to the ticket</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R11</td><td>Feature flag INTENT_ROUTER documented; off = current behavior restored</td><td>Completed: ____________<br/>How: ____________</td></tr>
+<tr><td>R12</td><td>Regression sweep: an existing paper trade still flows ticket → fill → position → P&amp;L mode cards identically (Appendix A)</td><td>Completed: ____________<br/>How: ____________</td></tr>
+</table>
+<h3>B.2 Questionnaire addendum (expected answers printed)</h3>
+<ol>
+<li><b>Who decides the mode of a chat message?</b> — <i>Expected: the deterministic router (classifyIntent), never the model.</i></li>
+<li><b>What is the default mode, and where does every trade flow end?</b> — <i>Expected: CHAT / CONVERSING; every completed or expired flow returns to CONVERSING.</i></li>
+<li><b>"should I buy Apple?" stages a ticket. True or false, and why?</b> — <i>Expected: false — question form is CHAT; staging requires an imperative in TRADE_INTENT mode, and an advisory must exist first.</i></li>
+<li><b>What must exist in the thread before proposeTrade is even offered?</b> — <i>Expected: a matching Advisory object (symbol+side) composed this thread.</i></li>
+<li><b>Which two risk functions does composeAdvisory share with the live monitor, and why does that matter?</b> — <i>Expected: portfolioHeatPct and returnCorrelation from engine/risk.ts — one implementation means the advisory's BLOCKED verdicts match what the monitor would do; no drift between chat advice and engine behavior.</i></li>
+<li><b>The classifier fails to read thread state. What mode results, and is that safe?</b> — <i>Expected: CONVERSING — fail-safe toward conversation; nothing can be staged.</i></li>
+</ol>
+</div>
+</body></html>

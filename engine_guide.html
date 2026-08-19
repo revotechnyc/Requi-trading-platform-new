@@ -1,0 +1,2594 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Requi Trading — Autonomous Strategy Engine Add-On</title>
+<style>
+@page { size: A4; margin: 2.2cm 1.8cm; @bottom-center { content: counter(page); font-size: 8pt; color: #666; } @top-center { content: string(doctitle); font-size: 8pt; color: #666; } }
+@page :first { margin: 0; @top-center { content: none; } @bottom-center { content: none; } }
+@page toc { @top-center { content: none; } }
+body { margin: 0; padding: 0; font-family: Georgia, 'Noto Serif', serif; font-size: 10.5pt; color: #333; line-height: 1.55; string-set: doctitle ""; }
+h1 { string-set: doctitle content(); }
+/* cover */
+.cover { width: 210mm; height: 297mm; margin: 0; position: relative; overflow: hidden; page-break-after: always; background: #f8f9fb; }
+.cover .grid-v { position: absolute; top: 0; bottom: 0; width: 1px; background: #d8dde5; }
+.cover .grid-h { position: absolute; left: 0; right: 0; height: 1px; background: #d8dde5; }
+.cover .accent { position: absolute; background: #1e3a5f; }
+.cover .accent-teal { position: absolute; background: #0f766e; }
+.cover-content { position: absolute; top: 42%; left: 50%; transform: translate(-50%,-50%); width: 78%; }
+.cover-kicker { font-size: 10pt; letter-spacing: 3px; color: #0f766e; font-weight: 700; text-transform: uppercase; margin-bottom: 14px; font-family: Helvetica, Arial, sans-serif; }
+.cover-title { font-size: 30pt; font-weight: 700; color: #1e3a5f; margin: 0 0 10px 0; line-height: 1.15; }
+.cover-sub { font-size: 13pt; color: #4b5563; margin-bottom: 34px; }
+.cover-meta { font-size: 10pt; color: #333; line-height: 1.9; border-top: 2px solid #1e3a5f; padding-top: 14px; width: 70%; }
+.cover-meta b { color: #1e3a5f; }
+/* toc */
+.toc-page { page: toc; page-break-after: always; }
+.toc-title { font-size: 16pt; font-weight: 700; color: #1e3a5f; border-bottom: 2px solid #1e3a5f; padding-bottom: 6px; }
+ul.toc { list-style: none; padding: 0; margin-top: 12px; }
+ul.toc li { margin: 5px 0; font-size: 10.5pt; }
+ul.toc li.l2 { margin-left: 18px; font-size: 9.5pt; }
+ul.toc a { color: #333; text-decoration: none; word-break: normal; }
+ul.toc a::after { content: leader('.') target-counter(attr(href url), page); color: #666; }
+/* sections */
+h1.sec { font-size: 16pt; color: #1e3a5f; border-bottom: 2px solid #1e3a5f; padding-bottom: 5px; margin: 0 0 12px 0; page-break-after: avoid; }
+h2 { font-size: 12pt; color: #0f766e; margin: 16px 0 6px 0; page-break-after: avoid; font-family: Helvetica, Arial, sans-serif; }
+section.chapter { page-break-before: always; }
+p { margin: 6px 0; text-align: justify; text-align-last: left; }
+ul, ol { margin: 6px 0 6px 0; padding-left: 22px; }
+li { margin: 3px 0; }
+code { font-family: 'DejaVu Sans Mono', monospace; font-size: 8.5pt; background: #f0f0f0; padding: 0 3px; word-break: break-word; }
+.note { border-left: 3px solid #0f766e; padding: 6px 12px; background: #f0faf8; margin: 10px 0; font-size: 9.5pt; }
+.warn { border-left: 3px solid #b45309; padding: 6px 12px; background: #fdf6ec; margin: 10px 0; font-size: 9.5pt; }
+/* tables (three-line) */
+table { width: 100%; max-width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; overflow-x: auto; }
+thead { display: table-header-group; }
+thead tr { border-top: 1.5px solid #333; border-bottom: 1px solid #333; }
+tbody tr:last-child { border-bottom: 1.5px solid #333; }
+th { text-align: left; padding: 5px 8px; font-family: Helvetica, Arial, sans-serif; font-size: 8.5pt; }
+td { padding: 4px 8px; vertical-align: top; }
+tr { page-break-inside: avoid; }
+td code { background: none; padding: 0; }
+/* code blocks */
+.codetitle { font-family: 'DejaVu Sans Mono', monospace; font-size: 9pt; font-weight: 700; background: #e8ecf1; border: 1px solid #c9d2dc; border-bottom: none; padding: 5px 10px; margin-top: 14px; page-break-after: avoid; color: #1e3a5f; }
+.codedesc { font-size: 8.5pt; color: #555; border: 1px solid #c9d2dc; border-bottom: none; border-top: none; background: #f4f6f9; padding: 4px 10px; margin: 0; page-break-after: avoid; }
+pre { font-family: 'DejaVu Sans Mono', monospace; font-size: 7pt; line-height: 1.4; background: #f5f5f5; border: 1px solid #c9d2dc; padding: 8px 10px; margin: 0 0 10px 0; max-width: 100%; box-sizing: border-box; overflow: visible; white-space: pre-wrap; word-wrap: break-word; }
+/* flow diagram */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 12px 0; }
+.flow .step { border: 1.5px solid #1e3a5f; background: #eef2f7; color: #1e3a5f; font-family: Helvetica, Arial, sans-serif; font-size: 8.5pt; font-weight: 700; padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center; }
+.flow .arr { color: #0f766e; font-weight: 700; font-size: 11pt; }
+
+.capptitle { font-family: Georgia, serif; font-size: 13pt; font-weight: 700; color: #1e3a5f; string-set: doctitle content(); }
+.codehead { font-family: 'DejaVu Sans Mono', monospace; font-size: 8.5pt; background: #e8ecf1; border: 1px solid #c9d2dc; border-bottom: none; padding: 8px 10px; page-break-inside: avoid; }
+.codehead2 { font-family: 'DejaVu Sans Mono', monospace; font-size: 8.5pt; background: #e8ecf1; border: 1px solid #c9d2dc; border-bottom: none; padding: 6px 10px; margin-top: 12px; page-break-inside: avoid; }
+.codehead2 .cpath { font-weight: 700; color: #1e3a5f; font-size: 9pt; }
+.codehead .cdesc, .codehead2 .cdesc { color: #555; font-family: Georgia, serif; font-size: 8.5pt; }
+</style></head>
+<body>
+
+<div class="cover">
+  <div class="grid-v" style="left: 25mm;"></div><div class="grid-v" style="left: 185mm;"></div>
+  <div class="grid-h" style="top: 25mm;"></div><div class="grid-h" style="top: 272mm;"></div>
+  <div class="accent" style="top: 25mm; left: 25mm; width: 42mm; height: 5mm;"></div>
+  <div class="accent-teal" style="top: 25mm; left: 67mm; width: 14mm; height: 5mm;"></div>
+  <div class="accent" style="bottom: 25mm; right: 25mm; width: 5mm; height: 42mm;"></div>
+  <div class="accent-teal" style="bottom: 25mm; right: 30mm; width: 5mm; height: 16mm;"></div>
+  <div class="cover-content">
+    <div class="cover-kicker">Requi Trading · Engineering Handoff</div>
+    <h1 class="cover-title">Autonomous Strategy Engine<br>Add-On — Implementation Guide</h1>
+    <p class="cover-sub">Modules 0–6: IBKR live data feed · trigger library · setup state machine · backtester · what-if simulator · scanner · confirmation-gated execution</p>
+    <div class="cover-meta">
+      <p><b>Audience:</b> DevOps / backend engineer merging this add-on into the previous Requi Trading codebase</p>
+      <p><b>Contents:</b> architecture, file placement map, integration steps, operations notes, full source code (Appendices A–P)</p>
+      <p><b>Compatibility:</b> React 19 + Vite frontend · tRPC 11 + Hono API · Drizzle ORM · same layout as the existing repo</p>
+    </div>
+  </div>
+</div>
+
+<div class="toc-page">
+  <p class="toc-title">Contents</p>
+  <ul class="toc">
+    <li><a href="#sec1">1. What this add-on is</a></li>
+    <li><a href="#sec2">2. Architecture — how it works</a></li>
+    <li><a href="#sec3">3. File placement map</a></li>
+    <li><a href="#sec4">4. Integration steps</a></li>
+    <li><a href="#sec5">5. Module behavior — what serves what</a></li>
+    <li><a href="#sec6">6. Operations: environment, IBKR gateway, failure modes</a></li>
+    <li><a href="#sec7">7. Safety invariants (non-negotiable)</a></li>
+    <li class="l2"><a href="#appA">Appendix A — api/marketdata/indicators.ts</a></li>
+    <li class="l2"><a href="#appB">Appendix B — api/marketdata/ibkr-data.ts</a></li>
+    <li class="l2"><a href="#appC">Appendix C — api/marketdata/service.ts</a></li>
+    <li class="l2"><a href="#appD">Appendix D — api/marketdata-router.ts</a></li>
+    <li class="l2"><a href="#appE">Appendix E — api/engine/triggers.ts</a></li>
+    <li class="l2"><a href="#appF">Appendix F — api/engine/config.ts</a></li>
+    <li class="l2"><a href="#appG">Appendix G — api/engine/state-machine.ts</a></li>
+    <li class="l2"><a href="#appH">Appendix H — api/engine/risk.ts</a></li>
+    <li class="l2"><a href="#appI">Appendix I — api/engine/backtest.ts</a></li>
+    <li class="l2"><a href="#appJ">Appendix J — api/engine/simulator.ts</a></li>
+    <li class="l2"><a href="#appK">Appendix K — api/engine/scanner.ts</a></li>
+    <li class="l2"><a href="#appL">Appendix L — api/engine/monitor.ts</a></li>
+    <li class="l2"><a href="#appM">Appendix M — api/engine-router.ts</a></li>
+    <li class="l2"><a href="#appN">Appendix N — src/components/DataFeedPanel.tsx</a></li>
+    <li class="l2"><a href="#appO">Appendix O — src/components/EnginePanel.tsx</a></li>
+    <li class="l2"><a href="#appP">Appendix P — Edits to existing files (router.ts, Autonomous.tsx)</a></li>
+  </ul>
+</div>
+
+<section class="chapter" id="sec1">
+<h1 class="sec">1. What this add-on is</h1>
+<p>This package adds the <b>Autonomous Strategy Engine</b> to the existing Requi Trading platform. It is an add-on, not a rebuild: it reuses the platform's governance compiler/runtime (signed package), the order-ticket confirmation gate, the broker adapters (Paper / Robinhood MCP / IBKR), the alerts system, and the Autonomous page. Nothing in those systems is rewritten — the engine plugs into them.</p>
+<p>Seven modules, built in dependency order:</p>
+<table>
+<thead><tr><th>Module</th><th>Name</th><th>What it does</th><th>Files</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Live data feed ("Eyes")</td><td>Pulls 1-minute OHLCV bars from the IBKR Client Portal gateway, refreshes every 60s during market hours (09:30–16:00 ET), computes session VWAP, RSI(14), prior-day high/low/close, session high/low.</td><td>Appendices A–D</td></tr>
+<tr><td>1</td><td>Trigger library</td><td>9 reusable, pure trigger functions (vwap_reclaim, pullback_hold, double_bottom, breakout, volume_climax, rsi_divergence, relative_strength, prior_day_high_reclaim, gap_fill). Each returns <code>armed</code> + the evidence that armed it.</td><td>Appendix E</td></tr>
+<tr><td>2</td><td>Setup state machine ("Brain")</td><td>IDLE → WATCHING → CONFIRMED → IN_POSITION → OUT / KILLED per symbol. Timer counts consecutive 1-min closes above the zone floor; any close below resets it to 0 — full reset, never a pause. Ranked entry-variant ladder with OCO invalidation.</td><td>Appendix G</td></tr>
+<tr><td>3</td><td>Backtester</td><td>Replays 1-min bars day-by-day through the <i>same</i> state machine. No lookahead: entry fills are evaluated on the bar after confirmation; stops fill before targets within a bar. Full report: win rate, profit factor, expectancy (R), max drawdown, per-trade log.</td><td>Appendix I</td></tr>
+<tr><td>4</td><td>What-if simulator</td><td>Runs the backtester per entry variant, ranks variants by expectancy, drops negative-expectancy variants, and outputs the re-ranked fallback ladder used live.</td><td>Appendix J</td></tr>
+<tr><td>5</td><td>Scanner hook</td><td>Scans the tracked watchlist for candidates (gap %, relative volume, position vs VWAP) and selects the best-fit strategy config per candidate.</td><td>Appendix K</td></tr>
+<tr><td>6</td><td>Execution wiring ("Hands")</td><td>Risk sizing from (entry − stop) at ≤0.5% account risk and ≤25% position cap; CONFIRMED setups become order tickets through the existing confirmation gate. Phase 1: no auto-execution — every proposal waits for <code>CONFIRM ORDER [TICKET_ID]</code>.</td><td>Appendices H, L</td></tr>
+</tbody>
+</table>
+<div class="note"><b>Config-driven design:</b> strategies are data (Appendix F), not code. Adding a strategy means adding a config object — entry variants, stop rule, targets, hold timer, sizing, schedule. The engine runs any config on any symbol. No ticker or price is hardcoded anywhere.</div>
+</section>
+
+<section class="chapter" id="sec2">
+<h1 class="sec">2. Architecture — how it works</h1>
+<h2>2.1 The autonomous loop</h2>
+<div class="flow">
+  <span class="step">SCAN</span><span class="arr">→</span>
+  <span class="step">SIMULATE</span><span class="arr">→</span>
+  <span class="step">RANK</span><span class="arr">→</span>
+  <span class="step">MONITOR</span><span class="arr">→</span>
+  <span class="step">CONFIRM</span><span class="arr">→</span>
+  <span class="step">EXECUTE</span><span class="arr">→</span>
+  <span class="step">MANAGE</span><span class="arr">→</span>
+  <span class="step">LOG</span>
+</div>
+<p>The data feed (module 0) refreshes tracked symbols every 60 seconds during regular market hours. On demand (UI "Evaluate now", or after each refresh tick), each active monitor feeds the freshest session bars into its state machine. When the machine reaches CONFIRMED, the monitor sizes the position through the risk engine and stages an order ticket via the platform's existing <code>proposeTicket()</code>. The ticket lands in the same confirmation flow used by the Intelligence chat: the user types <code>CONFIRM ORDER [TICKET_ID]</code> and only then does the broker adapter submit. The engine never touches a broker directly.</p>
+<h2>2.2 One engine, three modes</h2>
+<p>The single most important design rule: <b>live, backtest, and simulation all call the same <code>SetupMachine.onBar(ctx)</code> function.</b> Only the bar source differs — live feed (module 0), historical replay (module 3), or per-variant replay (module 4). The machine only ever receives bars up to "now", so lookahead bias is impossible by construction. This is what makes backtest results meaningful for live trading.</p>
+<h2>2.3 Governance clamping</h2>
+<p>Every strategy config is loaded through <code>loadConfig()</code> (Appendix F), which reads the platform's signed governance package and clamps any value that exceeds constitutional ceilings — e.g. a config requesting 2% risk is clamped to the package's 0.50% ceiling, and the clamp is recorded and surfaced. Configs can tighten the constitution, never loosen it. If no signed package is active, config loading throws <code>GOVERNANCE_UNAVAILABLE</code> and the engine refuses to operate — the constitution is load-bearing.</p>
+<h2>2.4 Data honesty</h2>
+<p>If the IBKR gateway is unreachable or unauthenticated, feeds carry the error verbatim and the UI displays it. The system never fabricates bars, never silently falls back to simulated data, and reports the broker-reported feed delay so timer logic can refuse to arm on stale data.</p>
+</section>
+
+<section class="chapter" id="sec3">
+<h1 class="sec">3. File placement map</h1>
+<p>All paths are relative to the repo root. Fifteen files are <b>new</b>; two existing files receive small edits (Appendix P).</p>
+<table>
+<thead><tr><th>#</th><th>Path</th><th>Layer</th><th>Purpose</th><th>Depends on</th></tr></thead>
+<tbody>
+<tr><td>A</td><td><code>api/marketdata/indicators.ts</code></td><td>API · module 0</td><td>Indicator engine (pure functions)</td><td>nothing (std lib only)</td></tr>
+<tr><td>B</td><td><code>api/marketdata/ibkr-data.ts</code></td><td>API · module 0</td><td>IBKR market-data endpoints</td><td>A</td></tr>
+<tr><td>C</td><td><code>api/marketdata/service.ts</code></td><td>API · module 0</td><td>Watchlist + 60s refresh loop + cache</td><td>A, B</td></tr>
+<tr><td>D</td><td><code>api/marketdata-router.ts</code></td><td>API router</td><td>tRPC surface for module 0</td><td>C + existing <code>api/middleware.ts</code></td></tr>
+<tr><td>E</td><td><code>api/engine/triggers.ts</code></td><td>API · module 1</td><td>Trigger library</td><td>A</td></tr>
+<tr><td>F</td><td><code>api/engine/config.ts</code></td><td>API · config</td><td>Strategy configs + governance clamping</td><td>E + existing <code>api/governance/runtime.ts</code></td></tr>
+<tr><td>G</td><td><code>api/engine/state-machine.ts</code></td><td>API · module 2</td><td>Setup state machine</td><td>A, E, F</td></tr>
+<tr><td>H</td><td><code>api/engine/risk.ts</code></td><td>API · module 6</td><td>Risk sizing / halt / chase-cancel</td><td>nothing</td></tr>
+<tr><td>I</td><td><code>api/engine/backtest.ts</code></td><td>API · module 3</td><td>Backtester</td><td>A, F, G, H</td></tr>
+<tr><td>J</td><td><code>api/engine/simulator.ts</code></td><td>API · module 4</td><td>Variant expectancy ranking</td><td>F, I</td></tr>
+<tr><td>K</td><td><code>api/engine/scanner.ts</code></td><td>API · module 5</td><td>Candidate scanner</td><td>A, C, F</td></tr>
+<tr><td>L</td><td><code>api/engine/monitor.ts</code></td><td>API · module 6</td><td>Live monitor → ticket gate</td><td>C, F, G, H + existing <code>api/queries/tickets.ts</code></td></tr>
+<tr><td>M</td><td><code>api/engine-router.ts</code></td><td>API router</td><td>tRPC surface for modules 1–6</td><td>E–L</td></tr>
+<tr><td>N</td><td><code>src/components/DataFeedPanel.tsx</code></td><td>React UI</td><td>Live data feed panel</td><td>D via <code>@/providers/trpc</code></td></tr>
+<tr><td>O</td><td><code>src/components/EnginePanel.tsx</code></td><td>React UI</td><td>Engine panel (backtest/simulate/scan/monitor)</td><td>M via <code>@/providers/trpc</code></td></tr>
+<tr><td>P</td><td><code>api/router.ts</code> · <code>src/pages/app/Autonomous.tsx</code></td><td>edits</td><td>Router registration + panel mount</td><td>—</td></tr>
+</tbody>
+</table>
+<div class="note"><b>Prerequisites that must already exist in the previous version</b> (they do in the merged handoff codebase): <code>api/middleware.ts</code> exporting <code>authedQuery</code>/<code>createRouter</code>; <code>api/governance/runtime.ts</code> exporting <code>loadActivePackage</code>; <code>api/queries/tickets.ts</code> exporting <code>proposeTicket</code> and the <code>PublicTicket</code> type; the tRPC client at <code>@/providers/trpc</code>; and the UI primitives used by the panels (<code>lucide-react</code>, <code>@/lib/utils</code> <code>cn</code>).</div>
+</section>
+
+<section class="chapter" id="sec4">
+<h1 class="sec">4. Integration steps</h1>
+<ol>
+<li><b>Copy the new files.</b> Place Appendices A–C into <code>api/marketdata/</code>, Appendices E, G, H, I, J, K, L into <code>api/engine/</code>, Appendices D and M into <code>api/</code>, and Appendices N–O into <code>src/components/</code>. Directory contents must match the placement map in Section 3 exactly.</li>
+<li><b>Register the routers.</b> Apply the Appendix P edit to <code>api/router.ts</code>: import <code>marketDataRouter</code> and <code>engineRouter</code> and add <code>marketData</code> and <code>engine</code> keys to <code>appRouter</code>. This is what exposes <code>trpc.marketData.*</code> and <code>trpc.engine.*</code> to the frontend.</li>
+<li><b>Mount the panels.</b> Apply the Appendix P edit to <code>src/pages/app/Autonomous.tsx</code>: import both components and render them directly after the <code>RunConsole</code> block.</li>
+<li><b>Set environment variables</b> (see Section 6): <code>IBKR_GATEWAY_URL</code>, <code>IBKR_ACCOUNT</code>, and the existing <code>GOVERNANCE_VAULT_KEY</code> must be present. The engine refuses to run without an active signed governance package — boot already ensures one via <code>ensureGovernanceReady()</code>.</li>
+<li><b>Rebuild and restart.</b> <code>npm run build</code> (Vite + esbuild bundle) then restart the production server (<code>NODE_ENV=production node dist/boot.js</code>). Type-check first with <code>npx tsc --noEmit</code> — this codebase sets <code>erasableSyntaxOnly</code> (no constructor parameter properties) and <code>noUnusedLocals</code>; the add-on complies with both.</li>
+<li><b>Verify.</b> Unauthenticated <code>GET /api/trpc/engine.triggers</code> and <code>/api/trpc/marketData.status</code> must return <code>401 UNAUTHORIZED</code> (proves the routes exist and are auth-gated). Then log in, open the Autonomous page, and confirm both panels render: the data panel should show gateway status (unreachable is expected until step 7 of Section 6 is done), and the engine panel should list the three built-in configs.</li>
+</ol>
+<div class="warn"><b>Deployment note:</b> no database migration is required for this add-on. Module 0 keeps bars in memory by design; tickets, alerts, and governance use existing tables created by the platform's boot-time <code>ensureSchema()</code>.</div>
+</section>
+
+<section class="chapter" id="sec5">
+<h1 class="sec">5. Module behavior — what serves what</h1>
+<h2>5.1 Module 0 — data feed (Appendices A–D)</h2>
+<p><code>marketDataService.track(symbol)</code> adds a symbol, starts the shared 60-second loop (ticks only Mon–Fri 09:30–16:00 ET), and immediately pulls 2 days of 1-minute bars from the IBKR gateway. <code>computeIndicators()</code> then derives the per-session set: VWAP (cumulative over the current session only — resets daily by construction), Wilder RSI(14) on 1-min closes, session high/low, and prior-day high/low/close. Bars are filtered to regular hours and grouped by ET calendar day via <code>groupRthSessions()</code> — every downstream module consumes these sessions.</p>
+<h2>5.2 Module 1 — triggers (Appendix E)</h2>
+<p>Each trigger is <code>(ctx, params) → { armed, evidence }</code> where <code>ctx</code> is the session bars + prior-day levels (+ optional benchmark bars for relative strength). Hold-based triggers (vwap_reclaim, pullback_hold) count <i>trailing consecutive closes above the floor</i> — a close below makes the count zero, which is the full-reset rule implemented as data, not state.</p>
+<h2>5.3 Module 2 — state machine (Appendix G)</h2>
+<p><code>SetupMachine.onBar(ctx)</code> drives one symbol through IDLE → WATCHING (first close above floor) → timer accumulation (full reset on any close below) → CONFIRMED (timer ≥ threshold <i>and</i> variant trigger armed <i>and</i> signal stack ≥ minimum) → returns a <code>Proposal</code> (entry, stop, targets, evidence) exactly once. Chase-limit breaches invalidate the current variant and advance the ladder; all variants invalidated → NO_TRADE. After a fill (<code>notifyFill</code>, called by the broker path live or the replay in backtest), the same machine manages stops, targets, stop-to-breakeven ratcheting (tightening only), and the 15:55 time-flatten.</p>
+<h2>5.4 Modules 3–5 — backtest / simulate / scan (Appendices I–K)</h2>
+<p>The backtester groups bars into sessions and replays them through a fresh machine per day, applying risk-sized positions; entry stops are fill-checked on the bar <i>after</i> confirmation (no lookahead) and chase-canceled if the open gaps beyond the limit. The simulator runs the backtester once per variant and re-ranks the ladder by expectancy. The scanner turns tracked feeds into candidates (gap % ≥ 2 or RVOL ≥ 1.5) with a rule-based config assignment: down-gap below VWAP → bottom-fish config; up-gap/strength → continuation; otherwise general momentum.</p>
+<h2>5.5 Module 6 — monitor (Appendix L)</h2>
+<p><code>startMonitor(userId, symbol, strategyId)</code> loads the governance-clamped config and creates a machine; <code>evaluateMonitor()</code> refreshes the feed, feeds the latest bar, and on CONFIRMED sizes the position (<code>sizePosition</code>: <code>qty = equity × 0.5% ÷ (entry − stop)</code>, capped at 25% of equity) and stages a ticket with <code>origin: "AUTONOMOUS"</code>. One proposal per symbol per day — the machine's CONFIRMED state plus the monitor's per-day latch provide the OCO behavior. The ticket then follows the platform's existing flow: alert with the exact confirm string, 5-minute TTL, idempotency key, broker submission only after confirmation.</p>
+</section>
+
+<section class="chapter" id="sec6">
+<h1 class="sec">6. Operations: environment, IBKR gateway, failure modes</h1>
+<h2>6.1 Environment variables</h2>
+<table>
+<thead><tr><th>Variable</th><th>Required</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>IBKR_GATEWAY_URL</code></td><td>for live data</td><td>Client Portal Gateway base URL (default <code>https://localhost:5000/v1/api</code>). One gateway serves both trading and market data.</td></tr>
+<tr><td><code>IBKR_ACCOUNT</code></td><td>for trading</td><td>IBKR account id used by the broker adapter.</td></tr>
+<tr><td><code>GOVERNANCE_VAULT_KEY</code></td><td>yes (existing)</td><td>Vault key for the governance package. Config loading throws without an active signed package — engine refuses to run.</td></tr>
+<tr><td><code>OPENAI_API_KEY</code></td><td>optional (existing)</td><td>Intelligence chat only. The engine itself is fully deterministic and needs no LLM.</td></tr>
+</tbody>
+</table>
+<h2>6.2 IBKR gateway</h2>
+<p>The gateway is authenticated by the operator out-of-band (IBKR login + 2FA); the add-on never logs in programmatically. Health is checked via <code>GET /iserver/auth/status</code> every 30s and surfaced in the data panel. With a funded account and market-data subscriptions, 1-minute history is real-time; if IBKR reports delayed data, the feed's <code>delaySeconds</code> field shows it.</p>
+<h2>6.3 Expected behavior and failure modes</h2>
+<ul>
+<li><b>No gateway:</b> data panel shows the connection error per symbol; backtest/simulate return "Not enough bars"; monitors idle in IDLE. This is intended honest degradation.</li>
+<li><b>Market closed:</b> the refresh loop does not tick; manual refresh still works and shows the last session.</li>
+<li><b>Governance unavailable:</b> config load throws <code>GOVERNANCE_UNAVAILABLE</code>; nothing evaluates. Fix the package first — this is by design.</li>
+<li><b>Phase 1:</b> the engine never auto-executes. Proposals appear as tickets; check the alerts/tickets UI for <code>CONFIRM ORDER [TICKET_ID]</code> strings.</li>
+</ul>
+</section>
+
+<section class="chapter" id="sec7">
+<h1 class="sec">7. Safety invariants (non-negotiable)</h1>
+<ol>
+<li><b>No auto-execution in Phase 1.</b> Every engine proposal goes through <code>proposeTicket()</code> and waits for the exact <code>CONFIRM ORDER [TICKET_ID]</code> string, validated against the signed governance package.</li>
+<li><b>Timer full-reset.</b> Any 1-minute close below the zone floor resets the hold timer to 0 — never a pause. Implemented identically in live and backtest.</li>
+<li><b>Size from (entry − stop).</b> Quantity is derived from risk (≤0.5% of account) and capped by position value (≤25%) — the most restrictive constraint wins, never conviction.</li>
+<li><b>OCO across variants and per day.</b> At most one confirmation per symbol per day; variant invalidation advances the ladder; all-invalidated marks NO_TRADE. Missing a trade is a valid outcome.</li>
+<li><b>Stops only tighten.</b> After the first target, the stop ratchets to breakeven — never widens.</li>
+<li><b>Governance clamping.</b> Configs exceeding constitutional ceilings are clamped down and the clamp recorded; without an active signed package the engine refuses to operate.</li>
+<li><b>Honest data.</b> Errors are surfaced verbatim; delayed data is flagged; no fabricated bars, ever.</li>
+<li><b>Same code path, three modes.</b> Live, backtest, and simulation share <code>SetupMachine.onBar()</code> — divergence between backtest and live results must be treated as a bug and flagged.</li>
+</ol>
+</section>
+
+
+<section class="chapter" id="appA">
+<div class="codehead"><span class="capptitle">Appendix A — api/marketdata/indicators.ts</span><br><span class="cdesc">Indicator engine — pure functions: session VWAP, Wilder RSI(14), prior-day H/L/C, session H/L, RTH session grouping. — NEW FILE</span></div>
+<pre>/**
+ * INDICATOR ENGINE — pure functions over 1-minute OHLCV bars.
+ *
+ * Everything the strategy engine needs per symbol per session:
+ *   - session VWAP (resets daily — computed only over today&#x27;s RTH bars)
+ *   - RSI(14) on 1-minute closes (Wilder smoothing)
+ *   - prior day high / low / close
+ *   - session high / low
+ *
+ * Bars are filtered to US regular trading hours (09:30–16:00 America/New_York)
+ * and grouped by ET calendar day. No external dependencies — the same module
+ * is reused by the live feed, the backtester, and the what-if simulator so
+ * all three modes compute identical values.
+ */
+
+export interface Bar {
+  /** epoch ms */
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+}
+
+export interface DayLevels {
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface Indicators {
+  symbol: string;
+  asOf: number;
+  barCount: number;
+  last: number | null;
+  vwap: number | null;
+  rsi14: number | null;
+  sessionHigh: number | null;
+  sessionLow: number | null;
+  priorDay: DayLevels | null;
+  sessionDate: string | null;
+}
+
+const ET_FORMATTER = new Intl.DateTimeFormat(&quot;en-CA&quot;, {
+  timeZone: &quot;America/New_York&quot;,
+  year: &quot;numeric&quot;,
+  month: &quot;2-digit&quot;,
+  day: &quot;2-digit&quot;,
+  hour: &quot;2-digit&quot;,
+  minute: &quot;2-digit&quot;,
+  hourCycle: &quot;h23&quot;,
+});
+
+/** ET calendar day (YYYY-MM-DD) and minutes-since-midnight for a timestamp. */
+export function etParts(t: number): { day: string; minutes: number } {
+  const parts = ET_FORMATTER.formatToParts(t);
+  const get = (type: string) =&gt; parts.find((p) =&gt; p.type === type)?.value ?? &quot;&quot;;
+  return {
+    day: `${get(&quot;year&quot;)}-${get(&quot;month&quot;)}-${get(&quot;day&quot;)}`,
+    minutes: Number(get(&quot;hour&quot;)) * 60 + Number(get(&quot;minute&quot;)),
+  };
+}
+
+/** Regular trading hours: bars starting 09:30 through 15:59 ET. */
+const RTH_START = 9 * 60 + 30;
+const RTH_END = 16 * 60;
+
+/** Keep only regular-hours bars, grouped by ET session day, ascending. */
+export function groupRthSessions(bars: Bar[]): Map&lt;string, Bar[]&gt; {
+  const sessions = new Map&lt;string, Bar[]&gt;();
+  for (const b of [...bars].sort((a, z) =&gt; a.t - z.t)) {
+    const { day, minutes } = etParts(b.t);
+    if (minutes &lt; RTH_START || minutes &gt;= RTH_END) continue;
+    const list = sessions.get(day);
+    if (list) list.push(b);
+    else sessions.set(day, [b]);
+  }
+  return sessions;
+}
+
+/** Session VWAP: Σ(typical × vol) / Σvol, typical = (H+L+C)/3. Resets per session by construction. */
+export function sessionVwap(bars: Bar[]): number | null {
+  let pv = 0;
+  let vol = 0;
+  for (const b of bars) {
+    const typical = (b.h + b.l + b.c) / 3;
+    pv += typical * b.v;
+    vol += b.v;
+  }
+  if (vol &lt;= 0) return null;
+  return +(pv / vol).toFixed(4);
+}
+
+/** Wilder&#x27;s RSI on closes. Needs at least period+1 closes. */
+export function rsi(closes: number[], period = 14): number | null {
+  if (closes.length &lt; period + 1) return null;
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i &lt;= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d &gt;= 0) avgGain += d;
+    else avgLoss -= d;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  for (let i = period + 1; i &lt; closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return +(100 - 100 / (1 + rs)).toFixed(2);
+}
+
+export function highLow(bars: Bar[]): { high: number; low: number } | null {
+  if (bars.length === 0) return null;
+  let high = -Infinity;
+  let low = Infinity;
+  for (const b of bars) {
+    if (b.h &gt; high) high = b.h;
+    if (b.l &lt; low) low = b.l;
+  }
+  return { high: +high.toFixed(4), low: +low.toFixed(4) };
+}
+
+/**
+ * Compute the full indicator set for one symbol from its raw 1-min bars.
+ * The most recent session day is &quot;the session&quot;; the day before it supplies
+ * prior-day levels.
+ */
+export function computeIndicators(symbol: string, bars: Bar[]): Indicators {
+  const sessions = groupRthSessions(bars);
+  const days = [...sessions.keys()].sort();
+  const today = days.length &gt; 0 ? sessions.get(days[days.length - 1])! : [];
+  const prior = days.length &gt; 1 ? sessions.get(days[days.length - 2])! : [];
+
+  const hl = highLow(today);
+  const priorHl = highLow(prior);
+  const lastBar = today.length &gt; 0 ? today[today.length - 1] : null;
+
+  return {
+    symbol,
+    asOf: lastBar?.t ?? Date.now(),
+    barCount: today.length,
+    last: lastBar?.c ?? null,
+    vwap: sessionVwap(today),
+    rsi14: rsi(today.map((b) =&gt; b.c), 14),
+    sessionHigh: hl?.high ?? null,
+    sessionLow: hl?.low ?? null,
+    priorDay: priorHl &amp;&amp; prior.length &gt; 0
+      ? { high: priorHl.high, low: priorHl.low, close: prior[prior.length - 1].c }
+      : null,
+    sessionDate: days.length &gt; 0 ? days[days.length - 1] : null,
+  };
+}
+</pre>
+</section>
+<section class="chapter" id="appB">
+<div class="codehead"><span class="capptitle">Appendix B — api/marketdata/ibkr-data.ts</span><br><span class="cdesc">IBKR market data — Client Portal API: symbol→conid resolution, 1-min OHLCV history, gateway health. — NEW FILE</span></div>
+<pre>import type { Bar } from &quot;./indicators&quot;;
+
+/**
+ * IBKR MARKET DATA — Client Portal Web API (CPAPI) market-data endpoints.
+ *
+ * Shares the gateway connection with the broker adapter (IBKR_GATEWAY_URL).
+ * One IBKR gateway session serves both trading and market data — with a
+ * funded account, 1-minute history and snapshots are real-time (subject to
+ * the account&#x27;s market-data subscriptions).
+ *
+ * Endpoints used:
+ *   - GET /trsrv/stocks?symbols=...            symbol → conid resolution
+ *   - GET /iserver/marketdata/history          1-min OHLCV bars
+ *     ?conid=X&amp;period=2d&amp;bar=1min&amp;outsideRth=false
+ *   - GET /iserver/auth/status                 gateway/session health
+ *
+ * Credentials note (same as the broker adapter): the operator authenticates
+ * the Client Portal Gateway out-of-band; this module never logs in
+ * programmatically. All failures surface as structured errors — the data
+ * service degrades honestly rather than fabricating bars.
+ */
+
+const BASE = (process.env.IBKR_GATEWAY_URL ?? &quot;https://localhost:5000/v1/api&quot;).replace(/\/$/, &quot;&quot;);
+
+const conidCache = new Map&lt;string, number&gt;();
+
+async function req&lt;T&gt;(path: string): Promise&lt;T&gt; {
+  const res = await fetch(`${BASE}${path}`, { method: &quot;GET&quot; });
+  if (!res.ok) {
+    const text = await res.text().catch(() =&gt; &quot;&quot;);
+    throw new Error(`IBKR marketdata GET ${path} → HTTP ${res.status} ${text.slice(0, 160)}`);
+  }
+  return (await res.json()) as T;
+}
+
+export interface GatewayHealth {
+  ok: boolean;
+  detail: string;
+}
+
+export async function gatewayHealth(): Promise&lt;GatewayHealth&gt; {
+  try {
+    const status = await req&lt;{ authenticated?: boolean; connected?: boolean }&gt;(&quot;/iserver/auth/status&quot;);
+    if (status.authenticated) return { ok: true, detail: &quot;gateway authenticated · market data live&quot; };
+    return { ok: false, detail: &quot;gateway reachable but not authenticated — operator must log in to the Client Portal Gateway&quot; };
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
+}
+
+/** Resolve a US stock symbol to an IBKR conid (cached). */
+export async function resolveConid(symbol: string): Promise&lt;number&gt; {
+  const key = symbol.toUpperCase();
+  const hit = conidCache.get(key);
+  if (hit) return hit;
+  const rows = await req&lt;Array&lt;{ conid?: number }&gt;&gt;(`/trsrv/stocks?symbols=${encodeURIComponent(key)}`);
+  const id = rows?.[0]?.conid;
+  if (!id) throw new Error(`IBKR could not resolve symbol ${key} to a conid`);
+  conidCache.set(key, id);
+  return id;
+}
+
+interface IbkrHistoryBar {
+  t?: number; // epoch ms
+  o?: number;
+  h?: number;
+  l?: number;
+  c?: number;
+  v?: number;
+}
+
+interface IbkrHistoryResponse {
+  data?: IbkrHistoryBar[];
+  points?: number;
+  mktDataDelay?: number; // seconds of delay if data is delayed rather than real-time
+}
+
+export interface HistoryResult {
+  symbol: string;
+  conid: number;
+  bars: Bar[];
+  /** reported feed delay in seconds; 0/undefined = real-time */
+  delaySeconds: number;
+}
+
+/**
+ * Pull 1-minute OHLCV bars for a symbol. `period`/`bar` follow CPAPI
+ * conventions (&quot;1d&quot;/&quot;2d&quot;/&quot;1w&quot;, bar &quot;1min&quot;). outsideRth=false keeps the feed
+ * regular-hours only, matching the indicator engine&#x27;s RTH sessions.
+ */
+export async function fetchMinuteBars(symbol: string, period = &quot;2d&quot;): Promise&lt;HistoryResult&gt; {
+  const conid = await resolveConid(symbol);
+  const out = await req&lt;IbkrHistoryResponse&gt;(
+    `/iserver/marketdata/history?conid=${conid}&amp;period=${encodeURIComponent(period)}&amp;bar=1min&amp;outsideRth=false`,
+  );
+  const bars: Bar[] = (out.data ?? [])
+    .filter((b) =&gt; typeof b.t === &quot;number&quot; &amp;&amp; typeof b.c === &quot;number&quot;)
+    .map((b) =&gt; ({
+      t: b.t as number,
+      o: Number(b.o ?? b.c),
+      h: Number(b.h ?? b.c),
+      l: Number(b.l ?? b.c),
+      c: Number(b.c),
+      v: Number(b.v ?? 0),
+    }))
+    .sort((a, z) =&gt; a.t - z.t);
+  return {
+    symbol: symbol.toUpperCase(),
+    conid,
+    bars,
+    delaySeconds: Number(out.mktDataDelay ?? 0),
+  };
+}
+</pre>
+</section>
+<section class="chapter" id="appC">
+<div class="codehead"><span class="capptitle">Appendix C — api/marketdata/service.ts</span><br><span class="cdesc">Market data service — watchlist, 60-second refresh loop (market hours only), per-symbol cache, honest error degradation. — NEW FILE</span></div>
+<pre>import { computeIndicators, etParts, type Bar, type Indicators } from &quot;./indicators&quot;;
+import { fetchMinuteBars, gatewayHealth } from &quot;./ibkr-data&quot;;
+
+/**
+ * MARKET DATA SERVICE — the &quot;Eyes&quot; (module 0 of the strategy engine).
+ *
+ * Tracks a watchlist of symbols, pulls 1-minute bars from the IBKR gateway
+ * every 60 seconds DURING REGULAR MARKET HOURS (09:30–16:00 ET, Mon–Fri),
+ * and keeps a computed indicator set per symbol (session VWAP, RSI(14),
+ * prior-day H/L/C, session H/L).
+ *
+ * Design rules:
+ *   - Honest degradation: if the gateway is down/unauthenticated, feeds carry
+ *     the error and the UI shows it — no fabricated data, ever.
+ *   - The refresh loop only ticks during market hours; manual refreshes are
+ *     allowed any time (e.g. for after-hours inspection of the last session).
+ *   - Delayed data is flagged: the feed reports the broker-reported delay so
+ *     downstream timer logic can refuse to arm on stale bars.
+ *   - In-memory by design (module 0). Persistence arrives with the backtest
+ *     module, which will also own historical bar storage.
+ */
+
+export interface SymbolFeed {
+  symbol: string;
+  tracked: boolean;
+  bars: Bar[];
+  indicators: Indicators | null;
+  delaySeconds: number;
+  lastRefresh: number | null;
+  latencyMs: number | null;
+  error: string | null;
+}
+
+export interface DataServiceStatus {
+  provider: &quot;IBKR&quot;;
+  gatewayOk: boolean;
+  gatewayDetail: string;
+  marketOpen: boolean;
+  loopRunning: boolean;
+  refreshIntervalSeconds: number;
+  symbols: Array&lt;{
+    symbol: string;
+    ok: boolean;
+    barCount: number;
+    last: number | null;
+    vwap: number | null;
+    rsi14: number | null;
+    delaySeconds: number;
+    lastRefresh: number | null;
+    latencyMs: number | null;
+    error: string | null;
+  }&gt;;
+}
+
+const REFRESH_MS = 60_000;
+
+/** US regular session: Mon–Fri, 09:30–16:00 ET. */
+export function isMarketHours(now = Date.now()): boolean {
+  const { minutes } = etParts(now);
+  const etDate = new Date(new Date(now).toLocaleString(&quot;en-US&quot;, { timeZone: &quot;America/New_York&quot; }));
+  const dow = etDate.getDay();
+  if (dow === 0 || dow === 6) return false;
+  return minutes &gt;= 9 * 60 + 30 &amp;&amp; minutes &lt; 16 * 60;
+}
+
+class MarketDataService {
+  private feeds = new Map&lt;string, SymbolFeed&gt;();
+  private loop: ReturnType&lt;typeof setInterval&gt; | null = null;
+  private health: { ok: boolean; detail: string; checkedAt: number } | null = null;
+
+  async track(rawSymbol: string): Promise&lt;SymbolFeed&gt; {
+    const symbol = rawSymbol.toUpperCase().trim();
+    if (!/^[A-Z.]{1,12}$/.test(symbol)) throw new Error(`Invalid symbol &quot;${rawSymbol}&quot;`);
+    let feed = this.feeds.get(symbol);
+    if (!feed) {
+      feed = {
+        symbol,
+        tracked: true,
+        bars: [],
+        indicators: null,
+        delaySeconds: 0,
+        lastRefresh: null,
+        latencyMs: null,
+        error: null,
+      };
+      this.feeds.set(symbol, feed);
+    }
+    this.ensureLoop();
+    await this.refresh(symbol);
+    return feed;
+  }
+
+  untrack(rawSymbol: string): boolean {
+    return this.feeds.delete(rawSymbol.toUpperCase().trim());
+  }
+
+  list(): SymbolFeed[] {
+    return [...this.feeds.values()];
+  }
+
+  get(rawSymbol: string): SymbolFeed | undefined {
+    return this.feeds.get(rawSymbol.toUpperCase().trim());
+  }
+
+  /** Refresh one symbol: pull bars, recompute indicators, record latency/errors. */
+  async refresh(rawSymbol: string): Promise&lt;SymbolFeed&gt; {
+    const symbol = rawSymbol.toUpperCase().trim();
+    const feed = this.feeds.get(symbol);
+    if (!feed) throw new Error(`Symbol ${symbol} is not tracked`);
+    const started = Date.now();
+    try {
+      const result = await fetchMinuteBars(symbol, &quot;2d&quot;);
+      feed.bars = result.bars;
+      feed.indicators = computeIndicators(symbol, result.bars);
+      feed.delaySeconds = result.delaySeconds;
+      feed.error = result.bars.length === 0 ? &quot;gateway returned no bars (market closed or no subscription)&quot; : null;
+    } catch (e) {
+      feed.error = (e as Error).message;
+    }
+    feed.latencyMs = Date.now() - started;
+    feed.lastRefresh = Date.now();
+    return feed;
+  }
+
+  async refreshAll(): Promise&lt;void&gt; {
+    await Promise.allSettled([...this.feeds.keys()].map((s) =&gt; this.refresh(s)));
+  }
+
+  /** Start the 60-second loop if not already running. Ticks only in market hours. */
+  ensureLoop(): void {
+    if (this.loop) return;
+    this.loop = setInterval(() =&gt; {
+      if (!isMarketHours()) return;
+      void this.refreshAll();
+    }, REFRESH_MS);
+    // Never keep the process alive just for the data loop.
+    if (typeof this.loop.unref === &quot;function&quot;) this.loop.unref();
+  }
+
+  stopLoop(): void {
+    if (this.loop) clearInterval(this.loop);
+    this.loop = null;
+  }
+
+  async status(): Promise&lt;DataServiceStatus&gt; {
+    // Re-check gateway health at most every 30 seconds.
+    if (!this.health || Date.now() - this.health.checkedAt &gt; 30_000) {
+      const h = await gatewayHealth();
+      this.health = { ...h, checkedAt: Date.now() };
+    }
+    return {
+      provider: &quot;IBKR&quot;,
+      gatewayOk: this.health.ok,
+      gatewayDetail: this.health.detail,
+      marketOpen: isMarketHours(),
+      loopRunning: this.loop !== null,
+      refreshIntervalSeconds: REFRESH_MS / 1000,
+      symbols: this.list().map((f) =&gt; ({
+        symbol: f.symbol,
+        ok: f.error === null &amp;&amp; f.indicators !== null,
+        barCount: f.indicators?.barCount ?? 0,
+        last: f.indicators?.last ?? null,
+        vwap: f.indicators?.vwap ?? null,
+        rsi14: f.indicators?.rsi14 ?? null,
+        delaySeconds: f.delaySeconds,
+        lastRefresh: f.lastRefresh,
+        latencyMs: f.latencyMs,
+        error: f.error,
+      })),
+    };
+  }
+}
+
+/** Process-wide singleton. */
+export const marketDataService = new MarketDataService();
+</pre>
+</section>
+<section class="chapter" id="appD">
+<div class="codehead"><span class="capptitle">Appendix D — api/marketdata-router.ts</span><br><span class="cdesc">Market data tRPC router — status / track / untrack / refresh / indicators / bars / list. — NEW FILE</span></div>
+<pre>import { z } from &quot;zod&quot;;
+import { authedQuery, createRouter } from &quot;./middleware&quot;;
+import { marketDataService } from &quot;./marketdata/service&quot;;
+
+/**
+ * MARKET DATA API — module 0 of the autonomous strategy engine (&quot;Eyes&quot;).
+ *
+ * Exposes the IBKR-backed data service: gateway/market-hours status,
+ * watchlist management, cached 1-minute bars, and the computed indicator
+ * set per symbol (session VWAP, RSI(14), prior-day H/L/C, session H/L).
+ *
+ * This is the minimum-disclosure surface: raw bar history is capped and
+ * indicators are the primary output — downstream modules (triggers, state
+ * machine) consume the same service server-side.
+ */
+
+const symbolInput = z.object({
+  symbol: z.string().min(1).max(12),
+});
+
+export const marketDataRouter = createRouter({
+  /** Service + gateway + per-symbol health. */
+  status: authedQuery.query(async () =&gt; marketDataService.status()),
+
+  /** Start tracking a symbol (immediate refresh + joins the 60-second loop). */
+  track: authedQuery.input(symbolInput).mutation(async ({ input }) =&gt; {
+    const feed = await marketDataService.track(input.symbol);
+    return {
+      symbol: feed.symbol,
+      ok: feed.error === null,
+      error: feed.error,
+      barCount: feed.indicators?.barCount ?? 0,
+      indicators: feed.indicators,
+      delaySeconds: feed.delaySeconds,
+      latencyMs: feed.latencyMs,
+    };
+  }),
+
+  /** Stop tracking a symbol. */
+  untrack: authedQuery.input(symbolInput).mutation(async ({ input }) =&gt; ({
+    removed: marketDataService.untrack(input.symbol),
+  })),
+
+  /** Force a refresh of one tracked symbol (allowed outside market hours). */
+  refresh: authedQuery.input(symbolInput).mutation(async ({ input }) =&gt; {
+    const feed = await marketDataService.refresh(input.symbol);
+    return { symbol: feed.symbol, ok: feed.error === null, error: feed.error, indicators: feed.indicators };
+  }),
+
+  /** Full indicator set for one tracked symbol. */
+  indicators: authedQuery.input(symbolInput).query(async ({ input }) =&gt; {
+    const feed = marketDataService.get(input.symbol);
+    if (!feed) return { tracked: false as const, indicators: null, error: null, delaySeconds: 0 };
+    return { tracked: true as const, indicators: feed.indicators, error: feed.error, delaySeconds: feed.delaySeconds };
+  }),
+
+  /** Recent cached 1-minute bars (newest last), capped at `limit`. */
+  bars: authedQuery
+    .input(symbolInput.extend({ limit: z.number().int().min(1).max(390).default(120) }))
+    .query(async ({ input }) =&gt; {
+      const feed = marketDataService.get(input.symbol);
+      if (!feed) return { tracked: false as const, bars: [] };
+      return { tracked: true as const, bars: feed.bars.slice(-input.limit) };
+    }),
+
+  /** All tracked symbols with their indicator summary. */
+  list: authedQuery.query(async () =&gt; {
+    const status = await marketDataService.status();
+    return status.symbols;
+  }),
+});
+</pre>
+</section>
+<section class="chapter" id="appE">
+<div class="codehead"><span class="capptitle">Appendix E — api/engine/triggers.ts</span><br><span class="cdesc">Trigger library (module 1) — 9 pure trigger functions, each returns armed + evidence. — NEW FILE</span></div>
+<pre>import { rsi, sessionVwap, type Bar, type DayLevels } from &quot;../marketdata/indicators&quot;;
+
+/**
+ * TRIGGER LIBRARY — module 1 of the strategy engine.
+ *
+ * Every trigger is a standalone, PURE function over the session&#x27;s 1-minute
+ * bars. No hidden state: the same function called on the same bars returns
+ * the same result — which is exactly why live mode and backtest mode agree.
+ * Hold/timer logic (e.g. &quot;30 consecutive minutes above VWAP&quot;) is derived
+ * from the bar series itself: a close back below the floor makes the
+ * trailing count zero — the full-reset rule falls out of the data.
+ *
+ * Each trigger returns { armed, evidence } where evidence is the data that
+ * armed it (for logging and the audit trail).
+ */
+
+export interface TriggerContext {
+  /** today&#x27;s regular-hours bars, ascending, up to &quot;now&quot; */
+  session: Bar[];
+  priorDay: DayLevels | null;
+  /** benchmark session bars (e.g. QQQ) for relative strength */
+  benchmarkSession?: Bar[];
+}
+
+export type EvidenceValue = number | string | boolean | null;
+export interface TriggerResult {
+  armed: boolean;
+  evidence: Record&lt;string, EvidenceValue&gt;;
+}
+
+export type TriggerParams = Record&lt;string, number | string | boolean&gt;;
+export type TriggerFn = (ctx: TriggerContext, params: TriggerParams) =&gt; TriggerResult;
+
+/* ---------- helpers ---------- */
+
+/** Cumulative session VWAP at each bar index. */
+export function rollingVwap(bars: Bar[]): number[] {
+  let pv = 0;
+  let vol = 0;
+  return bars.map((b) =&gt; {
+    pv += ((b.h + b.l + b.c) / 3) * b.v;
+    vol += b.v;
+    return vol &gt; 0 ? pv / vol : b.c;
+  });
+}
+
+/** Trailing count of consecutive closes at/above a floor series. */
+function trailingHoldCount(bars: Bar[], floorSeries: number[]): number {
+  let count = 0;
+  for (let i = bars.length - 1; i &gt;= 0; i--) {
+    if (bars[i].c &gt;= floorSeries[i]) count++;
+    else break;
+  }
+  return count;
+}
+
+/** Local minima: bar low strictly below the `wing` neighbors on each side. */
+function swingLows(bars: Bar[], wing = 2): Array&lt;{ i: number; price: number }&gt; {
+  const out: Array&lt;{ i: number; price: number }&gt; = [];
+  for (let i = wing; i &lt; bars.length - wing; i++) {
+    const l = bars[i].l;
+    let isLow = true;
+    for (let k = 1; k &lt;= wing; k++) {
+      if (bars[i - k].l &lt;= l || bars[i + k].l &lt;= l) { isLow = false; break; }
+    }
+    if (isLow) out.push({ i, price: l });
+  }
+  return out;
+}
+
+/** Wilder ATR over the session (falls back to whatever bars exist). */
+export function atr(bars: Bar[], period = 14): number | null {
+  if (bars.length &lt; 2) return null;
+  const trs: number[] = [];
+  for (let i = 1; i &lt; bars.length; i++) {
+    const prevC = bars[i - 1].c;
+    const b = bars[i];
+    trs.push(Math.max(b.h - b.l, Math.abs(b.h - prevC), Math.abs(b.l - prevC)));
+  }
+  const slice = trs.slice(-period);
+  return slice.reduce((a, x) =&gt; a + x, 0) / slice.length;
+}
+
+/** Resolve a level token (&quot;vwap&quot; | &quot;session_high&quot; | &quot;prior_day_high&quot; | numeric string) to a number. */
+export function resolveLevel(ctx: TriggerContext, token: number | string): number | null {
+  if (typeof token === &quot;number&quot;) return token;
+  const n = Number(token);
+  if (Number.isFinite(n)) return n;
+  const vw = sessionVwap(ctx.session);
+  switch (token) {
+    case &quot;vwap&quot;: return vw;
+    case &quot;session_high&quot;: return ctx.session.length ? Math.max(...ctx.session.map((b) =&gt; b.h)) : null;
+    case &quot;session_low&quot;: return ctx.session.length ? Math.min(...ctx.session.map((b) =&gt; b.l)) : null;
+    case &quot;prior_day_high&quot;: return ctx.priorDay?.high ?? null;
+    case &quot;prior_day_low&quot;: return ctx.priorDay?.low ?? null;
+    case &quot;prior_day_close&quot;: return ctx.priorDay?.close ?? null;
+    default: return null;
+  }
+}
+
+/* ---------- the triggers ---------- */
+
+const vwapReclaim: TriggerFn = (ctx, p) =&gt; {
+  const holdMinutes = Number(p.hold_minutes ?? 30);
+  if (ctx.session.length &lt; holdMinutes) return { armed: false, evidence: { reason: &quot;insufficient_bars&quot;, have: ctx.session.length, need: holdMinutes } };
+  const vw = rollingVwap(ctx.session);
+  const count = trailingHoldCount(ctx.session, vw);
+  // &quot;reclaim&quot; requires price was below VWAP earlier in the session
+  const wasBelow = ctx.session.some((b, i) =&gt; b.c &lt; vw[i]);
+  return {
+    armed: wasBelow &amp;&amp; count &gt;= holdMinutes,
+    evidence: { hold_count: count, hold_minutes: holdMinutes, was_below: wasBelow, vwap: vw[vw.length - 1], last: ctx.session[ctx.session.length - 1].c },
+  };
+};
+
+const pullbackHold: TriggerFn = (ctx, p) =&gt; {
+  const holdMinutes = Number(p.hold_minutes ?? 10);
+  const zoneLow = resolveLevel(ctx, p.zone_low as number | string);
+  const zoneHigh = resolveLevel(ctx, p.zone_high as number | string);
+  if (zoneLow === null || zoneHigh === null) return { armed: false, evidence: { reason: &quot;unresolved_zone&quot; } };
+  const floorToken = (p.floor as number | string) ?? &quot;vwap&quot;;
+  const floorSeries = typeof floorToken === &quot;string&quot; &amp;&amp; !Number.isFinite(Number(floorToken))
+    ? (floorToken === &quot;vwap&quot; ? rollingVwap(ctx.session) : ctx.session.map(() =&gt; resolveLevel(ctx, floorToken) ?? Infinity))
+    : ctx.session.map(() =&gt; Number(floorToken));
+  const inZone = ctx.session.some((b) =&gt; b.l &lt;= zoneHigh &amp;&amp; b.h &gt;= zoneLow);
+  const count = trailingHoldCount(ctx.session, floorSeries);
+  return {
+    armed: inZone &amp;&amp; count &gt;= holdMinutes,
+    evidence: { in_zone: inZone, hold_count: count, hold_minutes: holdMinutes, zone_low: zoneLow, zone_high: zoneHigh, floor: String(floorToken) },
+  };
+};
+
+const doubleBottom: TriggerFn = (ctx, p) =&gt; {
+  const tolerancePct = Number(p.tolerance_pct ?? 1.0);
+  const minApart = Number(p.min_minutes_apart ?? 20);
+  const lows = swingLows(ctx.session);
+  if (lows.length &lt; 2) return { armed: false, evidence: { swing_lows: lows.length } };
+  const second = lows[lows.length - 1];
+  const first = lows[lows.length - 2];
+  const gapBars = second.i - first.i;
+  const diffPct = (Math.abs(second.price - first.price) / Math.min(second.price, first.price)) * 100;
+  const last = ctx.session[ctx.session.length - 1];
+  const stillValid = last.l &gt; second.price * 0.995; // second low not materially broken
+  const armed = diffPct &lt;= tolerancePct &amp;&amp; gapBars &gt;= minApart &amp;&amp; stillValid;
+  return {
+    armed,
+    evidence: { first_low: first.price, second_low: second.price, diff_pct: +diffPct.toFixed(2), minutes_apart: gapBars, still_valid: stillValid },
+  };
+};
+
+const breakout: TriggerFn = (ctx, p) =&gt; {
+  const level = resolveLevel(ctx, (p.level as number | string) ?? &quot;session_high&quot;);
+  const chaseLimitPct = Number(p.chase_limit_pct ?? 3.0);
+  if (level === null || ctx.session.length === 0) return { armed: false, evidence: { reason: &quot;unresolved_level&quot; } };
+  const last = ctx.session[ctx.session.length - 1].c;
+  const chasePct = ((last - level) / level) * 100;
+  const armed = last &gt; level &amp;&amp; chasePct &lt;= chaseLimitPct;
+  return { armed, evidence: { level, last, chase_pct: +chasePct.toFixed(2), chase_limit_pct: chaseLimitPct } };
+};
+
+const volumeClimax: TriggerFn = (ctx, p) =&gt; {
+  const mult = Number(p.multiple_of_avg ?? 3.0);
+  const lookback = Math.min(20, ctx.session.length - 1);
+  if (lookback &lt; 5) return { armed: false, evidence: { reason: &quot;insufficient_bars&quot; } };
+  const last = ctx.session[ctx.session.length - 1];
+  const avg = ctx.session.slice(-1 - lookback, -1).reduce((a, b) =&gt; a + b.v, 0) / lookback;
+  const ratio = avg &gt; 0 ? last.v / avg : 0;
+  const followThrough = last.c &gt;= last.o; // climax bar closes green
+  const armed = ratio &gt;= mult &amp;&amp; followThrough;
+  return { armed, evidence: { volume_ratio: +ratio.toFixed(2), multiple_required: mult, follow_through: followThrough } };
+};
+
+const rsiDivergence: TriggerFn = (ctx, p) =&gt; {
+  const rsiMax = Number(p.rsi_max ?? 35);
+  const lows = swingLows(ctx.session);
+  if (lows.length &lt; 2) return { armed: false, evidence: { swing_lows: lows.length } };
+  const second = lows[lows.length - 1];
+  const first = lows[lows.length - 2];
+  const rsiAt = (idx: number) =&gt; rsi(ctx.session.slice(0, idx + 1).map((b) =&gt; b.c), 14);
+  const rsiFirst = rsiAt(first.i);
+  const rsiSecond = rsiAt(second.i);
+  const rsiNow = rsi(ctx.session.map((b) =&gt; b.c), 14);
+  if (rsiFirst === null || rsiSecond === null || rsiNow === null) {
+    return { armed: false, evidence: { reason: &quot;insufficient_bars_for_rsi&quot; } };
+  }
+  const lowerPriceLow = second.price &lt; first.price;
+  const higherRsiLow = rsiSecond &gt; rsiFirst;
+  const armed = lowerPriceLow &amp;&amp; higherRsiLow &amp;&amp; rsiNow &lt; rsiMax;
+  return {
+    armed,
+    evidence: { price_lows: `${first.price}→${second.price}`, rsi_lows: `${rsiFirst}→${rsiSecond}`, rsi_now: rsiNow, rsi_max: rsiMax },
+  };
+};
+
+const relativeStrength: TriggerFn = (ctx, p) =&gt; {
+  const window = Number(p.window_minutes ?? 30);
+  const bench = ctx.benchmarkSession;
+  if (!bench || ctx.session.length &lt; window || bench.length &lt; window) {
+    return { armed: false, evidence: { reason: &quot;missing_benchmark_or_bars&quot; } };
+  }
+  const symRet = (ctx.session[ctx.session.length - 1].c / ctx.session[ctx.session.length - window].c - 1) * 100;
+  const benchRet = (bench[bench.length - 1].c / bench[bench.length - window].c - 1) * 100;
+  const rs = symRet - benchRet;
+  return { armed: rs &gt; 0, evidence: { symbol_return_pct: +symRet.toFixed(2), benchmark_return_pct: +benchRet.toFixed(2), rs_delta: +rs.toFixed(2), window_minutes: window } };
+};
+
+const priorDayHighReclaim: TriggerFn = (ctx) =&gt; {
+  const pdh = ctx.priorDay?.high;
+  if (!pdh || ctx.session.length === 0) return { armed: false, evidence: { reason: &quot;no_prior_day&quot; } };
+  const last = ctx.session[ctx.session.length - 1].c;
+  const wasBelow = ctx.session.some((b) =&gt; b.c &lt; pdh);
+  return { armed: wasBelow &amp;&amp; last &gt; pdh, evidence: { prior_day_high: pdh, last, was_below: wasBelow } };
+};
+
+const gapFill: TriggerFn = (ctx) =&gt; {
+  const pdc = ctx.priorDay?.close;
+  const open = ctx.session[0]?.o;
+  if (!pdc || !open || ctx.session.length === 0) return { armed: false, evidence: { reason: &quot;no_prior_day&quot; } };
+  const gappedDown = open &lt; pdc;
+  const last = ctx.session[ctx.session.length - 1].c;
+  return { armed: gappedDown &amp;&amp; last &gt;= pdc, evidence: { prior_close: pdc, open, last, filled: last &gt;= pdc } };
+};
+
+/* ---------- registry ---------- */
+
+export const TRIGGERS: Record&lt;string, { description: string; defaults: TriggerParams; evaluate: TriggerFn }&gt; = {
+  vwap_reclaim: { description: &quot;Price reclaims VWAP and holds above it for N consecutive 1-min closes (resets on any close back below).&quot;, defaults: { hold_minutes: 30 }, evaluate: vwapReclaim },
+  pullback_hold: { description: &quot;Price pulls back into a defined zone and holds the floor for N consecutive closes (full reset on floor break).&quot;, defaults: { zone_low: &quot;vwap&quot;, zone_high: &quot;session_high&quot;, floor: &quot;vwap&quot;, hold_minutes: 10 }, evaluate: pullbackHold },
+  double_bottom: { description: &quot;Two swing lows within tolerance % and at least N minutes apart; second low still intact.&quot;, defaults: { tolerance_pct: 1.0, min_minutes_apart: 20 }, evaluate: doubleBottom },
+  breakout: { description: &quot;Close above a level with price no more than chase-limit % past it.&quot;, defaults: { level: &quot;session_high&quot;, chase_limit_pct: 3.0 }, evaluate: breakout },
+  volume_climax: { description: &quot;Last bar volume ≥ N× the 20-bar average, with green follow-through close.&quot;, defaults: { multiple_of_avg: 3.0 }, evaluate: volumeClimax },
+  rsi_divergence: { description: &quot;Lower price swing low but higher RSI low, with RSI now below the cap.&quot;, defaults: { rsi_max: 35 }, evaluate: rsiDivergence },
+  relative_strength: { description: &quot;Symbol outperforming its benchmark over the trailing window.&quot;, defaults: { window_minutes: 30 }, evaluate: relativeStrength },
+  prior_day_high_reclaim: { description: &quot;Close back above prior day high after trading below it this session.&quot;, defaults: {}, evaluate: priorDayHighReclaim },
+  gap_fill: { description: &quot;Down-gap fully filled back to prior close.&quot;, defaults: {}, evaluate: gapFill },
+};
+
+export function runTrigger(name: string, ctx: TriggerContext, params: TriggerParams = {}): TriggerResult {
+  const trig = TRIGGERS[name];
+  if (!trig) return { armed: false, evidence: { reason: `unknown_trigger:${name}` } };
+  return trig.evaluate(ctx, { ...trig.defaults, ...params });
+}
+</pre>
+</section>
+<section class="chapter" id="appF">
+<div class="codehead"><span class="capptitle">Appendix F — api/engine/config.ts</span><br><span class="cdesc">Strategy config system — config-as-data library + governance clamping against the signed package. — NEW FILE</span></div>
+<pre>import { loadActivePackage } from &quot;../governance/runtime&quot;;
+import type { TriggerParams } from &quot;./triggers&quot;;
+
+/**
+ * STRATEGY CONFIG SYSTEM — the &quot;library&quot; (config-driven design).
+ *
+ * A strategy is DATA, not code: entry variants, stop rule, targets, hold
+ * timer, sizing limits, schedule blocks. Adding a strategy = adding a
+ * config. The engine (state machine, backtester, simulator, live monitor)
+ * runs any config on any symbol the scanner feeds it.
+ *
+ * GOVERNANCE CLAMPING: every config is validated against the signed
+ * governance package at load. Values that exceed constitutional ceilings
+ * (e.g. risk limits from the compiled package) are CLAMPED DOWN and the
+ * clamp is recorded — configs can tighten the constitution, never loosen
+ * it.
+ */
+
+export interface EntryVariant {
+  id: string;
+  priority: number;
+  trigger_type: string;
+  params: TriggerParams;
+  /** extra signal-stack requirement: at least N of `signals` armed */
+  min_signals_armed: number;
+  signals: string[];
+  chase_limit_pct: number;
+  /** BUY_STOP offset above the trigger price, in dollars */
+  entry_offset: number;
+}
+
+export interface StrategyConfig {
+  strategy_id: string;
+  version: string;
+  label: string;
+  entry_variants: EntryVariant[];
+  stop: { type: &quot;vwap&quot; | &quot;swing_low&quot; | &quot;atr&quot;; offset_atr?: number; offset_pct?: number };
+  targets: Array&lt;{ r_multiple: number; sell_fraction: number }&gt;;
+  hold_timer: { minutes: number; floor: &quot;vwap&quot; | number };
+  sizing: { max_risk_pct: number; max_position_pct: number };
+  schedule: { no_entries_after: string; flatten_by: string };
+}
+
+export interface ClampNote {
+  field: string;
+  requested: number;
+  applied: number;
+  reason: string;
+}
+
+export interface LoadedConfig {
+  config: StrategyConfig;
+  clamps: ClampNote[];
+  governanceVersion: string;
+}
+
+/* ---------- built-in generic configs (no tickers, no hardcoded trades) ---------- */
+
+export const BUILTIN_CONFIGS: StrategyConfig[] = [
+  {
+    strategy_id: &quot;post_earnings_continuation&quot;,
+    version: &quot;1.0.0&quot;,
+    label: &quot;Post-Earnings Continuation&quot;,
+    entry_variants: [
+      { id: &quot;A&quot;, priority: 1, trigger_type: &quot;vwap_reclaim&quot;, params: { hold_minutes: 10 }, min_signals_armed: 2, signals: [&quot;volume_climax&quot;, &quot;relative_strength&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+      { id: &quot;B&quot;, priority: 2, trigger_type: &quot;breakout&quot;, params: { level: &quot;session_high&quot;, chase_limit_pct: 3.0 }, min_signals_armed: 1, signals: [&quot;volume_climax&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+      { id: &quot;C&quot;, priority: 3, trigger_type: &quot;prior_day_high_reclaim&quot;, params: {}, min_signals_armed: 1, signals: [&quot;relative_strength&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+    ],
+    stop: { type: &quot;vwap&quot;, offset_pct: 0.1 },
+    targets: [
+      { r_multiple: 1.5, sell_fraction: 0.5 },
+      { r_multiple: 3.0, sell_fraction: 0.3 },
+      { r_multiple: 4.5, sell_fraction: 0.2 },
+    ],
+    hold_timer: { minutes: 10, floor: &quot;vwap&quot; },
+    sizing: { max_risk_pct: 0.5, max_position_pct: 25 },
+    schedule: { no_entries_after: &quot;15:30&quot;, flatten_by: &quot;15:55&quot; },
+  },
+  {
+    strategy_id: &quot;bottom_fish_reversal&quot;,
+    version: &quot;1.0.0&quot;,
+    label: &quot;Down-Gap Bottom-Fish Reversal&quot;,
+    entry_variants: [
+      { id: &quot;A&quot;, priority: 1, trigger_type: &quot;double_bottom&quot;, params: { tolerance_pct: 1.0, min_minutes_apart: 20 }, min_signals_armed: 1, signals: [&quot;rsi_divergence&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+      { id: &quot;B&quot;, priority: 2, trigger_type: &quot;vwap_reclaim&quot;, params: { hold_minutes: 30 }, min_signals_armed: 1, signals: [&quot;volume_climax&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+      { id: &quot;C&quot;, priority: 3, trigger_type: &quot;gap_fill&quot;, params: {}, min_signals_armed: 1, signals: [&quot;rsi_divergence&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+    ],
+    stop: { type: &quot;swing_low&quot;, offset_atr: 0.5 },
+    targets: [
+      { r_multiple: 1.5, sell_fraction: 0.5 },
+      { r_multiple: 3.0, sell_fraction: 0.5 },
+    ],
+    hold_timer: { minutes: 10, floor: &quot;vwap&quot; },
+    sizing: { max_risk_pct: 0.5, max_position_pct: 25 },
+    schedule: { no_entries_after: &quot;15:30&quot;, flatten_by: &quot;15:55&quot; },
+  },
+  {
+    strategy_id: &quot;general_intraday_momentum&quot;,
+    version: &quot;1.0.0&quot;,
+    label: &quot;General Intraday Momentum&quot;,
+    entry_variants: [
+      { id: &quot;A&quot;, priority: 1, trigger_type: &quot;pullback_hold&quot;, params: { zone_low: &quot;vwap&quot;, zone_high: &quot;session_high&quot;, floor: &quot;vwap&quot;, hold_minutes: 10 }, min_signals_armed: 2, signals: [&quot;relative_strength&quot;, &quot;volume_climax&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+      { id: &quot;B&quot;, priority: 2, trigger_type: &quot;breakout&quot;, params: { level: &quot;prior_day_high&quot;, chase_limit_pct: 3.0 }, min_signals_armed: 1, signals: [&quot;volume_climax&quot;], chase_limit_pct: 3.0, entry_offset: 0.05 },
+    ],
+    stop: { type: &quot;atr&quot;, offset_atr: 1.0 },
+    targets: [
+      { r_multiple: 1.0, sell_fraction: 0.5 },
+      { r_multiple: 2.0, sell_fraction: 0.5 },
+    ],
+    hold_timer: { minutes: 10, floor: &quot;vwap&quot; },
+    sizing: { max_risk_pct: 0.5, max_position_pct: 25 },
+    schedule: { no_entries_after: &quot;15:30&quot;, flatten_by: &quot;15:55&quot; },
+  },
+];
+
+export function getConfig(strategyId: string): StrategyConfig | undefined {
+  return BUILTIN_CONFIGS.find((c) =&gt; c.strategy_id === strategyId);
+}
+
+/* ---------- governance clamping ---------- */
+
+function packageValue(artifact: Record&lt;string, Record&lt;string, { value: unknown }&gt;&gt;, fullKey: string): unknown {
+  for (const pack of Object.values(artifact)) {
+    if (pack[fullKey]) return pack[fullKey].value;
+  }
+  return undefined;
+}
+
+/**
+ * Validate + clamp a config against the signed governance package.
+ * Never throws for over-risk — clamps down and records. Throws only if
+ * governance itself is unavailable (the constitution is load-bearing).
+ */
+export async function loadConfig(strategyId: string): Promise&lt;LoadedConfig&gt; {
+  const found = getConfig(strategyId);
+  if (!found) throw new Error(`Unknown strategy config &quot;${strategyId}&quot;`);
+  const config: StrategyConfig = JSON.parse(JSON.stringify(found)) as StrategyConfig;
+  const clamps: ClampNote[] = [];
+
+  const pkg = await loadActivePackage(); // throws GOVERNANCE_UNAVAILABLE if none — by design
+  const rawLimits = packageValue(pkg.artifact, &quot;sizing.riskLimitsPct&quot;);
+  let ceiling = 0.5;
+  if (rawLimits &amp;&amp; typeof rawLimits === &quot;object&quot;) {
+    const initial = (rawLimits as { initial?: string }).initial;
+    const parsed = initial ? Number(initial.replace(&quot;%&quot;, &quot;&quot;)) : NaN;
+    if (Number.isFinite(parsed) &amp;&amp; parsed &gt; 0) ceiling = parsed;
+  }
+  if (config.sizing.max_risk_pct &gt; ceiling) {
+    clamps.push({
+      field: &quot;sizing.max_risk_pct&quot;,
+      requested: config.sizing.max_risk_pct,
+      applied: ceiling,
+      reason: `clamped to constitutional ceiling ${ceiling}% (signed package ${pkg.version})`,
+    });
+    config.sizing.max_risk_pct = ceiling;
+  }
+
+  // Rescan cadence ceiling: hold timer may not exceed the intraday rescan ceiling.
+  const cadence = packageValue(pkg.artifact, &quot;rescan.cadence.intradayMinutes&quot;);
+  const cadenceCeiling = Array.isArray(cadence) ? Math.max(...(cadence as number[])) : typeof cadence === &quot;number&quot; ? cadence : null;
+  if (cadenceCeiling !== null &amp;&amp; config.hold_timer.minutes &gt; cadenceCeiling * 3) {
+    clamps.push({
+      field: &quot;hold_timer.minutes&quot;,
+      requested: config.hold_timer.minutes,
+      applied: cadenceCeiling * 3,
+      reason: `clamped to 3× intraday rescan ceiling (${cadenceCeiling} min)`,
+    });
+    config.hold_timer.minutes = cadenceCeiling * 3;
+  }
+
+  return { config, clamps, governanceVersion: pkg.version };
+}
+</pre>
+</section>
+<section class="chapter" id="appG">
+<div class="codehead"><span class="capptitle">Appendix G — api/engine/state-machine.ts</span><br><span class="cdesc">Setup state machine (module 2) — IDLE→WATCHING→CONFIRMED→IN_POSITION→OUT/KILLED, timer full-reset. — NEW FILE</span></div>
+<pre>import { etParts, sessionVwap, type Bar } from &quot;../marketdata/indicators&quot;;
+import { atr, rollingVwap, runTrigger, type EvidenceValue, type TriggerContext } from &quot;./triggers&quot;;
+import type { EntryVariant, StrategyConfig } from &quot;./config&quot;;
+
+/**
+ * SETUP STATE MACHINE — module 2, the &quot;Brain&quot;.
+ *
+ *   IDLE → WATCHING → CONFIRMED → IN_POSITION → OUT
+ *     └──────────────→ NO_TRADE        └────────→ KILLED (kill switch)
+ *
+ * Core invariants (from the spec, non-negotiable):
+ *   - WATCHING starts when price closes at/above the zone floor.
+ *   - Timer = consecutive 1-min closes above the floor. ANY close below
+ *     the floor resets the timer to 0 — full reset, never a pause.
+ *   - Timer ≥ threshold AND variant trigger armed AND signal stack met
+ *     → CONFIRMED → exactly one proposal (buy-stop entry).
+ *   - Variants are a ranked ladder: chase-limit breach invalidates the
+ *     current variant and moves to the next. All invalidated → NO_TRADE.
+ *     Missing a trade is a valid outcome.
+ *   - At most ONE confirmation per symbol per day (OCO across variants).
+ *
+ * The SAME machine runs live and in the backtester: live, a broker fills
+ * the entry stop; in backtest, the replay engine calls notifyFill(). The
+ * machine only ever sees bars up to &quot;now&quot; — no lookahead by construction.
+ */
+
+export type SetupState = &quot;IDLE&quot; | &quot;WATCHING&quot; | &quot;CONFIRMED&quot; | &quot;IN_POSITION&quot; | &quot;OUT&quot; | &quot;KILLED&quot; | &quot;NO_TRADE&quot;;
+
+export interface MachineEvent {
+  t: number;
+  type: &quot;STATE_CHANGE&quot; | &quot;TIMER_RESET&quot; | &quot;CONFIRMED&quot; | &quot;FILL&quot; | &quot;EXIT&quot; | &quot;INVALIDATED&quot; | &quot;NO_TRADE&quot; | &quot;KILLED&quot; | &quot;BLOCKED&quot;;
+  detail: string;
+  data?: Record&lt;string, EvidenceValue&gt;;
+}
+
+export interface Proposal {
+  symbol: string;
+  strategyId: string;
+  variantId: string;
+  t: number;
+  entry: number;
+  stop: number;
+  targets: Array&lt;{ price: number; sellFraction: number }&gt;;
+  signalsArmed: string[];
+  triggerEvidence: Record&lt;string, EvidenceValue&gt;;
+}
+
+interface Position {
+  entry: number;
+  stop: number;
+  targets: Array&lt;{ price: number; sellFraction: number; hit: boolean }&gt;;
+  filledAt: number;
+}
+
+function minutesOf(t: number): number {
+  return etParts(t).minutes;
+}
+
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(&quot;:&quot;).map(Number);
+  return h * 60 + m;
+}
+
+export class SetupMachine {
+  readonly symbol: string;
+  private config: StrategyConfig;
+  private events: MachineEvent[] = [];
+  private emit: (e: MachineEvent) =&gt; void;
+
+  state: SetupState = &quot;IDLE&quot;;
+  timerCount = 0;
+  private variantIdx = 0;
+  private proposal: Proposal | null = null;
+  private position: Position | null = null;
+  exits: Array&lt;{ t: number; price: number; fraction: number; reason: string }&gt; = [];
+
+  constructor(symbol: string, config: StrategyConfig, onEvent?: (e: MachineEvent) =&gt; void) {
+    this.symbol = symbol;
+    this.config = config;
+    this.emit = onEvent ?? (() =&gt; undefined);
+  }
+
+  private transition(to: SetupState, detail: string, data?: Record&lt;string, EvidenceValue&gt;): void {
+    if (this.state === to) return;
+    const e: MachineEvent = { t: Date.now(), type: &quot;STATE_CHANGE&quot;, detail: `${this.state} → ${to}: ${detail}`, data };
+    this.state = to;
+    this.events.push(e);
+    this.emit(e);
+  }
+
+  private log(type: MachineEvent[&quot;type&quot;], detail: string, data?: Record&lt;string, EvidenceValue&gt;): void {
+    const e: MachineEvent = { t: Date.now(), type, detail, data };
+    this.events.push(e);
+    this.emit(e);
+  }
+
+  getEvents(): MachineEvent[] {
+    return this.events;
+  }
+
+  get currentVariant(): EntryVariant | null {
+    return this.config.entry_variants[this.variantIdx] ?? null;
+  }
+
+  /** Resolve the floor series for the hold timer (&quot;vwap&quot; or a fixed level). */
+  private floorSeries(ctx: TriggerContext): number[] {
+    const floor = this.config.hold_timer.floor;
+    if (floor === &quot;vwap&quot;) return rollingVwap(ctx.session);
+    return ctx.session.map(() =&gt; floor);
+  }
+
+  private resolveStop(ctx: TriggerContext, entry: number): number | null {
+    const s = this.config.stop;
+    const a = atr(ctx.session) ?? entry * 0.005;
+    const last = ctx.session[ctx.session.length - 1];
+    switch (s.type) {
+      case &quot;vwap&quot;: {
+        const vw = sessionVwap(ctx.session);
+        return vw === null ? null : +(vw * (1 - (s.offset_pct ?? 0) / 100)).toFixed(4);
+      }
+      case &quot;swing_low&quot;: {
+        const recent = Math.min(...ctx.session.slice(-20).map((b) =&gt; b.l));
+        return +(recent - (s.offset_atr ?? 0.5) * a).toFixed(4);
+      }
+      case &quot;atr&quot;:
+      default:
+        return +(last.c - (s.offset_atr ?? 1.0) * a).toFixed(4);
+    }
+  }
+
+  /**
+   * Feed one bar. `ctx` must contain the session UP TO AND INCLUDING this bar.
+   * Returns a Proposal exactly once, on the IDLE/WATCHING → CONFIRMED transition.
+   */
+  onBar(ctx: TriggerContext): Proposal | null {
+    const bar = ctx.session[ctx.session.length - 1];
+    if (!bar) return null;
+    const mins = minutesOf(bar.t);
+
+    if (this.state === &quot;KILLED&quot; || this.state === &quot;NO_TRADE&quot; || this.state === &quot;OUT&quot;) return null;
+
+    // ── position management (IN_POSITION) ──
+    if (this.state === &quot;IN_POSITION&quot; &amp;&amp; this.position) {
+      this.managePosition(bar, mins);
+      return null;
+    }
+
+    // ── schedule gate: no new entries after the cutoff ──
+    if (mins &gt;= hhmmToMinutes(this.config.schedule.no_entries_after)) {
+      if (this.state === &quot;WATCHING&quot;) this.transition(&quot;IDLE&quot;, &quot;past entry cutoff — stood down&quot;);
+      return null;
+    }
+
+    const variant = this.currentVariant;
+    if (!variant) {
+      if (this.state !== &quot;NO_TRADE&quot;) {
+        this.transition(&quot;NO_TRADE&quot;, &quot;all entry variants invalidated — missing the trade is a valid outcome&quot;);
+        this.log(&quot;NO_TRADE&quot;, &quot;no viable variant remains&quot;);
+      }
+      return null;
+    }
+
+    // ── hold timer: consecutive closes at/above floor, FULL reset below ──
+    const floors = this.floorSeries(ctx);
+    const floorNow = floors[floors.length - 1];
+    if (bar.c &gt;= floorNow) {
+      this.timerCount += 1;
+      if (this.state === &quot;IDLE&quot;) this.transition(&quot;WATCHING&quot;, `price closed above floor (${floorNow.toFixed(2)}) — timer started`);
+    } else {
+      if (this.timerCount &gt; 0) this.log(&quot;TIMER_RESET&quot;, `close ${bar.c.toFixed(2)} below floor ${floorNow.toFixed(2)} — timer reset ${this.timerCount} → 0`);
+      this.timerCount = 0;
+      if (this.state === &quot;WATCHING&quot;) this.transition(&quot;IDLE&quot;, &quot;floor lost — back to scanning&quot;);
+    }
+
+    // ── chase-limit invalidation → next variant (OCO ladder) ──
+    const ref = ctx.session[0]?.o ?? bar.c;
+    const runPct = ((bar.c - ref) / ref) * 100;
+    if (this.timerCount &gt; 0 &amp;&amp; runPct &gt; variant.chase_limit_pct + 3) {
+      this.log(&quot;INVALIDATED&quot;, `variant ${variant.id} invalidated — price ran ${runPct.toFixed(1)}% past reference, chase limit ${variant.chase_limit_pct}%`);
+      this.variantIdx += 1;
+      this.timerCount = 0;
+      this.transition(&quot;IDLE&quot;, `moving to next variant in ladder`);
+      return null;
+    }
+
+    if (this.timerCount &lt; this.config.hold_timer.minutes) return null;
+
+    // ── timer threshold met: trigger + signal stack must also arm ──
+    const trig = runTrigger(variant.trigger_type, ctx, variant.params);
+    if (!trig.armed) return null;
+
+    const signalsArmed = variant.signals.filter((name) =&gt; runTrigger(name, ctx).armed);
+    if (signalsArmed.length &lt; variant.min_signals_armed) return null;
+
+    const entry = +(bar.c + variant.entry_offset).toFixed(4);
+    const stop = this.resolveStop(ctx, entry);
+    if (stop === null || stop &gt;= entry) return null;
+
+    this.proposal = {
+      symbol: this.symbol,
+      strategyId: this.config.strategy_id,
+      variantId: variant.id,
+      t: bar.t,
+      entry,
+      stop,
+      targets: this.config.targets.map((tg) =&gt; ({
+        price: +(entry + tg.r_multiple * (entry - stop)).toFixed(4),
+        sellFraction: tg.sell_fraction,
+      })),
+      signalsArmed,
+      triggerEvidence: trig.evidence,
+    };
+    this.transition(&quot;CONFIRMED&quot;, `timer ${this.timerCount} ≥ ${this.config.hold_timer.minutes} · trigger ${variant.trigger_type} armed · signals [${signalsArmed.join(&quot;, &quot;)}]`);
+    this.log(&quot;CONFIRMED&quot;, `proposal: entry ${entry} stop ${stop} targets ${this.proposal.targets.map((x) =&gt; x.price).join(&quot;/&quot;)}`, { entry, stop });
+    return this.proposal;
+  }
+
+  /** Called by the fill source (backtest replay or broker fill event). */
+  notifyFill(price: number, t: number): void {
+    if (this.state !== &quot;CONFIRMED&quot; || !this.proposal) return;
+    this.position = {
+      entry: price,
+      stop: this.proposal.stop,
+      targets: this.proposal.targets.map((x) =&gt; ({ ...x, hit: false })),
+      filledAt: t,
+    };
+    this.transition(&quot;IN_POSITION&quot;, `filled at ${price}`);
+    this.log(&quot;FILL&quot;, `entry fill ${price} · protective stop ${this.position.stop} placed immediately`, { price, stop: this.position.stop });
+  }
+
+  private managePosition(bar: Bar, mins: number): void {
+    const pos = this.position;
+    if (!pos) return;
+
+    // flatten-by time: market exit
+    if (mins &gt;= hhmmToMinutes(this.config.schedule.flatten_by)) {
+      this.exits.push({ t: bar.t, price: bar.c, fraction: 1, reason: &quot;time_flatten&quot; });
+      this.log(&quot;EXIT&quot;, `time-based flatten at ${bar.c.toFixed(2)}`);
+      this.transition(&quot;OUT&quot;, &quot;flattened by schedule&quot;);
+      return;
+    }
+
+    // stop: fills if the bar trades through it (checked before targets — conservative)
+    if (bar.l &lt;= pos.stop) {
+      this.exits.push({ t: bar.t, price: pos.stop, fraction: 1, reason: &quot;stop&quot; });
+      this.log(&quot;EXIT&quot;, `stop hit at ${pos.stop}`);
+      this.transition(&quot;OUT&quot;, &quot;protective stop filled&quot;);
+      return;
+    }
+
+    // targets in order
+    let remaining = 1 - this.exits.filter((e) =&gt; e.reason === &quot;target&quot;).reduce((a, e) =&gt; a + e.fraction, 0);
+    for (const tg of pos.targets) {
+      if (!tg.hit &amp;&amp; bar.h &gt;= tg.price &amp;&amp; remaining &gt; 0) {
+        tg.hit = true;
+        const frac = Math.min(tg.sellFraction, remaining);
+        this.exits.push({ t: bar.t, price: tg.price, fraction: frac, reason: &quot;target&quot; });
+        this.log(&quot;EXIT&quot;, `target ${tg.price} filled (${(frac * 100).toFixed(0)}% of position)`);
+        remaining -= frac;
+        // ratchet stop to breakeven after first target — tightening only
+        if (pos.stop &lt; pos.entry) {
+          pos.stop = pos.entry;
+          this.log(&quot;EXIT&quot;, `stop tightened to breakeven ${pos.entry} (tightening-only rule)`);
+        }
+      }
+    }
+    if (remaining &lt;= 0.0001) this.transition(&quot;OUT&quot;, &quot;all targets filled&quot;);
+  }
+
+  kill(reason: string): void {
+    if (this.state === &quot;OUT&quot; || this.state === &quot;KILLED&quot;) return;
+    this.transition(&quot;KILLED&quot;, reason);
+    this.log(&quot;KILLED&quot;, reason);
+  }
+}
+</pre>
+</section>
+<section class="chapter" id="appH">
+<div class="codehead"><span class="capptitle">Appendix H — api/engine/risk.ts</span><br><span class="cdesc">Risk engine — size from (entry−stop), ≤0.5% risk, ≤25% position cap, daily-loss halt, chase-cancel. — NEW FILE</span></div>
+<pre>/**
+ * RISK ENGINE — position sizing (module 6 core, shared by live + backtest).
+ *
+ * Rules (constitutional):
+ *   - Share size comes FROM (entry − stop), never the other way around:
+ *       qty = (equity × risk%) / (entry − stop)
+ *   - Per-trade risk ≤ max_risk_pct of account (0.5% ceiling via governance)
+ *   - Single position ≤ max_position_pct of account (25%)
+ *   - The most restrictive constraint wins — never conviction.
+ */
+
+export interface SizeResult {
+  qty: number;
+  perShareRisk: number;
+  dollarRisk: number;
+  positionValue: number;
+  cappedBy: &quot;risk&quot; | &quot;position_cap&quot; | &quot;zero&quot;;
+}
+
+export function sizePosition(input: {
+  accountEquity: number;
+  entry: number;
+  stop: number;
+  maxRiskPct: number;
+  maxPositionPct: number;
+}): SizeResult {
+  const { accountEquity, entry, stop, maxRiskPct, maxPositionPct } = input;
+  const perShareRisk = entry - stop;
+  if (perShareRisk &lt;= 0 || accountEquity &lt;= 0) {
+    return { qty: 0, perShareRisk: Math.max(perShareRisk, 0), dollarRisk: 0, positionValue: 0, cappedBy: &quot;zero&quot; };
+  }
+  const riskDollars = accountEquity * (maxRiskPct / 100);
+  const qtyByRisk = riskDollars / perShareRisk;
+  const capDollars = accountEquity * (maxPositionPct / 100);
+  const qtyByCap = capDollars / entry;
+
+  const cappedBy = qtyByRisk &lt;= qtyByCap ? &quot;risk&quot; : &quot;position_cap&quot;;
+  const qty = Math.floor(Math.min(qtyByRisk, qtyByCap));
+  return {
+    qty,
+    perShareRisk: +perShareRisk.toFixed(4),
+    dollarRisk: +(qty * perShareRisk).toFixed(2),
+    positionValue: +(qty * entry).toFixed(2),
+    cappedBy: qty === 0 ? &quot;zero&quot; : cappedBy,
+  };
+}
+
+/** Daily loss-limit check: halt new proposals at −3% (constitutional). */
+export function dailyLossHalt(realizedPnlToday: number, accountEquity: number, limitPct = 3): boolean {
+  if (accountEquity &lt;= 0) return true;
+  return realizedPnlToday &lt;= -(accountEquity * (limitPct / 100));
+}
+
+/** Chase-cancel: if price ran more than `chaseLimitPct` past trigger before fill, cancel. */
+export function chaseExceeded(triggerPrice: number, currentPrice: number, chaseLimitPct = 3): boolean {
+  return ((currentPrice - triggerPrice) / triggerPrice) * 100 &gt; chaseLimitPct;
+}
+</pre>
+</section>
+<section class="chapter" id="appI">
+<div class="codehead"><span class="capptitle">Appendix I — api/engine/backtest.ts</span><br><span class="cdesc">Backtester (module 3) — bar-by-bar replay through the same machine, no lookahead, full report. — NEW FILE</span></div>
+<pre>import { groupRthSessions, type Bar, type DayLevels } from &quot;../marketdata/indicators&quot;;
+import type { StrategyConfig } from &quot;./config&quot;;
+import { SetupMachine, type MachineEvent, type Proposal } from &quot;./state-machine&quot;;
+import { sizePosition } from &quot;./risk&quot;;
+
+/**
+ * BACKTEST MODULE — module 3.
+ *
+ * Replays 1-minute bars day-by-day through the SAME SetupMachine the live
+ * monitor uses. No lookahead, by construction:
+ *   - the machine only ever receives bars up to the current index;
+ *   - a CONFIRMED proposal&#x27;s buy-stop is evaluated for a fill on the NEXT
+ *     bar (fills at the stop price, or the open if gapped through);
+ *   - stops fill before targets within a bar (conservative).
+ *
+ * Report: per-trade log, win rate, profit factor, expectancy (R), max
+ * drawdown on the cumulative-R curve.
+ */
+
+export interface BacktestTrade {
+  day: string;
+  variantId: string;
+  entryTime: number;
+  exitTime: number;
+  entry: number;
+  avgExit: number;
+  qty: number;
+  stop: number;
+  pnl: number;
+  r: number;
+  exitReason: string;
+}
+
+export interface BacktestReport {
+  strategyId: string;
+  symbol: string;
+  days: number;
+  trades: BacktestTrade[];
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  expectancyR: number | null;
+  maxDrawdownR: number;
+  totalPnl: number;
+  noTradeDays: number;
+  events: MachineEvent[];
+}
+
+interface SessionDay {
+  date: string;
+  bars: Bar[];
+  priorDay: DayLevels | null;
+}
+
+export function sessionsFromBars(bars: Bar[]): SessionDay[] {
+  const grouped = groupRthSessions(bars);
+  const days = [...grouped.keys()].sort();
+  return days.map((date, i) =&gt; {
+    const dayBars = grouped.get(date)!;
+    const prior = i &gt; 0 ? grouped.get(days[i - 1])! : null;
+    return {
+      date,
+      bars: dayBars,
+      priorDay: prior
+        ? { high: Math.max(...prior.map((b) =&gt; b.h)), low: Math.min(...prior.map((b) =&gt; b.l)), close: prior[prior.length - 1].c }
+        : null,
+    };
+  });
+}
+
+export function runBacktest(input: {
+  config: StrategyConfig;
+  symbol: string;
+  bars: Bar[];
+  accountEquity?: number;
+  variantOnly?: string | null;
+}): BacktestReport {
+  const equity = input.accountEquity ?? 100000;
+  const days = sessionsFromBars(input.bars);
+  const trades: BacktestTrade[] = [];
+  const allEvents: MachineEvent[] = [];
+  let noTradeDays = 0;
+
+  const config: StrategyConfig = input.variantOnly
+    ? { ...input.config, entry_variants: input.config.entry_variants.filter((v) =&gt; v.id === input.variantOnly) }
+    : input.config;
+
+  for (const day of days) {
+    const machine = new SetupMachine(input.symbol, config, (e) =&gt; allEvents.push(e));
+    let pending: Proposal | null = null;
+    let pendingQty = 0;
+
+    for (let i = 0; i &lt; day.bars.length; i++) {
+      const bar = day.bars[i];
+
+      // 1) fill check for a pending entry stop — BEFORE feeding this bar&#x27;s close
+      if (pending &amp;&amp; machine.state === &quot;CONFIRMED&quot;) {
+        const chasePct = ((bar.o - pending.entry) / pending.entry) * 100;
+        if (chasePct &gt; config.entry_variants.find((v) =&gt; v.id === pending!.variantId)?.chase_limit_pct!) {
+          machine.kill(`chase-cancel: open gapped ${chasePct.toFixed(1)}% past trigger`);
+          pending = null;
+        } else if (bar.h &gt;= pending.entry) {
+          const fill = Math.max(pending.entry, bar.o);
+          machine.notifyFill(fill, bar.t);
+          pendingQty = sizePosition({
+            accountEquity: equity,
+            entry: fill,
+            stop: pending.stop,
+            maxRiskPct: config.sizing.max_risk_pct,
+            maxPositionPct: config.sizing.max_position_pct,
+          }).qty;
+          pending = { ...pending, entry: fill };
+        }
+      }
+
+      // 2) feed the bar (machine sees only up-to-now)
+      const ctx = { session: day.bars.slice(0, i + 1), priorDay: day.priorDay };
+      const proposal = machine.onBar(ctx);
+      if (proposal) pending = proposal;
+    }
+
+    // 3) settle the day
+    if (machine.state === &quot;IN_POSITION&quot; || machine.exits.length &gt; 0) {
+      const exits = machine.exits;
+      if (machine.state === &quot;IN_POSITION&quot;) {
+        // machine flattens at 15:55 by schedule; if bars ended early, close at last bar
+        const last = day.bars[day.bars.length - 1];
+        exits.push({ t: last.t, price: last.c, fraction: 1, reason: &quot;eod&quot; });
+      }
+      const pos = (machine as unknown as { proposal: Proposal | null }).proposal;
+      if (pos &amp;&amp; pendingQty &gt; 0 &amp;&amp; exits.length &gt; 0) {
+        let remaining = 1;
+        let weighted = 0;
+        for (const ex of exits) {
+          const f = Math.min(ex.fraction, remaining);
+          weighted += f * ex.price;
+          remaining -= f;
+        }
+        if (remaining &gt; 0.0001) weighted += remaining * day.bars[day.bars.length - 1].c;
+        const perShareRisk = pos.entry - pos.stop;
+        const pnl = (weighted - pos.entry) * pendingQty;
+        trades.push({
+          day: day.date,
+          variantId: pos.variantId,
+          entryTime: pos.t,
+          exitTime: exits[exits.length - 1].t,
+          entry: pos.entry,
+          avgExit: +weighted.toFixed(4),
+          qty: pendingQty,
+          stop: pos.stop,
+          pnl: +pnl.toFixed(2),
+          r: perShareRisk &gt; 0 ? +((weighted - pos.entry) / perShareRisk).toFixed(2) : 0,
+          exitReason: exits[exits.length - 1].reason,
+        });
+      }
+    } else if (machine.state === &quot;NO_TRADE&quot; || machine.state === &quot;IDLE&quot; || machine.state === &quot;WATCHING&quot;) {
+      noTradeDays += 1;
+    }
+  }
+
+  const wins = trades.filter((t) =&gt; t.pnl &gt; 0);
+  const losses = trades.filter((t) =&gt; t.pnl &lt;= 0);
+  const grossWin = wins.reduce((a, t) =&gt; a + t.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((a, t) =&gt; a + t.pnl, 0));
+  let cum = 0;
+  let peak = 0;
+  let maxDd = 0;
+  for (const t of trades) {
+    cum += t.r;
+    peak = Math.max(peak, cum);
+    maxDd = Math.max(maxDd, peak - cum);
+  }
+
+  return {
+    strategyId: config.strategy_id,
+    symbol: input.symbol,
+    days: days.length,
+    trades,
+    totalTrades: trades.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: trades.length ? +((wins.length / trades.length) * 100).toFixed(1) : null,
+    profitFactor: grossLoss &gt; 0 ? +(grossWin / grossLoss).toFixed(2) : null,
+    expectancyR: trades.length ? +(trades.reduce((a, t) =&gt; a + t.r, 0) / trades.length).toFixed(3) : null,
+    maxDrawdownR: +maxDd.toFixed(2),
+    totalPnl: +trades.reduce((a, t) =&gt; a + t.pnl, 0).toFixed(2),
+    noTradeDays,
+    events: allEvents.slice(-200),
+  };
+}
+</pre>
+</section>
+<section class="chapter" id="appJ">
+<div class="codehead"><span class="capptitle">Appendix J — api/engine/simulator.ts</span><br><span class="cdesc">What-if simulator (module 4) — per-variant expectancy ranking, drops negative variants, re-ranks ladder. — NEW FILE</span></div>
+<pre>import type { Bar } from &quot;../marketdata/indicators&quot;;
+import type { StrategyConfig } from &quot;./config&quot;;
+import { runBacktest } from &quot;./backtest&quot;;
+
+/**
+ * WHAT-IF SIMULATOR — module 4.
+ *
+ * Before going live on a candidate, every entry variant is simulated
+ * against the available 1-minute history (same config, same machine, same
+ * fill model — the backtester restricted to one variant at a time).
+ * Variants are ranked by expectancy; negative-expectancy variants are
+ * dropped. The resulting ranking IS the fallback ladder the live monitor
+ * uses.
+ */
+
+export interface VariantSimResult {
+  variantId: string;
+  triggerType: string;
+  trades: number;
+  winRate: number | null;
+  expectancyR: number | null;
+  profitFactor: number | null;
+  maxDrawdownR: number;
+  totalPnl: number;
+  kept: boolean;
+  dropReason: string | null;
+}
+
+export interface SimulationReport {
+  strategyId: string;
+  symbol: string;
+  sampleDays: number;
+  variants: VariantSimResult[];
+  rankedLadder: string[]; // variant ids in priority order after simulation
+  recommendation: string;
+}
+
+export function simulateVariants(input: {
+  config: StrategyConfig;
+  symbol: string;
+  bars: Bar[];
+  minTrades?: number;
+}): SimulationReport {
+  const minTrades = input.minTrades ?? 2;
+  const variants: VariantSimResult[] = input.config.entry_variants.map((v) =&gt; {
+    const report = runBacktest({ config: input.config, symbol: input.symbol, bars: input.bars, variantOnly: v.id });
+    const insufficient = report.totalTrades &lt; minTrades;
+    const negative = report.expectancyR !== null &amp;&amp; report.expectancyR &lt; 0;
+    const kept = !insufficient &amp;&amp; !negative;
+    return {
+      variantId: v.id,
+      triggerType: v.trigger_type,
+      trades: report.totalTrades,
+      winRate: report.winRate,
+      expectancyR: report.expectancyR,
+      profitFactor: report.profitFactor,
+      maxDrawdownR: report.maxDrawdownR,
+      totalPnl: report.totalPnl,
+      kept,
+      dropReason: insufficient
+        ? `insufficient sample (${report.totalTrades} trades &lt; ${minTrades})`
+        : negative
+          ? `negative expectancy (${report.expectancyR}R)`
+          : null,
+    };
+  });
+
+  const kept = variants.filter((v) =&gt; v.kept).sort((a, b) =&gt; (b.expectancyR ?? -Infinity) - (a.expectancyR ?? -Infinity));
+  const rankedLadder = [...kept.map((v) =&gt; v.variantId), ...variants.filter((v) =&gt; !v.kept).map((v) =&gt; v.variantId)];
+
+  const best = kept[0];
+  const recommendation = best
+    ? `Lead with variant ${best.variantId} (${best.triggerType}) — expectancy ${best.expectancyR}R over ${best.trades} simulated trades. ${variants.length - kept.length} variant(s) dropped.`
+    : &quot;No variant survived simulation — stand down on this candidate. Missing the trade is a valid outcome.&quot;;
+
+  return {
+    strategyId: input.config.strategy_id,
+    symbol: input.symbol,
+    sampleDays: 0,
+    variants,
+    rankedLadder,
+    recommendation,
+  };
+}
+</pre>
+</section>
+<section class="chapter" id="appK">
+<div class="codehead"><span class="capptitle">Appendix K — api/engine/scanner.ts</span><br><span class="cdesc">Scanner hook (module 5) — gap %, RVOL, vs-VWAP candidates + best-fit config selection. — NEW FILE</span></div>
+<pre>import type { SymbolFeed } from &quot;../marketdata/service&quot;;
+import { computeIndicators } from &quot;../marketdata/indicators&quot;;
+import { BUILTIN_CONFIGS } from &quot;./config&quot;;
+
+/**
+ * SCANNER HOOK — module 5.
+ *
+ * Scans the tracked watchlist feeds and emits candidates with metadata:
+ * gap %, relative volume, position vs VWAP, and the best-fit strategy
+ * config selected by simple, auditable rules:
+ *   - down-gap below VWAP        → bottom-fish reversal config
+ *   - up-gap / strength &gt; VWAP   → continuation config
+ *   - everything else liquid     → general intraday momentum
+ *
+ * A broad 500–2,000 symbol universe scan requires a market-wide data
+ * source; this hook scans whatever the data service tracks (module 0)
+ * and plugs into the same loop: SCAN → SIMULATE → RANK → MONITOR.
+ */
+
+export interface Candidate {
+  symbol: string;
+  last: number | null;
+  gapPct: number | null;
+  relativeVolume: number | null;
+  vsVwapPct: number | null;
+  rsi14: number | null;
+  suggestedConfig: string;
+  suggestedLabel: string;
+  reason: string;
+}
+
+const MIN_RVOL = 1.5;
+const MIN_GAP_PCT = 2.0;
+
+export function scanFeeds(feeds: SymbolFeed[]): Candidate[] {
+  const out: Candidate[] = [];
+  for (const f of feeds) {
+    if (!f.indicators || f.bars.length &lt; 30) continue;
+    const ind = f.indicators;
+    const gapPct = ind.priorDay &amp;&amp; ind.priorDay.close &gt; 0 &amp;&amp; f.bars.length &gt; 0
+      ? +(((f.bars[0].o - ind.priorDay.close) / ind.priorDay.close) * 100).toFixed(2)
+      : null;
+
+    // RVOL: today&#x27;s volume so far vs prior-day volume over the same bar count
+    const todayVol = f.bars.slice(-ind.barCount).reduce((a, b) =&gt; a + b.v, 0);
+    const prior = computeIndicators(f.symbol, f.bars.slice(0, Math.max(f.bars.length - ind.barCount, 0)));
+    const priorVolSameWindow = prior.barCount &gt; 0
+      ? f.bars.slice(0, f.bars.length - ind.barCount).slice(-Math.min(ind.barCount, prior.barCount)).reduce((a, b) =&gt; a + b.v, 0)
+      : 0;
+    const relativeVolume = priorVolSameWindow &gt; 0 ? +(todayVol / priorVolSameWindow).toFixed(2) : null;
+
+    const vsVwapPct = ind.vwap &amp;&amp; ind.last ? +(((ind.last - ind.vwap) / ind.vwap) * 100).toFixed(2) : null;
+
+    const isGap = gapPct !== null &amp;&amp; Math.abs(gapPct) &gt;= MIN_GAP_PCT;
+    const isHot = relativeVolume !== null &amp;&amp; relativeVolume &gt;= MIN_RVOL;
+    if (!isGap &amp;&amp; !isHot) continue;
+
+    let suggestedConfig = &quot;general_intraday_momentum&quot;;
+    let reason = &quot;liquid mover — default momentum config&quot;;
+    if (gapPct !== null &amp;&amp; gapPct &lt;= -MIN_GAP_PCT &amp;&amp; (vsVwapPct ?? 0) &lt; 0) {
+      suggestedConfig = &quot;bottom_fish_reversal&quot;;
+      reason = `down-gap ${gapPct}% below VWAP — reversal config`;
+    } else if ((gapPct !== null &amp;&amp; gapPct &gt;= MIN_GAP_PCT) || (vsVwapPct ?? 0) &gt; 0) {
+      suggestedConfig = &quot;post_earnings_continuation&quot;;
+      reason = gapPct !== null &amp;&amp; gapPct &gt;= MIN_GAP_PCT ? `up-gap ${gapPct}% — continuation config` : &quot;holding above VWAP — continuation config&quot;;
+    }
+    const cfg = BUILTIN_CONFIGS.find((c) =&gt; c.strategy_id === suggestedConfig);
+    out.push({
+      symbol: f.symbol,
+      last: ind.last,
+      gapPct,
+      relativeVolume,
+      vsVwapPct,
+      rsi14: ind.rsi14,
+      suggestedConfig,
+      suggestedLabel: cfg?.label ?? suggestedConfig,
+      reason,
+    });
+  }
+  return out.sort((a, b) =&gt; (b.relativeVolume ?? 0) - (a.relativeVolume ?? 0));
+}
+</pre>
+</section>
+<section class="chapter" id="appL">
+<div class="codehead"><span class="capptitle">Appendix L — api/engine/monitor.ts</span><br><span class="cdesc">Engine monitor (module 6) — live loop wiring CONFIRMED setups into the ticket confirmation gate. — NEW FILE</span></div>
+<pre>import { groupRthSessions } from &quot;../marketdata/indicators&quot;;
+import { marketDataService } from &quot;../marketdata/service&quot;;
+import { loadConfig } from &quot;./config&quot;;
+import { SetupMachine, type MachineEvent, type Proposal } from &quot;./state-machine&quot;;
+import { proposeTicket } from &quot;../queries/tickets&quot;;
+import { sizePosition } from &quot;./risk&quot;;
+import type { PublicTicket } from &quot;../queries/tickets&quot;;
+
+/**
+ * ENGINE MONITOR — module 6, execution wiring.
+ *
+ * The live autonomous loop for one user + symbol + strategy config:
+ *
+ *   feed refresh (module 0) → SetupMachine evaluates latest bar
+ *   → CONFIRMED proposal → governance-clamped risk sizing
+ *   → proposeTicket(...) → READY_FOR_CONFIRMATION
+ *   → human types CONFIRM ORDER [TICKET_ID] → existing broker path
+ *
+ * Phase 1 by design: the engine NEVER auto-executes. Every proposal lands
+ * in the same ticketed confirmation gate used by Intelligence — the exact
+ * CONFIRM string validated against the signed governance package.
+ * One proposal per symbol per day (OCO across variants is enforced by the
+ * machine itself; the monitor adds the per-day idempotence).
+ */
+
+const PAPER_EQUITY = 100_000; // paper-mode account equity until a live broker account is bound
+
+interface ActiveMonitor {
+  userId: number;
+  symbol: string;
+  strategyId: string;
+  machine: SetupMachine;
+  lastProposalDay: string | null;
+  lastEvents: MachineEvent[];
+  startedAt: number;
+}
+
+const monitors = new Map&lt;string, ActiveMonitor&gt;();
+
+function key(userId: number, symbol: string): string {
+  return `${userId}:${symbol.toUpperCase()}`;
+}
+
+function etDay(t: number): string {
+  return new Date(t).toLocaleDateString(&quot;en-CA&quot;, { timeZone: &quot;America/New_York&quot; });
+}
+
+export async function startMonitor(userId: number, symbol: string, strategyId: string): Promise&lt;{ ok: boolean; detail: string }&gt; {
+  const sym = symbol.toUpperCase();
+  const { config, clamps, governanceVersion } = await loadConfig(strategyId); // throws GOVERNANCE_UNAVAILABLE — by design
+  const machine = new SetupMachine(sym, config);
+  monitors.set(key(userId, sym), {
+    userId,
+    symbol: sym,
+    strategyId,
+    machine,
+    lastProposalDay: null,
+    lastEvents: [],
+    startedAt: Date.now(),
+  });
+  const clampNote = clamps.length &gt; 0 ? ` · clamps: ${clamps.map((c) =&gt; `${c.field} ${c.requested}→${c.applied}`).join(&quot;, &quot;)}` : &quot;&quot;;
+  return { ok: true, detail: `monitoring ${sym} with ${config.label} under governance ${governanceVersion}${clampNote}` };
+}
+
+export function stopMonitor(userId: number, symbol: string): boolean {
+  return monitors.delete(key(userId, symbol));
+}
+
+export function listMonitors(userId: number): Array&lt;{ symbol: string; strategyId: string; state: string; timerCount: number; startedAt: number; events: MachineEvent[] }&gt; {
+  return [...monitors.values()]
+    .filter((m) =&gt; m.userId === userId)
+    .map((m) =&gt; ({ symbol: m.symbol, strategyId: m.strategyId, state: m.machine.state, timerCount: m.machine.timerCount, startedAt: m.startedAt, events: m.lastEvents.slice(-20) }));
+}
+
+export interface EvaluateResult {
+  symbol: string;
+  state: string;
+  timerCount: number;
+  proposal: Proposal | null;
+  ticket: PublicTicket | null;
+  detail: string;
+}
+
+/**
+ * Evaluate one monitored symbol against its freshest bars. Called by the
+ * router (manual evaluate) and intended to be invoked after each data
+ * refresh tick.
+ */
+export async function evaluateMonitor(userId: number, symbol: string): Promise&lt;EvaluateResult&gt; {
+  const sym = symbol.toUpperCase();
+  const mon = monitors.get(key(userId, sym));
+  if (!mon) return { symbol: sym, state: &quot;NOT_MONITORED&quot;, timerCount: 0, proposal: null, ticket: null, detail: &quot;no active monitor — start one first&quot; };
+
+  const feed = marketDataService.get(sym);
+  if (!feed || feed.bars.length === 0) {
+    return { symbol: sym, state: mon.machine.state, timerCount: mon.machine.timerCount, proposal: null, ticket: null, detail: feed?.error ?? &quot;no bars — track the symbol in the data feed first&quot; };
+  }
+
+  const sessions = groupRthSessions(feed.bars);
+  const days = [...sessions.keys()].sort();
+  const todayBars = sessions.get(days[days.length - 1]) ?? [];
+  const prior = days.length &gt; 1 ? sessions.get(days[days.length - 2])! : null;
+  const priorDay = prior
+    ? { high: Math.max(...prior.map((b) =&gt; b.h)), low: Math.min(...prior.map((b) =&gt; b.l)), close: prior[prior.length - 1].c }
+    : null;
+
+  const events: MachineEvent[] = [];
+  const proposal = mon.machine.onBar({ session: todayBars, priorDay });
+  mon.lastEvents = mon.machine.getEvents().slice(-50);
+  events.push(...mon.machine.getEvents().slice(-3));
+
+  let ticket: PublicTicket | null = null;
+  let detail = `state ${mon.machine.state} · timer ${mon.machine.timerCount}`;
+
+  if (proposal) {
+    const day = etDay(proposal.t);
+    if (mon.lastProposalDay === day) {
+      detail = &quot;proposal suppressed — already proposed for this symbol today (OCO per-day rule)&quot;;
+    } else {
+      mon.lastProposalDay = day;
+      const { config } = await loadConfig(mon.strategyId);
+      const size = sizePosition({
+        accountEquity: PAPER_EQUITY,
+        entry: proposal.entry,
+        stop: proposal.stop,
+        maxRiskPct: config.sizing.max_risk_pct,
+        maxPositionPct: config.sizing.max_position_pct,
+      });
+      if (size.qty &lt;= 0) {
+        detail = &quot;proposal blocked by risk engine — size resolved to zero&quot;;
+      } else {
+        const result = await proposeTicket(userId, {
+          strategy: proposal.strategyId.toUpperCase().replace(/[^A-Z]/g, &quot;&quot;).slice(0, 6) || &quot;ENGINE&quot;,
+          broker: &quot;PAPER&quot;,
+          symbol: sym,
+          side: &quot;BUY&quot;,
+          quantity: size.qty,
+          orderType: &quot;STP&quot;,
+          stopPrice: proposal.entry,
+          tif: &quot;DAY&quot;,
+          entry: proposal.entry,
+          stop: proposal.stop,
+          target: proposal.targets[0]?.price,
+          origin: &quot;AUTONOMOUS&quot;,
+        });
+        ticket = result.ticket;
+        detail = `CONFIRMED → ticket ${result.ticket.ticketId} staged (${size.qty} sh, risk $${size.dollarRisk}, capped by ${size.cappedBy}) — awaiting CONFIRM ORDER ${result.ticket.ticketId}`;
+      }
+    }
+  }
+
+  return { symbol: sym, state: mon.machine.state, timerCount: mon.machine.timerCount, proposal, ticket, detail };
+}
+
+/** Evaluate every active monitor (call after data-feed refresh ticks). */
+export async function evaluateAll(): Promise&lt;number&gt; {
+  let n = 0;
+  for (const m of [...monitors.values()]) {
+    await evaluateMonitor(m.userId, m.symbol).catch(() =&gt; undefined);
+    n += 1;
+  }
+  return n;
+}
+</pre>
+</section>
+<section class="chapter" id="appM">
+<div class="codehead"><span class="capptitle">Appendix M — api/engine-router.ts</span><br><span class="cdesc">Engine tRPC router — triggers / configs / backtest / simulate / scan / monitor lifecycle / evaluate. — NEW FILE</span></div>
+<pre>import { z } from &quot;zod&quot;;
+import { authedQuery, createRouter } from &quot;./middleware&quot;;
+import { TRIGGERS } from &quot;./engine/triggers&quot;;
+import { BUILTIN_CONFIGS, loadConfig } from &quot;./engine/config&quot;;
+import { runBacktest } from &quot;./engine/backtest&quot;;
+import { simulateVariants } from &quot;./engine/simulator&quot;;
+import { scanFeeds } from &quot;./engine/scanner&quot;;
+import { evaluateMonitor, listMonitors, startMonitor, stopMonitor } from &quot;./engine/monitor&quot;;
+import { marketDataService } from &quot;./marketdata/service&quot;;
+import { fetchMinuteBars } from &quot;./marketdata/ibkr-data&quot;;
+
+/**
+ * ENGINE API — modules 1–6 of the autonomous strategy engine.
+ *
+ * Trigger library, config library (governance-clamped), backtester,
+ * what-if simulator, scanner, and the live monitor that wires CONFIRMED
+ * setups into the existing ticket confirmation gate. Phase 1: no
+ * auto-execution — every proposal waits for CONFIRM ORDER [TICKET_ID].
+ */
+
+const strategyInput = z.object({
+  symbol: z.string().min(1).max(12),
+  strategyId: z.string().min(1).max(64),
+});
+
+/** Fetch bars for analysis: prefer the tracked feed, else pull fresh from IBKR. */
+async function barsFor(symbol: string, period: string) {
+  const feed = marketDataService.get(symbol);
+  if (feed &amp;&amp; feed.bars.length &gt;= 100) return feed.bars;
+  const result = await fetchMinuteBars(symbol, period);
+  return result.bars;
+}
+
+export const engineRouter = createRouter({
+  /** Trigger library catalog (module 1). */
+  triggers: authedQuery.query(() =&gt;
+    Object.entries(TRIGGERS).map(([name, t]) =&gt; ({ name, description: t.description, defaults: t.defaults })),
+  ),
+
+  /** Strategy config library (minimum-disclosure summary). */
+  configs: authedQuery.query(() =&gt;
+    BUILTIN_CONFIGS.map((c) =&gt; ({
+      strategyId: c.strategy_id,
+      label: c.label,
+      version: c.version,
+      variants: c.entry_variants.map((v) =&gt; ({ id: v.id, trigger: v.trigger_type, priority: v.priority })),
+      riskPct: c.sizing.max_risk_pct,
+      positionCapPct: c.sizing.max_position_pct,
+    })),
+  ),
+
+  /** Backtest a config on a symbol&#x27;s recent 1-min history (module 3). */
+  backtest: authedQuery
+    .input(strategyInput.extend({ period: z.enum([&quot;2d&quot;, &quot;1w&quot;, &quot;2w&quot;, &quot;1m&quot;]).default(&quot;1w&quot;) }))
+    .mutation(async ({ input }) =&gt; {
+      const { config, clamps, governanceVersion } = await loadConfig(input.strategyId);
+      const bars = await barsFor(input.symbol, input.period);
+      if (bars.length &lt; 200) throw new Error(`Not enough bars for ${input.symbol.toUpperCase()} (${bars.length}) — check the data feed`);
+      const report = runBacktest({ config, symbol: input.symbol.toUpperCase(), bars });
+      return { ...report, events: report.events.slice(-30), governanceVersion, clamps };
+    }),
+
+  /** What-if simulator: rank entry variants by expectancy (module 4). */
+  simulate: authedQuery
+    .input(strategyInput.extend({ period: z.enum([&quot;2d&quot;, &quot;1w&quot;, &quot;2w&quot;, &quot;1m&quot;]).default(&quot;1w&quot;) }))
+    .mutation(async ({ input }) =&gt; {
+      const { config, clamps, governanceVersion } = await loadConfig(input.strategyId);
+      const bars = await barsFor(input.symbol, input.period);
+      if (bars.length &lt; 200) throw new Error(`Not enough bars for ${input.symbol.toUpperCase()} (${bars.length})`);
+      const report = simulateVariants({ config, symbol: input.symbol.toUpperCase(), bars });
+      return { ...report, governanceVersion, clamps };
+    }),
+
+  /** Scan tracked feeds for candidates (module 5). */
+  scan: authedQuery.mutation(async () =&gt; scanFeeds(marketDataService.list())),
+
+  /** Start live monitoring: symbol × config → confirmation-gated proposals (module 6). */
+  monitorStart: authedQuery.input(strategyInput).mutation(async ({ ctx, input }) =&gt; {
+    await marketDataService.track(input.symbol); // ensure the feed exists
+    return startMonitor(ctx.user.id, input.symbol, input.strategyId);
+  }),
+
+  monitorStop: authedQuery.input(z.object({ symbol: z.string().min(1).max(12) })).mutation(async ({ ctx, input }) =&gt; ({
+    stopped: stopMonitor(ctx.user.id, input.symbol),
+  })),
+
+  monitors: authedQuery.query(async ({ ctx }) =&gt; listMonitors(ctx.user.id)),
+
+  /** Evaluate a monitored symbol against its freshest bars right now. */
+  evaluate: authedQuery.input(z.object({ symbol: z.string().min(1).max(12) })).mutation(async ({ ctx, input }) =&gt; {
+    await marketDataService.refresh(input.symbol).catch(() =&gt; undefined);
+    return evaluateMonitor(ctx.user.id, input.symbol);
+  }),
+});
+</pre>
+</section>
+<section class="chapter" id="appN">
+<div class="codehead"><span class="capptitle">Appendix N — src/components/DataFeedPanel.tsx</span><br><span class="cdesc">Live Data Feed panel (React) — gateway status, watchlist tracking, per-symbol indicators. — NEW FILE</span></div>
+<pre>import { useState } from &#x27;react&#x27;;
+import { Activity, Plus, RefreshCw, Satellite, Trash2 } from &#x27;lucide-react&#x27;;
+import { trpc } from &#x27;@/providers/trpc&#x27;;
+import { cn } from &#x27;@/lib/utils&#x27;;
+
+/**
+ * LIVE DATA FEED PANEL — module 0 of the strategy engine (&quot;Eyes&quot;).
+ *
+ * Shows the IBKR gateway connection, market-hours state, the 60-second
+ * refresh loop, and per-symbol indicators (session VWAP, RSI-14, session
+ * high/low, prior-day levels). Errors are displayed verbatim — a down or
+ * unauthenticated gateway is visible here, never hidden.
+ */
+export default function DataFeedPanel() {
+  const utils = trpc.useUtils();
+  const [symbol, setSymbol] = useState(&#x27;&#x27;);
+  const { data: status } = trpc.marketData.status.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: symbols } = trpc.marketData.list.useQuery(undefined, { refetchInterval: 15000 });
+
+  const trackMut = trpc.marketData.track.useMutation({
+    onSettled: () =&gt; {
+      void utils.marketData.status.invalidate();
+      void utils.marketData.list.invalidate();
+    },
+  });
+  const untrackMut = trpc.marketData.untrack.useMutation({
+    onSettled: () =&gt; {
+      void utils.marketData.status.invalidate();
+      void utils.marketData.list.invalidate();
+    },
+  });
+  const refreshMut = trpc.marketData.refresh.useMutation({
+    onSettled: () =&gt; {
+      void utils.marketData.status.invalidate();
+      void utils.marketData.list.invalidate();
+    },
+  });
+
+  const submit = () =&gt; {
+    const s = symbol.trim().toUpperCase();
+    if (!s) return;
+    trackMut.mutate({ symbol: s });
+    setSymbol(&#x27;&#x27;);
+  };
+
+  const gatewayTone = status?.gatewayOk ? &#x27;text-emerald-600&#x27; : &#x27;text-rose-600&#x27;;
+
+  return (
+    &lt;section className=&quot;glass rounded-2xl p-6&quot;&gt;
+      &lt;div className=&quot;mb-4 flex flex-wrap items-center justify-between gap-3&quot;&gt;
+        &lt;div className=&quot;flex items-start gap-3&quot;&gt;
+          &lt;div className=&quot;grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-royal-500 to-teal-500 text-white&quot;&gt;
+            &lt;Satellite className=&quot;h-4.5 w-4.5&quot; /&gt;
+          &lt;/div&gt;
+          &lt;div&gt;
+            &lt;h3 className=&quot;text-sm font-bold text-slate-900&quot;&gt;Live data feed — IBKR (module 0 · Eyes)&lt;/h3&gt;
+            &lt;p className=&quot;text-xs text-slate-500&quot;&gt;
+              1-minute bars · session VWAP · RSI(14) · prior-day &amp; session levels · refreshes every 60s during market hours
+            &lt;/p&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;flex items-center gap-2 text-[11px] font-semibold&quot;&gt;
+          &lt;span className={cn(&#x27;rounded-full px-2.5 py-1&#x27;, status?.marketOpen ? &#x27;bg-emerald-50 text-emerald-700&#x27; : &#x27;bg-slate-100 text-slate-500&#x27;)}&gt;
+            {status?.marketOpen ? &#x27;MARKET OPEN&#x27; : &#x27;MARKET CLOSED&#x27;}
+          &lt;/span&gt;
+          &lt;span className={cn(&#x27;rounded-full px-2.5 py-1&#x27;, status?.loopRunning ? &#x27;bg-sky-50 text-sky-700&#x27; : &#x27;bg-slate-100 text-slate-500&#x27;)}&gt;
+            {status?.loopRunning ? `LOOP ${status.refreshIntervalSeconds}s` : &#x27;LOOP OFF&#x27;}
+          &lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;p className={cn(&#x27;mb-4 text-[11px] font-medium&#x27;, gatewayTone)}&gt;
+        Gateway: {status?.gatewayDetail ?? &#x27;checking…&#x27;}
+      &lt;/p&gt;
+
+      {/* watchlist input */}
+      &lt;div className=&quot;mb-4 flex gap-2&quot;&gt;
+        &lt;input
+          value={symbol}
+          onChange={(e) =&gt; setSymbol(e.target.value.toUpperCase())}
+          onKeyDown={(e) =&gt; e.key === &#x27;Enter&#x27; &amp;&amp; submit()}
+          placeholder=&quot;Add symbol to watchlist (e.g. SPY)&quot;
+          className=&quot;h-9 w-full max-w-xs rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-semibold text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-sky-400&quot;
+        /&gt;
+        &lt;button
+          onClick={submit}
+          disabled={trackMut.isPending || !symbol.trim()}
+          className=&quot;inline-flex h-9 items-center gap-1.5 rounded-lg bg-gradient-to-r from-royal-500 to-teal-500 px-3.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50&quot;
+        &gt;
+          &lt;Plus className=&quot;h-3.5 w-3.5&quot; /&gt; Track
+        &lt;/button&gt;
+      &lt;/div&gt;
+
+      {/* tracked symbols */}
+      {(!symbols || symbols.length === 0) &amp;&amp; (
+        &lt;p className=&quot;rounded-xl border border-dashed border-slate-200 bg-white/50 p-4 text-center text-xs text-slate-500&quot;&gt;
+          No symbols tracked yet. Add a symbol above — the feed pulls 1-minute bars and computes indicators immediately,
+          then keeps them fresh every 60 seconds while the market is open.
+        &lt;/p&gt;
+      )}
+      &lt;div className=&quot;grid gap-3 md:grid-cols-2 xl:grid-cols-3&quot;&gt;
+        {(symbols ?? []).map((s) =&gt; (
+          &lt;div key={s.symbol} className=&quot;rounded-xl border border-slate-200/70 bg-white/60 p-4&quot;&gt;
+            &lt;div className=&quot;mb-2 flex items-center justify-between&quot;&gt;
+              &lt;span className=&quot;text-sm font-extrabold tracking-wide text-slate-900&quot;&gt;{s.symbol}&lt;/span&gt;
+              &lt;div className=&quot;flex items-center gap-1&quot;&gt;
+                &lt;button
+                  onClick={() =&gt; refreshMut.mutate({ symbol: s.symbol })}
+                  className=&quot;rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700&quot;
+                  title=&quot;Refresh now&quot;
+                &gt;
+                  &lt;RefreshCw className=&quot;h-3.5 w-3.5&quot; /&gt;
+                &lt;/button&gt;
+                &lt;button
+                  onClick={() =&gt; untrackMut.mutate({ symbol: s.symbol })}
+                  className=&quot;rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600&quot;
+                  title=&quot;Stop tracking&quot;
+                &gt;
+                  &lt;Trash2 className=&quot;h-3.5 w-3.5&quot; /&gt;
+                &lt;/button&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+            {s.error ? (
+              &lt;p className=&quot;text-[11px] font-medium leading-relaxed text-rose-600&quot;&gt;{s.error}&lt;/p&gt;
+            ) : (
+              &lt;div className=&quot;grid grid-cols-3 gap-x-3 gap-y-1.5 text-[11px]&quot;&gt;
+                &lt;Metric label=&quot;Last&quot; value={fmt(s.last)} strong /&gt;
+                &lt;Metric label=&quot;VWAP&quot; value={fmt(s.vwap)} /&gt;
+                &lt;Metric label=&quot;RSI-14&quot; value={s.rsi14 !== null ? s.rsi14.toFixed(1) : &#x27;—&#x27;} /&gt;
+                &lt;Metric label=&quot;Bars&quot; value={String(s.barCount)} /&gt;
+                &lt;Metric label=&quot;Delay&quot; value={s.delaySeconds &gt; 0 ? `${s.delaySeconds}s` : &#x27;RT&#x27;} /&gt;
+                &lt;Metric
+                  label=&quot;Latency&quot;
+                  value={s.latencyMs !== null ? `${s.latencyMs}ms` : &#x27;—&#x27;}
+                /&gt;
+              &lt;/div&gt;
+            )}
+            {s.lastRefresh &amp;&amp; (
+              &lt;p className=&quot;mt-2 flex items-center gap-1 text-[10px] text-slate-400&quot;&gt;
+                &lt;Activity className=&quot;h-3 w-3&quot; /&gt; refreshed {new Date(s.lastRefresh).toLocaleTimeString()}
+              &lt;/p&gt;
+            )}
+          &lt;/div&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/section&gt;
+  );
+}
+
+function Metric({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    &lt;div&gt;
+      &lt;p className=&quot;text-[9px] font-bold uppercase tracking-wider text-slate-400&quot;&gt;{label}&lt;/p&gt;
+      &lt;p className={cn(&#x27;font-mono font-semibold&#x27;, strong ? &#x27;text-slate-900&#x27; : &#x27;text-slate-600&#x27;)}&gt;{value}&lt;/p&gt;
+    &lt;/div&gt;
+  );
+}
+
+function fmt(n: number | null): string {
+  return n === null ? &#x27;—&#x27; : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+</pre>
+</section>
+<section class="chapter" id="appO">
+<div class="codehead"><span class="capptitle">Appendix O — src/components/EnginePanel.tsx</span><br><span class="cdesc">Strategy Engine panel (React) — backtest, simulate, scan, monitor cards. — NEW FILE</span></div>
+<pre>import { useState } from &#x27;react&#x27;;
+import { BrainCircuit, FlaskConical, Play, Radar, Square, Zap } from &#x27;lucide-react&#x27;;
+import { trpc } from &#x27;@/providers/trpc&#x27;;
+import { cn } from &#x27;@/lib/utils&#x27;;
+
+/**
+ * ENGINE PANEL — modules 1–6 of the autonomous strategy engine.
+ * Backtester, what-if simulator, scanner, and live monitors that wire
+ * CONFIRMED setups into the ticket confirmation gate (Phase 1: no
+ * auto-execution — every proposal waits for CONFIRM ORDER [TICKET_ID]).
+ */
+export default function EnginePanel() {
+  const utils = trpc.useUtils();
+  const [symbol, setSymbol] = useState(&#x27;&#x27;);
+  const [strategyId, setStrategyId] = useState(&#x27;&#x27;);
+
+  const { data: configs } = trpc.engine.configs.useQuery();
+  const { data: monitors } = trpc.engine.monitors.useQuery(undefined, { refetchInterval: 10000 });
+
+  const backtestMut = trpc.engine.backtest.useMutation();
+  const simulateMut = trpc.engine.simulate.useMutation();
+  const scanMut = trpc.engine.scan.useMutation();
+  const startMut = trpc.engine.monitorStart.useMutation({ onSettled: () =&gt; void utils.engine.monitors.invalidate() });
+  const stopMut = trpc.engine.monitorStop.useMutation({ onSettled: () =&gt; void utils.engine.monitors.invalidate() });
+  const evalMut = trpc.engine.evaluate.useMutation({
+    onSettled: () =&gt; {
+      void utils.engine.monitors.invalidate();
+      void utils.execution.tickets.invalidate();
+    },
+  });
+
+  const cfg = strategyId || configs?.[0]?.strategyId || &#x27;&#x27;;
+  const sym = symbol.trim().toUpperCase();
+  const ready = sym.length &gt; 0 &amp;&amp; cfg.length &gt; 0;
+
+  const bt = backtestMut.data;
+  const sim = simulateMut.data;
+  const scan = scanMut.data;
+
+  return (
+    &lt;section className=&quot;glass rounded-2xl p-6&quot;&gt;
+      &lt;div className=&quot;mb-5 flex items-start gap-3&quot;&gt;
+        &lt;div className=&quot;grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-royal-500 to-teal-500 text-white&quot;&gt;
+          &lt;BrainCircuit className=&quot;h-4.5 w-4.5&quot; /&gt;
+        &lt;/div&gt;
+        &lt;div&gt;
+          &lt;h3 className=&quot;text-sm font-bold text-slate-900&quot;&gt;Strategy engine — modules 1–6 (Brain · Hands)&lt;/h3&gt;
+          &lt;p className=&quot;text-xs text-slate-500&quot;&gt;
+            Trigger library · state machine · backtester · simulator · scanner · confirmation-gated execution. Configs are governance-clamped.
+          &lt;/p&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      {/* controls */}
+      &lt;div className=&quot;mb-5 flex flex-wrap items-center gap-2&quot;&gt;
+        &lt;input
+          value={symbol}
+          onChange={(e) =&gt; setSymbol(e.target.value.toUpperCase())}
+          placeholder=&quot;Symbol&quot;
+          className=&quot;h-9 w-28 rounded-lg border border-slate-200 bg-white/70 px-3 text-sm font-semibold outline-none placeholder:font-normal focus:border-sky-400&quot;
+        /&gt;
+        &lt;select
+          value={cfg}
+          onChange={(e) =&gt; setStrategyId(e.target.value)}
+          className=&quot;h-9 rounded-lg border border-slate-200 bg-white/70 px-3 text-xs font-semibold text-slate-700 outline-none focus:border-sky-400&quot;
+        &gt;
+          {(configs ?? []).map((c) =&gt; (
+            &lt;option key={c.strategyId} value={c.strategyId}&gt;{c.label} (risk {c.riskPct}%)&lt;/option&gt;
+          ))}
+        &lt;/select&gt;
+        &lt;ActionBtn onClick={() =&gt; backtestMut.mutate({ symbol: sym, strategyId: cfg })} disabled={!ready || backtestMut.isPending} icon={&lt;FlaskConical className=&quot;h-3.5 w-3.5&quot; /&gt;} label={backtestMut.isPending ? &#x27;Backtesting…&#x27; : &#x27;Backtest&#x27;} /&gt;
+        &lt;ActionBtn onClick={() =&gt; simulateMut.mutate({ symbol: sym, strategyId: cfg })} disabled={!ready || simulateMut.isPending} icon={&lt;Zap className=&quot;h-3.5 w-3.5&quot; /&gt;} label={simulateMut.isPending ? &#x27;Simulating…&#x27; : &#x27;Simulate variants&#x27;} /&gt;
+        &lt;ActionBtn onClick={() =&gt; scanMut.mutate()} disabled={scanMut.isPending} icon={&lt;Radar className=&quot;h-3.5 w-3.5&quot; /&gt;} label={scanMut.isPending ? &#x27;Scanning…&#x27; : &#x27;Scan watchlist&#x27;} /&gt;
+        &lt;ActionBtn onClick={() =&gt; startMut.mutate({ symbol: sym, strategyId: cfg })} disabled={!ready || startMut.isPending} icon={&lt;Play className=&quot;h-3.5 w-3.5&quot; /&gt;} label=&quot;Start monitor&quot; primary /&gt;
+      &lt;/div&gt;
+
+      {(backtestMut.error || simulateMut.error || startMut.error) &amp;&amp; (
+        &lt;p className=&quot;mb-4 rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700&quot;&gt;
+          {(backtestMut.error ?? simulateMut.error ?? startMut.error)?.message}
+        &lt;/p&gt;
+      )}
+
+      {/* backtest report */}
+      {bt &amp;&amp; (
+        &lt;div className=&quot;mb-5 rounded-xl border border-slate-200/70 bg-white/60 p-4&quot;&gt;
+          &lt;p className=&quot;mb-3 text-xs font-bold text-slate-800&quot;&gt;
+            Backtest — {bt.symbol} · {bt.days} sessions · governance {bt.governanceVersion}
+            {bt.clamps.length &gt; 0 &amp;&amp; &lt;span className=&quot;ml-2 font-medium text-amber-600&quot;&gt;({bt.clamps.length} clamp applied)&lt;/span&gt;}
+          &lt;/p&gt;
+          &lt;div className=&quot;mb-3 grid grid-cols-3 gap-3 sm:grid-cols-6&quot;&gt;
+            &lt;Stat label=&quot;Trades&quot; value={String(bt.totalTrades)} /&gt;
+            &lt;Stat label=&quot;Win rate&quot; value={bt.winRate !== null ? `${bt.winRate}%` : &#x27;—&#x27;} /&gt;
+            &lt;Stat label=&quot;Expectancy&quot; value={bt.expectancyR !== null ? `${bt.expectancyR}R` : &#x27;—&#x27;} /&gt;
+            &lt;Stat label=&quot;Profit factor&quot; value={bt.profitFactor !== null ? String(bt.profitFactor) : &#x27;—&#x27;} /&gt;
+            &lt;Stat label=&quot;Max DD&quot; value={`${bt.maxDrawdownR}R`} /&gt;
+            &lt;Stat label=&quot;No-trade days&quot; value={String(bt.noTradeDays)} /&gt;
+          &lt;/div&gt;
+          {bt.trades.length &gt; 0 &amp;&amp; (
+            &lt;table className=&quot;w-full text-left text-[11px]&quot;&gt;
+              &lt;thead&gt;
+                &lt;tr className=&quot;border-b border-slate-200 text-[9px] font-bold uppercase tracking-wider text-slate-400&quot;&gt;
+                  &lt;th className=&quot;py-1.5 pr-2&quot;&gt;Day&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;Var&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;Entry&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;Avg exit&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;Qty&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;R&lt;/th&gt;&lt;th className=&quot;pr-2&quot;&gt;P&amp;L&lt;/th&gt;&lt;th&gt;Exit&lt;/th&gt;
+                &lt;/tr&gt;
+              &lt;/thead&gt;
+              &lt;tbody&gt;
+                {bt.trades.slice(0, 8).map((t, i) =&gt; (
+                  &lt;tr key={i} className=&quot;border-b border-slate-100 font-mono text-slate-600&quot;&gt;
+                    &lt;td className=&quot;py-1.5 pr-2&quot;&gt;{t.day.slice(5)}&lt;/td&gt;
+                    &lt;td className=&quot;pr-2&quot;&gt;{t.variantId}&lt;/td&gt;
+                    &lt;td className=&quot;pr-2&quot;&gt;{t.entry.toFixed(2)}&lt;/td&gt;
+                    &lt;td className=&quot;pr-2&quot;&gt;{t.avgExit.toFixed(2)}&lt;/td&gt;
+                    &lt;td className=&quot;pr-2&quot;&gt;{t.qty}&lt;/td&gt;
+                    &lt;td className={cn(&#x27;pr-2 font-bold&#x27;, t.r &gt; 0 ? &#x27;text-emerald-600&#x27; : &#x27;text-rose-600&#x27;)}&gt;{t.r}R&lt;/td&gt;
+                    &lt;td className={cn(&#x27;pr-2 font-bold&#x27;, t.pnl &gt; 0 ? &#x27;text-emerald-600&#x27; : &#x27;text-rose-600&#x27;)}&gt;${t.pnl}&lt;/td&gt;
+                    &lt;td&gt;{t.exitReason}&lt;/td&gt;
+                  &lt;/tr&gt;
+                ))}
+              &lt;/tbody&gt;
+            &lt;/table&gt;
+          )}
+        &lt;/div&gt;
+      )}
+
+      {/* simulation ladder */}
+      {sim &amp;&amp; (
+        &lt;div className=&quot;mb-5 rounded-xl border border-slate-200/70 bg-white/60 p-4&quot;&gt;
+          &lt;p className=&quot;mb-2 text-xs font-bold text-slate-800&quot;&gt;What-if simulator — variant ladder&lt;/p&gt;
+          &lt;div className=&quot;mb-3 grid gap-2 sm:grid-cols-3&quot;&gt;
+            {sim.variants.map((v) =&gt; (
+              &lt;div key={v.variantId} className={cn(&#x27;rounded-lg border p-3 text-[11px]&#x27;, v.kept ? &#x27;border-emerald-200 bg-emerald-50/50&#x27; : &#x27;border-slate-200 bg-slate-50 opacity-60&#x27;)}&gt;
+                &lt;p className=&quot;font-bold text-slate-800&quot;&gt;Variant {v.variantId} · {v.triggerType}&lt;/p&gt;
+                &lt;p className=&quot;font-mono text-slate-600&quot;&gt;{v.trades} trades · exp {v.expectancyR ?? &#x27;—&#x27;}R · WR {v.winRate ?? &#x27;—&#x27;}%&lt;/p&gt;
+                &lt;p className={cn(&#x27;mt-1 font-semibold&#x27;, v.kept ? &#x27;text-emerald-700&#x27; : &#x27;text-slate-500&#x27;)}&gt;{v.kept ? &#x27;KEPT&#x27; : `DROPPED — ${v.dropReason}`}&lt;/p&gt;
+              &lt;/div&gt;
+            ))}
+          &lt;/div&gt;
+          &lt;p className=&quot;text-[11px] font-medium text-slate-600&quot;&gt;{sim.recommendation}&lt;/p&gt;
+        &lt;/div&gt;
+      )}
+
+      {/* scanner candidates */}
+      {scan &amp;&amp; (
+        &lt;div className=&quot;mb-5 rounded-xl border border-slate-200/70 bg-white/60 p-4&quot;&gt;
+          &lt;p className=&quot;mb-2 text-xs font-bold text-slate-800&quot;&gt;Scanner — {scan.length} candidate(s) from tracked feeds&lt;/p&gt;
+          {scan.length === 0 &amp;&amp; &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;Nothing met the gap/RVOL thresholds. Track more symbols or wait for market hours.&lt;/p&gt;}
+          &lt;div className=&quot;grid gap-2 sm:grid-cols-2&quot;&gt;
+            {scan.map((c) =&gt; (
+              &lt;div key={c.symbol} className=&quot;flex items-center justify-between rounded-lg border border-slate-200 bg-white/70 p-3 text-[11px]&quot;&gt;
+                &lt;div&gt;
+                  &lt;p className=&quot;text-xs font-extrabold text-slate-900&quot;&gt;{c.symbol} &lt;span className=&quot;font-mono font-medium text-slate-500&quot;&gt;${c.last?.toFixed(2)}&lt;/span&gt;&lt;/p&gt;
+                  &lt;p className=&quot;text-slate-500&quot;&gt;gap {c.gapPct ?? &#x27;—&#x27;}% · RVOL {c.relativeVolume ?? &#x27;—&#x27;} · vs VWAP {c.vsVwapPct ?? &#x27;—&#x27;}%&lt;/p&gt;
+                  &lt;p className=&quot;font-semibold text-sky-700&quot;&gt;{c.suggestedLabel}&lt;/p&gt;
+                &lt;/div&gt;
+                &lt;button
+                  onClick={() =&gt; startMut.mutate({ symbol: c.symbol, strategyId: c.suggestedConfig })}
+                  className=&quot;rounded-lg bg-gradient-to-r from-royal-500 to-teal-500 px-2.5 py-1.5 text-[10px] font-bold text-white hover:opacity-90&quot;
+                &gt;
+                  Monitor
+                &lt;/button&gt;
+              &lt;/div&gt;
+            ))}
+          &lt;/div&gt;
+        &lt;/div&gt;
+      )}
+
+      {/* active monitors */}
+      &lt;div className=&quot;rounded-xl border border-slate-200/70 bg-white/60 p-4&quot;&gt;
+        &lt;p className=&quot;mb-2 text-xs font-bold text-slate-800&quot;&gt;Live monitors — Phase 1 (confirmation-gated, no auto-execution)&lt;/p&gt;
+        {(!monitors || monitors.length === 0) &amp;&amp; (
+          &lt;p className=&quot;text-[11px] text-slate-500&quot;&gt;No monitors running. Start one above — CONFIRMED setups arrive as tickets requiring CONFIRM ORDER [TICKET_ID].&lt;/p&gt;
+        )}
+        &lt;div className=&quot;grid gap-2 sm:grid-cols-2&quot;&gt;
+          {(monitors ?? []).map((m) =&gt; (
+            &lt;div key={m.symbol} className=&quot;rounded-lg border border-slate-200 bg-white/70 p-3&quot;&gt;
+              &lt;div className=&quot;flex items-center justify-between&quot;&gt;
+                &lt;p className=&quot;text-xs font-extrabold text-slate-900&quot;&gt;{m.symbol}&lt;/p&gt;
+                &lt;span className={cn(&#x27;rounded-full px-2 py-0.5 text-[9px] font-bold&#x27;,
+                  m.state === &#x27;CONFIRMED&#x27; || m.state === &#x27;IN_POSITION&#x27; ? &#x27;bg-emerald-100 text-emerald-700&#x27;
+                  : m.state === &#x27;WATCHING&#x27; ? &#x27;bg-sky-100 text-sky-700&#x27;
+                  : &#x27;bg-slate-100 text-slate-500&#x27;)}&gt;
+                  {m.state}{m.state === &#x27;WATCHING&#x27; ? ` · T${m.timerCount}` : &#x27;&#x27;}
+                &lt;/span&gt;
+              &lt;/div&gt;
+              &lt;p className=&quot;mt-0.5 text-[10px] text-slate-500&quot;&gt;{m.strategyId}&lt;/p&gt;
+              {evalMut.data &amp;&amp; evalMut.data.symbol === m.symbol &amp;&amp; (
+                &lt;p className=&quot;mt-1 text-[10px] font-medium text-slate-600&quot;&gt;{evalMut.data.detail}&lt;/p&gt;
+              )}
+              &lt;div className=&quot;mt-2 flex gap-1.5&quot;&gt;
+                &lt;button onClick={() =&gt; evalMut.mutate({ symbol: m.symbol })} disabled={evalMut.isPending}
+                  className=&quot;rounded-md bg-slate-800 px-2 py-1 text-[10px] font-bold text-white hover:bg-slate-700 disabled:opacity-50&quot;&gt;
+                  Evaluate now
+                &lt;/button&gt;
+                &lt;button onClick={() =&gt; stopMut.mutate({ symbol: m.symbol })}
+                  className=&quot;inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-100&quot;&gt;
+                  &lt;Square className=&quot;h-2.5 w-2.5&quot; /&gt; Stop
+                &lt;/button&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          ))}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/section&gt;
+  );
+}
+
+function ActionBtn({ onClick, disabled, icon, label, primary }: { onClick: () =&gt; void; disabled?: boolean; icon: React.ReactNode; label: string; primary?: boolean }) {
+  return (
+    &lt;button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        &#x27;inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-bold transition disabled:opacity-50&#x27;,
+        primary ? &#x27;bg-gradient-to-r from-royal-500 to-teal-500 text-white hover:opacity-90&#x27; : &#x27;border border-slate-200 bg-white/70 text-slate-700 hover:border-sky-300&#x27;,
+      )}
+    &gt;
+      {icon} {label}
+    &lt;/button&gt;
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    &lt;div className=&quot;rounded-lg bg-slate-50 p-2.5&quot;&gt;
+      &lt;p className=&quot;text-[9px] font-bold uppercase tracking-wider text-slate-400&quot;&gt;{label}&lt;/p&gt;
+      &lt;p className=&quot;font-mono text-sm font-bold text-slate-900&quot;&gt;{value}&lt;/p&gt;
+    &lt;/div&gt;
+  );
+}
+</pre>
+</section>
+<section class="chapter" id="appP">
+<div class="codehead"><span class="capptitle">Appendix P — edits to existing files</span><br><span class="cdesc">api/router.ts: add the two imports and the two router keys; leave every existing router untouched.</span></div>
+<pre>import { marketDataRouter } from &quot;./marketdata-router&quot;;   // NEW
+import { engineRouter } from &quot;./engine-router&quot;;             // NEW
+
+export const appRouter = createRouter({
+  // ...existing routers...
+  execution: executionRouter,
+  marketData: marketDataRouter,   // NEW
+  engine: engineRouter,           // NEW
+});</pre>
+<div class="codehead2"><span class="cpath">src/pages/app/Autonomous.tsx — EDIT (mount the two panels)</span><br><span class="cdesc">Add the imports and render both panels directly after the RunConsole block in the page stack.</span></div>
+<pre>import DataFeedPanel from &#x27;@/components/DataFeedPanel&#x27;;   // NEW
+import EnginePanel from &#x27;@/components/EnginePanel&#x27;;         // NEW
+
+// inside the page stack, directly after the RunConsole block:
+      &lt;div className=&quot;z-30 lg:sticky lg:top-[4.75rem]&quot;&gt;
+        &lt;RunConsole mode={autonomyMode} /&gt;
+      &lt;/div&gt;
+
+      &lt;DataFeedPanel /&gt;   {/* NEW — module 0 live data feed */}
+      &lt;EnginePanel /&gt;     {/* NEW — modules 1-6 strategy engine */}</pre>
+</section>
+</body></html>

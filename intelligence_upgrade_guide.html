@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Requi Trading — Intelligence &amp; Self-Diagnosis Upgrade — Development Guide</title>
+<style>
+@page { size: A4; margin: 2.2cm 2cm; @top-center { content: string(doctitle); font-size: 8pt; color: #666; } @bottom-center { content: counter(page); font-size: 9pt; color: #666; } }
+@page :first { margin: 0; @top-center { content: none; } @bottom-center { content: none; } }
+@page toc { @top-center { content: none; } }
+body { margin: 0; padding: 0; font-family: Georgia, 'Noto Serif SC', serif; font-size: 10.5pt; color: #333; line-height: 1.55; string-set: doctitle ""; }
+h1 { string-set: doctitle content(); font-size: 17pt; color: #14213d; border-bottom: 2px solid #14213d; padding-bottom: 6px; margin: 0 0 14px 0; page-break-after: avoid; }
+h2 { font-size: 13pt; color: #14213d; margin: 18px 0 8px 0; page-break-after: avoid; }
+h3 { font-size: 11.5pt; color: #1f3a5f; margin: 14px 0 6px 0; page-break-after: avoid; }
+p { margin: 0 0 9px 0; text-align: justify; text-align-last: left; }
+ul, ol { margin: 0 0 10px 0; padding-left: 22px; }
+li { margin-bottom: 4px; }
+.part { page-break-before: always; }
+code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 9pt; background: #f0f0f0; padding: 1px 4px; }
+pre { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 7.6pt; line-height: 1.42; background: #f5f5f5; border: 1px solid #ddd; padding: 10px 12px; overflow: visible; white-space: pre-wrap; word-break: break-word; margin: 0 0 14px 0; }
+pre code { background: none; padding: 0; font-size: 7.6pt; }
+.codehead { page-break-inside: avoid; page-break-after: avoid; margin-top: 16px; }
+.codetitle { font-weight: bold; font-size: 10.5pt; color: #14213d; border-left: 3px solid #0e7c7b; padding-left: 8px; margin-bottom: 2px; }
+.codedesc { font-size: 9pt; color: #555; padding-left: 11px; margin-bottom: 5px; }
+table { border-collapse: collapse; width: 100%; max-width: 100%; margin: 0 0 14px 0; font-size: 9.3pt; }
+thead { display: table-header-group; }
+th { border-top: 1.5px solid #333; border-bottom: 1px solid #333; text-align: left; padding: 5px 8px; font-weight: bold; }
+td { border-bottom: 0.5px solid #ccc; padding: 5px 8px; vertical-align: top; }
+tbody tr:last-child td { border-bottom: 1.5px solid #333; }
+tr { page-break-inside: avoid; }
+.note { border-left: 3px solid #0e7c7b; background: #f4f9f9; padding: 8px 12px; margin: 0 0 12px 0; font-size: 9.6pt; }
+.warnbox { border-left: 3px solid #b3541e; background: #fdf6f0; padding: 8px 12px; margin: 0 0 12px 0; font-size: 9.6pt; }
+.apptitle { string-set: doctitle content(); font-size: 14pt; color: #14213d; border-bottom: 1.5px solid #0e7c7b; padding-bottom: 5px; margin: 20px 0 10px 0; page-break-after: avoid; }
+.cover { width: 210mm; height: 297mm; margin: 0; position: relative; overflow: hidden; page-break-after: always; background: #fafaf7; }
+.cover .grid-h { position: absolute; top: 0; bottom: 0; width: 1px; background: #e2e0da; }
+.cover .grid-v { position: absolute; left: 0; right: 0; height: 1px; background: #e2e0da; }
+.cover .corner { position: absolute; width: 26px; height: 26px; background: #14213d; }
+.cover .bar { position: absolute; background: #0e7c7b; }
+.cover-content { position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); text-align: left; width: 72%; }
+.cover-kicker { font-size: 10pt; letter-spacing: 3px; color: #0e7c7b; font-weight: bold; text-transform: uppercase; margin-bottom: 14px; }
+.cover-title { font-size: 27pt; font-weight: 700; color: #14213d; line-height: 1.2; margin: 0 0 10px 0; }
+.cover-sub { font-size: 12.5pt; color: #444; margin-bottom: 34px; }
+.cover-meta { font-size: 10pt; color: #333; line-height: 1.9; border-top: 2px solid #14213d; padding-top: 12px; }
+.cover-tag { position: absolute; bottom: 18mm; left: 14%; font-size: 8.5pt; color: #777; }
+.toc-page { page: toc; page-break-after: always; }
+.toc-title { font-size: 17pt; color: #14213d; border-bottom: 2px solid #14213d; padding-bottom: 6px; margin-bottom: 16px; }
+.toc a { text-decoration: none; color: #333; display: block; position: relative; }
+.toc .l1 { font-weight: bold; margin: 8px 0 3px 0; }
+.toc .l2 { margin: 2px 0 2px 16px; font-size: 9.6pt; }
+.toc a::after { content: target-counter(attr(href url), page); position: absolute; right: 0; color: #666; font-weight: normal; }
+.toc a::before { content: ""; position: absolute; right: 18px; left: 0; top: 0.85em; border-bottom: 1px dotted #bbb; z-index: -1; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="grid-h" style="left:14%"></div><div class="grid-h" style="left:86%"></div>
+  <div class="grid-v" style="top:12%"></div><div class="grid-v" style="top:88%"></div>
+  <div class="corner" style="top:12%;left:14%"></div>
+  <div class="corner" style="bottom:12%;right:14%;background:#0e7c7b"></div>
+  <div class="bar" style="top:12%;left:16%;width:70mm;height:4px"></div>
+  <div class="bar" style="bottom:12%;right:16%;width:46mm;height:4px;background:#14213d"></div>
+  <div class="cover-content">
+    <div class="cover-kicker">Requi Trading &middot; Development Guide</div>
+    <h1 class="cover-title" style="string-set:none">Intelligence &amp; Self-Diagnosis Upgrade</h1>
+    <div class="cover-sub">Conversation memory &middot; Learning loop &middot; GPT-5.6 &middot; System Check module with AI diagnostics</div>
+    <div class="cover-meta">
+      <b>Audience:</b> DevOps / backend engineer integrating this add-on<br>
+      <b>Scope:</b> what changed vs. the previous version, file placement, integration steps, full source<br>
+      <b>Platform:</b> React 19 + tRPC + Drizzle + MySQL &middot; Hono server &middot; autonomous strategy engine<br>
+      <b>Date:</b> August 2026
+    </div>
+  </div>
+  <div class="cover-tag">Confidential — internal engineering distribution only.</div>
+</div>
+
+
+<div class="toc-page">
+  <div class="toc-title">Contents</div>
+  <div class="toc">
+    <div class="l1"><a href="#sec1">1. What is new in this version</a></div>
+    <div class="l1"><a href="#sec2">2. Version comparison — before vs. now</a></div>
+    <div class="l1"><a href="#sec3">3. Architecture — how Intelligence talks to the other systems</a></div>
+    <div class="l2"><a href="#sec3-1">3.1 The four connections</a></div>
+    <div class="l2"><a href="#sec3-2">3.2 The learning feedback loop</a></div>
+    <div class="l2"><a href="#sec3-3">3.3 The System Check immune system</a></div>
+    <div class="l1"><a href="#sec4">4. File placement map</a></div>
+    <div class="l1"><a href="#sec5">5. Integration steps</a></div>
+    <div class="l1"><a href="#sec6">6. Module behavior</a></div>
+    <div class="l2"><a href="#sec6-1">6.1 Conversation memory</a></div>
+    <div class="l2"><a href="#sec6-2">6.2 Learning loop (the &ldquo;machine learning&rdquo; component)</a></div>
+    <div class="l2"><a href="#sec6-3">6.3 Model upgrade to GPT-5.6</a></div>
+    <div class="l2"><a href="#sec6-4">6.4 System Check module</a></div>
+    <div class="l1"><a href="#sec7">7. Operations — environment, schedule, failure modes</a></div>
+    <div class="l1"><a href="#sec8">8. Safety invariants (unchanged and enforced)</a></div>
+    <div class="l1"><a href="#app-a">Appendix A — api/intelligence/memory.ts (new, full)</a></div>
+    <div class="l1"><a href="#app-b">Appendix B — api/engine/learning.ts (new, full)</a></div>
+    <div class="l1"><a href="#app-c">Appendix C — api/intelligence/tools.ts (edits)</a></div>
+    <div class="l1"><a href="#app-d">Appendix D — api/intelligence-router.ts (edits)</a></div>
+    <div class="l1"><a href="#app-e">Appendix E — api/engine-router.ts (edits)</a></div>
+    <div class="l1"><a href="#app-f">Appendix F — api/systemcheck/checks.ts (new, full)</a></div>
+    <div class="l1"><a href="#app-g">Appendix G — api/systemcheck/service.ts (new, full)</a></div>
+    <div class="l1"><a href="#app-h">Appendix H — api/systemcheck-router.ts (new, full)</a></div>
+    <div class="l1"><a href="#app-i">Appendix I — api/router.ts + api/boot.ts (edits)</a></div>
+    <div class="l1"><a href="#app-j">Appendix J — db/schema.ts (additions)</a></div>
+    <div class="l1"><a href="#app-k">Appendix K — api/lib/ensure-schema.ts (additions)</a></div>
+    <div class="l1"><a href="#app-l">Appendix L — src/pages/app/owner/SystemCheck.tsx (new, full)</a></div>
+    <div class="l1"><a href="#app-m">Appendix M — src/App.tsx + AppLayout.tsx (edits)</a></div>
+  </div>
+</div>
+
+
+<div class="part" id="sec1"><h1>1. What is new in this version</h1>
+<p>This version adds four capabilities on top of the autonomous engine and the Intelligence tool-use runtime you already have. Everything funnels through the same constitutional confirmation gate — nothing in this package widens execution authority.</p>
+
+<h2>1.1 Conversation memory</h2>
+<p>The Intelligence chat was stateless: every message arrived with zero context. A new <code>chat_messages</code> table now persists each exchange, and every chat request loads the last 20 messages into the model. The assistant remembers names, open threads, and earlier decisions. Retention is bounded (400 rows per user, auto-pruned), failures degrade gracefully (a memory outage never breaks a chat), and the user can wipe their own history via a new endpoint.</p>
+
+<h2>1.2 Learning loop — the &ldquo;machine learning&rdquo; component</h2>
+<p>This is a deterministic learning layer, not neural-network training — the honest mechanism for a trading system. A new <code>trade_outcomes</code> table records every completed trade with its full decision context (strategy, variant, entry/exit, R-multiple, exit reason, auto-classified lesson). A diagnosis engine aggregates per-variant performance, classifies mistake patterns (stop-outs vs. stalls vs. fades), flags when live results diverge from backtest expectancy, and distills lessons. Those lessons are injected into every Intelligence conversation, so the AI advises from <i>our</i> logged outcomes — and a new <code>getLearningReport</code> tool lets the AI answer &ldquo;what keeps failing?&rdquo; from real data. Every backtest (UI or AI-initiated) now feeds the loop automatically.</p>
+
+<h2>1.3 Model upgrade to GPT-5.6</h2>
+<p>The default model moves from <code>gpt-4.1-mini</code> to <code>gpt-5.6</code> (OpenAI&rsquo;s current frontier generation, July 2026). It remains one env-var override (<code>OPENAI_MODEL</code>) — no code change needed to move between the Sol / Terra / Luna tiers.</p>
+
+<h2>1.4 System Check module with AI diagnostics</h2>
+<p>A self-check subsystem — the platform&rsquo;s immune system. Eleven real component probes (environment, database, governance, market data feed, engine configs, a signal-stack self-test that proves the trigger math fires, autonomous monitors, the ticket gate, a live LLM ping, memory, learning) run automatically <b>before market open (09:00 ET)</b> and <b>after close (16:15 ET)</b>, Mon–Fri, plus on demand. When anything is degraded, GPT-5.6 produces a structured diagnosis — what is broken, likely cause, exact fix steps, prevention, and growth suggestions. Reports persist to a new <code>system_check_reports</code> table, results push to the owner&rsquo;s in-app notification center, and a new owner console page shows live status, history, and the AI diagnosis.</p>
+<div class="warnbox"><b>Boundary, stated plainly:</b> the System Check module observes and advises. Its only automatic action is restarting the market-data refresh loop if it is down during market hours. It never changes config, never loosens a clamp, never touches governance, and never executes anything.</div>
+</div>
+
+<div class="part" id="sec2"><h1>2. Version comparison — before vs. now</h1>
+<table>
+<thead><tr><th style="width:16%">Area</th><th style="width:38%">Previous version</th><th style="width:46%">This version</th></tr></thead>
+<tbody>
+<tr><td><b>Chat context</b></td><td>Stateless — system prompt + live snapshot + single user message; no continuity between messages.</td><td>Persistent per-user history (<code>chat_messages</code>); last 20 messages injected per chat; user can view/clear via <code>intelligence.history</code> / <code>intelligence.clearHistory</code>.</td></tr>
+<tr><td><b>Learning</b></td><td>None. Backtests returned numbers and were forgotten; the AI gave generic advice with no knowledge of what had failed before.</td><td><code>trade_outcomes</code> log + aggregation engine: per-variant stats, mistake classification, live-vs-backtest divergence flags, distilled lessons injected into the snapshot; new <code>getLearningReport</code> tool; new <code>engine.learning</code> endpoint.</td></tr>
+<tr><td><b>Model</b></td><td><code>gpt-4.1-mini</code> default.</td><td><code>gpt-5.6</code> default (env override unchanged).</td></tr>
+<tr><td><b>System health</b></td><td>No automated checks. Failures surfaced only when a user hit them.</td><td>11-probe System Check, scheduled pre-open/post-close ET + manual; AI diagnosis; owner page; in-app notifications.</td></tr>
+<tr><td><b>Intelligence tools</b></td><td>8 whitelisted tools.</td><td>9 tools — adds <code>getLearningReport</code>.</td></tr>
+<tr><td><b>Snapshot</b></td><td>Data feed, monitors, tickets, alerts, governance, configs.</td><td>Same + <code>LEARNING</code> section (distilled lessons from logged outcomes).</td></tr>
+<tr><td><b>Runtime rules</b></td><td>6 addendum rules.</td><td>7 — adds memory &amp; learning usage rule.</td></tr>
+<tr><td><b>DB tables</b></td><td>12 tables (incl. governance).</td><td>15 — adds <code>chat_messages</code>, <code>trade_outcomes</code>, <code>system_check_reports</code>. All created idempotently at boot.</td></tr>
+<tr><td><b>Routers</b></td><td><code>marketData</code>, <code>engine</code>, …</td><td>+ <code>systemCheck</code> (admin-only); <code>engine</code> gains <code>learning</code>; <code>intelligence</code> gains <code>history</code>/<code>clearHistory</code>; <code>engine.backtest</code> records outcomes.</td></tr>
+<tr><td><b>Owner console</b></td><td>Overview, Users, Billing, Connectors, Governance, Support.</td><td>+ <b>System Check</b> page (live probes, AI diagnosis, run history, scheduler status).</td></tr>
+<tr><td><b>Boot</b></td><td>ensureSchema + governance genesis.</td><td>+ <code>ensureSystemCheckLoop()</code> scheduler start.</td></tr>
+</tbody>
+</table>
+<div class="note"><b>Backward compatibility:</b> purely additive. No existing table is altered, no route signature changed, no prompt text removed. A deployment that never sets <code>OPENAI_API_KEY</code> still boots — Intelligence degrades to fallback answers and System Check reports mark the LLM probe as a warning, not a failure.</div>
+</div>
+
+
+<div class="part" id="sec3"><h1>3. Architecture — how Intelligence talks to the other systems</h1>
+
+<p id="sec3-1">The Intelligence layer is not a chatbot bolted on the side — it is wired into the engine, the data feed, the ticket gate, and now memory and learning, through one server-enforced tool whitelist. Everything it can do is a function the server exposes; everything it says can be grounded in live system state.</p>
+
+<h2>3.1 The four connections</h2>
+<table>
+<thead><tr><th style="width:20%">Connection</th><th style="width:44%">Mechanism</th><th style="width:36%">What it makes possible</th></tr></thead>
+<tbody>
+<tr><td><b>Intelligence ↔ Engine</b></td><td>Whitelisted tools wrap the deterministic engine directly: <code>runBacktest</code>, <code>simulateVariants</code>, <code>scanWatchlist</code>, <code>getIndicators</code>, <code>getMonitors</code>.</td><td>The AI answers from real triggers, timers, and variant ladders — and explains engine evidence in plain language instead of speaking generically.</td></tr>
+<tr><td><b>Intelligence ↔ Memory</b></td><td><code>loadHistory()</code> injects the last 20 messages after the system prompt; <code>saveMessage()</code> persists each exchange; bounded retention with pruning.</td><td>Continuity: the AI remembers prior decisions, open threads, and user preferences across the conversation.</td></tr>
+<tr><td><b>Intelligence ↔ Learning</b></td><td><code>learningSummaryLines()</code> appends a LEARNING section to the live snapshot; the <code>getLearningReport</code> tool exposes the full diagnosis (variant stats, mistake patterns, divergence flags).</td><td>The AI&rsquo;s advice improves as outcomes accumulate — it deprioritizes weak variants, respects divergence flags, and answers &ldquo;what keeps failing&rdquo; from logged fact.</td></tr>
+<tr><td><b>Intelligence ↔ Execution</b></td><td>The single write tool, <code>proposeTrade</code>, calls the existing <code>proposeTicket()</code> — the same constitutional gate everything else uses. Stop price is required at code level.</td><td>Natural-language trade intent becomes a staged ticket. Nothing reaches a broker without the exact <code>CONFIRM ORDER [TICKET_ID]</code> from a human.</td></tr>
+</tbody>
+</table>
+
+<h2 id="sec3-2">3.2 The learning feedback loop</h2>
+<p>The learning loop is a closed circuit with three stages, implemented in <code>api/engine/learning.ts</code>:</p>
+<ol>
+<li><b>Record</b> — every backtest (from the Engine panel, the tRPC endpoint, or the AI&rsquo;s own <code>runBacktest</code> tool) writes each trade to <code>trade_outcomes</code> with strategy, variant, prices, R-multiple, exit reason, and an auto-classified lesson (&ldquo;stopped out — entry quality or stop placement&rdquo;, &ldquo;stalled — no follow-through&rdquo;, &ldquo;faded into the close&rdquo;, …). Paper and live outcomes hook into the same table as those paths close trades.</li>
+<li><b>Diagnose</b> — <code>getLearningReport()</code> aggregates per strategy+variant+source: win rate, expectancy (R), profit factor. It classifies losing trades into mistake categories, identifies the weakest variant with a meaningful sample, and raises a <b>divergence flag</b> when live expectancy deviates from backtest expectancy by more than 0.5R over 5+ live trades — the build spec&rsquo;s &ldquo;if live results diverge from backtest, flag it&rdquo; rule, implemented.</li>
+<li><b>Feed back</b> — distilled lessons enter the Intelligence snapshot (so the AI advises from our outcomes) and the report is available to the AI (<code>getLearningReport</code> tool), to the UI (<code>engine.learning</code>), and to the System Check module (learning-table probe).</li>
+</ol>
+<div class="note"><b>What learning never touches:</b> sizing math, governance clamps, the confirmation gate. Learning adjusts <i>ranking and advice</i>. Authority stays exactly where the constitution put it.</div>
+
+<h2 id="sec3-3">3.3 The System Check immune system</h2>
+<p>System Check inverts the direction of intelligence: instead of the AI answering questions about the system, the system interrogates itself and the AI explains the results.</p>
+<ul>
+<li><b>Probes</b> (<code>checks.ts</code>) are executable assertions, not pings. The signal self-test feeds synthetic bars through the real <code>vwap_reclaim</code> trigger and asserts it arms on a textbook pattern and stays quiet on a no-dip session; risk sizing is asserted against the $500 / 25% ceilings. A regression in trigger math fails the check before it can produce a bad proposal.</li>
+<li><b>Scheduler</b> (<code>service.ts</code>) fires pre-open (09:00 ET) and post-close (16:15 ET), Mon–Fri, latched per day per window, plus manual runs from the owner console.</li>
+<li><b>Diagnosis</b> — on any WARN/FAIL, the failures go to GPT-5.6 with a reliability-engineer prompt that is constitutionally constrained (it is instructed never to suggest loosening risk limits or bypassing governance) and returns BROKEN / PREVENT / GROWTH sections. The post-close run requests growth suggestions even when all checks pass.</li>
+<li><b>Reporting</b> — every run persists to <code>system_check_reports</code>; admins receive in-app notifications through the existing alerts table (the notification center polls it — no new UI plumbing). Noise policy: WARN/FAIL always notify; a clean run notifies only on the daily post-close.</li>
+</ul>
+</div>
+
+
+<div class="part" id="sec4"><h1>4. File placement map</h1>
+<h2>4.1 New files (create)</h2>
+<table>
+<thead><tr><th style="width:34%">Path</th><th style="width:14%">Size</th><th style="width:52%">Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>api/intelligence/memory.ts</code></td><td>~2.8 KB</td><td>Conversation memory: load/save/prune/clear per-user chat history.</td></tr>
+<tr><td><code>api/engine/learning.ts</code></td><td>~10 KB</td><td>Learning loop: outcome recording, aggregation, mistake classification, divergence flags, lessons.</td></tr>
+<tr><td><code>api/systemcheck/checks.ts</code></td><td>~17 KB</td><td>The 11 component probes, incl. the signal-stack self-test.</td></tr>
+<tr><td><code>api/systemcheck/service.ts</code></td><td>~10 KB</td><td>Runner, AI diagnosis, admin notifications, ET scheduler.</td></tr>
+<tr><td><code>api/systemcheck-router.ts</code></td><td>~0.7 KB</td><td>Owner-only tRPC routes: latest / history / runNow.</td></tr>
+<tr><td><code>src/pages/app/owner/SystemCheck.tsx</code></td><td>~9 KB</td><td>Owner console page: live probes, AI diagnosis, history, scheduler status.</td></tr>
+</tbody>
+</table>
+<h2>4.2 Edited files (apply diffs from appendices)</h2>
+<table>
+<thead><tr><th style="width:34%">Path</th><th style="width:66%">Change</th></tr></thead>
+<tbody>
+<tr><td><code>api/intelligence/tools.ts</code></td><td>Imports; LEARNING snapshot section; <code>getLearningReport</code> tool; history injection + persistence in <code>agentChat</code>; model default → <code>gpt-5.6</code>; addendum rule 7; backtest tool records outcomes. <i>(Appendix C)</i></td></tr>
+<tr><td><code>api/intelligence-router.ts</code></td><td><code>history</code> + <code>clearHistory</code> routes. <i>(Appendix D)</i></td></tr>
+<tr><td><code>api/engine-router.ts</code></td><td>Backtest records outcomes; new <code>learning</code> query. <i>(Appendix E)</i></td></tr>
+<tr><td><code>api/router.ts</code></td><td>Register <code>systemCheck</code> router. <i>(Appendix I)</i></td></tr>
+<tr><td><code>api/boot.ts</code></td><td>Start the System Check scheduler in the production block. <i>(Appendix I)</i></td></tr>
+<tr><td><code>db/schema.ts</code></td><td>Three new tables appended. <i>(Appendix J)</i></td></tr>
+<tr><td><code>api/lib/ensure-schema.ts</code></td><td>Three CREATE TABLE statements + USER_ID_TABLES update. <i>(Appendix K)</i></td></tr>
+<tr><td><code>src/App.tsx</code></td><td>Route <code>/app/owner/system-check</code>. <i>(Appendix M)</i></td></tr>
+<tr><td><code>src/pages/app/AppLayout.tsx</code></td><td>Owner nav item. <i>(Appendix M)</i></td></tr>
+</tbody>
+</table>
+<h2>4.3 Dependency order</h2>
+<p>schema → ensure-schema → memory + learning (leaf modules) → tools.ts edits (imports both) → routers → systemcheck (imports engine + marketdata + queries) → router.ts → boot.ts → UI. The learning module imports the backtest <i>types only</i> — there is no circular dependency with the engine.</p>
+</div>
+
+
+<div class="part" id="sec5"><h1>5. Integration steps</h1>
+<p>Follow in order. Each step names the appendix holding the code. The full updated source tree is also provided alongside this guide — the appendices exist so every change is reviewable line-by-line.</p>
+
+<h2>Step 1 — Database schema (Appendices J, K)</h2>
+<ol>
+<li>Append the three table definitions from Appendix J to <code>db/schema.ts</code> (after the existing tables).</li>
+<li>Add the three <code>CREATE TABLE IF NOT EXISTS</code> statements from Appendix K to the <code>STATEMENTS</code> array in <code>api/lib/ensure-schema.ts</code>, and add the two user-scoped tables to <code>USER_ID_TABLES</code> (used by duplicate-user merges).</li>
+<li>No manual migration needed — boot runs <code>ensureSchema()</code> idempotently. Expect the boot log to move from &ldquo;14 tables&rdquo; to &ldquo;15 tables&rdquo; (12 pre-existing + 3 new).</li>
+</ol>
+
+<h2>Step 2 — Conversation memory (Appendix A)</h2>
+<ol>
+<li>Create <code>api/intelligence/memory.ts</code> from Appendix A.</li>
+<li>It imports <code>getDb</code> from <code>api/queries/connection</code> and <code>chatMessages</code> from <code>@db/schema</code> — both already exist in your tree.</li>
+</ol>
+
+<h2>Step 3 — Learning loop (Appendix B)</h2>
+<ol>
+<li>Create <code>api/engine/learning.ts</code> from Appendix B.</li>
+<li>It imports backtest <i>types</i> from <code>api/engine/backtest.ts</code> (already in your tree from the engine add-on) — types only, no runtime cycle.</li>
+</ol>
+
+<h2>Step 4 — Intelligence wiring (Appendices C, D, E)</h2>
+<ol>
+<li>Apply the <code>tools.ts</code> edits from Appendix C — imports, LEARNING snapshot section, the <code>getLearningReport</code> tool definition and dispatch case, history injection + save in <code>agentChat</code>, the model default change, addendum rule 7, and outcome recording in the <code>runBacktest</code> tool case.</li>
+<li>Apply the <code>intelligence-router.ts</code> edits from Appendix D (<code>history</code> + <code>clearHistory</code>).</li>
+<li>Apply the <code>engine-router.ts</code> edits from Appendix E (record outcomes in <code>backtest</code>; add <code>learning</code> query). Note the backtest handler signature gains <code>ctx</code>.</li>
+</ol>
+
+<h2>Step 5 — System Check module (Appendices F, G, H)</h2>
+<ol>
+<li>Create the directory <code>api/systemcheck/</code> and add <code>checks.ts</code> (Appendix F) and <code>service.ts</code> (Appendix G).</li>
+<li>Create <code>api/systemcheck-router.ts</code> (Appendix H). It uses <code>adminQuery</code> — owner-only by role.</li>
+</ol>
+
+<h2>Step 6 — Registration and boot (Appendix I)</h2>
+<ol>
+<li>Register the router in <code>api/router.ts</code>.</li>
+<li>Add <code>ensureSystemCheckLoop()</code> to the production block of <code>api/boot.ts</code>, after governance init. It is a 60-second interval timer with <code>.unref()</code> — it cannot keep the process alive or block shutdown.</li>
+</ol>
+
+<h2>Step 7 — Owner console UI (Appendices L, M)</h2>
+<ol>
+<li>Create <code>src/pages/app/owner/SystemCheck.tsx</code> (Appendix L). It uses the shared owner components (<code>Badge</code>, <code>PageHeader</code>, <code>StatCard</code>, <code>TableShell</code>) already in your tree.</li>
+<li>Add the route and the nav item (Appendix M).</li>
+</ol>
+
+<h2>Step 8 — Build, verify, deploy</h2>
+<ol>
+<li><code>npx tsc --noEmit</code> — must be clean.</li>
+<li><code>npm run build</code> — vite client + esbuild server bundle.</li>
+<li>Start with <code>NODE_ENV=production node dist/boot.js</code>. Watch the boot log: &ldquo;schema ensured (15 tables)&rdquo; then &ldquo;Server running&rdquo;.</li>
+<li>Smoke test: <code>GET /api/trpc/systemCheck.latest</code> unauthenticated → <b>401</b> (route exists, auth-gated). An unknown route → 404. Then sign in as the owner, open <b>Owner → System Check</b>, click <b>Run now</b>, and confirm the report renders and a notification appears in the bell.</li>
+<li>Intelligence smoke test: send a chat, then a follow-up referencing it (&ldquo;what did I just ask?&rdquo;) — memory working means the follow-up resolves correctly.</li>
+</ol>
+<div class="warnbox"><b>Deployment note:</b> the server only listens when <code>NODE_ENV=production</code>. Without it, <code>node dist/boot.js</code> exits silently — this has bitten us before. The scheduled checks (09:00 / 16:15 ET) only run in production mode.</div>
+</div>
+
+
+<div class="part" id="sec6"><h1>6. Module behavior</h1>
+
+<h2 id="sec6-1">6.1 Conversation memory</h2>
+<ul>
+<li><b>Storage:</b> <code>chat_messages</code> — userId, role (<code>user</code>|<code>assistant</code>), content (capped at 8,000 chars), createdAt. Only final user text and final assistant text are stored — tool-call scaffolding is deliberately excluded so future context stays clean.</li>
+<li><b>Injection:</b> <code>agentChat</code> places history <i>after</i> the system prompt and <i>before</i> the new user message: <code>[system, …history, user]</code>. Last 20 messages (≈10 exchanges).</li>
+<li><b>Retention:</b> 400 rows per user; pruned on write. Bounded cost, bounded table.</li>
+<li><b>Failure posture:</b> every memory call is wrapped — a DB hiccup returns empty history or drops a save; the chat itself never fails because of memory.</li>
+<li><b>User control:</b> <code>intelligence.history</code> (view, last 50) and <code>intelligence.clearHistory</code> (wipe — per-user only).</li>
+<li><b>Authority:</b> memory is informational. It cannot satisfy a CONFIRM, cannot stage a ticket, cannot alter a clamp.</li>
+</ul>
+
+<h2 id="sec6-2">6.2 Learning loop (the &ldquo;machine learning&rdquo; component)</h2>
+<p><b>Honest framing for the team:</b> this is not model training and does not reweight any neural network. It is a deterministic feedback layer — the mechanism that actually makes a rule-based trading system improve. It does three things:</p>
+<ul>
+<li><b>Record</b> — <code>trade_outcomes</code> rows carry: symbol, strategyId, variantId, source (BACKTEST / SIMULATION / PAPER / LIVE), entry, exitPrice, qty, pnl, rMultiple, exitReason, and an auto-classified <code>lesson</code>. Recording happens automatically on every backtest (UI endpoint and AI tool), and is designed to accept paper/live outcomes as those paths close trades.</li>
+<li><b>Diagnose</b> — <code>getLearningReport(userId)</code> returns: per-variant stats (trades, win rate, expectancy R, profit factor, total P&amp;L, sorted by expectancy); <b>divergence flags</b> (live |expectancy − backtest expectancy| &gt; 0.5R with ≥5 live and ≥10 backtest trades); <b>mistake patterns</b> (losers classified as stopped_out / stalled_no_followthrough / faded_into_close / other, with shares); the weakest variant (≥5 trades, negative expectancy); and distilled human-readable lessons with concrete suggestions (e.g. &ldquo;consider raising min_signals_armed&rdquo; when stalls dominate).</li>
+<li><b>Feed back</b> — top-5 lessons are injected into every Intelligence snapshot under <code>LEARNING</code>, labeled as &ldquo;hard-won facts about OUR system&rdquo;. The AI is instructed (addendum rule 7) to apply them proactively and to call <code>getLearningReport</code> when asked what has been learned.</li>
+</ul>
+<p><b>Failure posture:</b> recording is fire-and-forget — a learning write failure returns <code>{recorded: 0}</code> and never fails a backtest. The report endpoint returns an empty-but-valid report when the table is empty or unreachable.</p>
+
+<h2 id="sec6-3">6.3 Model upgrade to GPT-5.6</h2>
+<ul>
+<li>One-line default change in <code>tools.ts</code>: <code>process.env.OPENAI_MODEL ?? &quot;gpt-5.6&quot;</code>. The System Check diagnosis and LLM probe read the same env var.</li>
+<li><code>gpt-5.6</code> aliases to the flagship Sol tier. Cost-aware tiers: <code>gpt-5.6-terra</code> (balanced) or <code>gpt-5.6-luna</code> (fast/cheap) can be set via <code>OPENAI_MODEL</code> without any code change.</li>
+<li>No other call-site changes: the chat-completions payload (tools, tool_choice, max_tokens) is unchanged.</li>
+</ul>
+
+<h2 id="sec6-4">6.4 System Check module</h2>
+<p><b>The 11 probes</b> (each returns status + detail + remediation hint):</p>
+<table>
+<thead><tr><th style="width:22%">Probe</th><th style="width:44%">What it verifies</th><th style="width:34%">FAIL / WARN conditions</th></tr></thead>
+<tbody>
+<tr><td>Environment &amp; secrets</td><td>APP_ID, DATABASE_URL, GOVERNANCE_VAULT_KEY present; optional vars noted.</td><td>FAIL on missing required; WARN on missing OPENAI_API_KEY / IBKR_GATEWAY_URL.</td></tr>
+<tr><td>Database</td><td>Live select on users + chat_messages + trade_outcomes.</td><td>FAIL on any error (points at ensureSchema logs).</td></tr>
+<tr><td>Governance package</td><td>An ACTIVE signed package exists.</td><td>FAIL otherwise (engine would throw GOVERNANCE_UNAVAILABLE).</td></tr>
+<tr><td>Market data feed</td><td>Gateway health, market open/closed, loop state, per-symbol errors, tracked count.</td><td>FAIL if gateway down with symbols tracked; WARN on symbol errors / empty watchlist. <b>Auto-remediates</b> a stopped loop during market hours.</td></tr>
+<tr><td>Engine configs</td><td>Every builtin config loads through governance clamping.</td><td>FAIL on any load error.</td></tr>
+<tr><td>Signal stack self-test</td><td>Trigger count ≥9; vwap_reclaim arms on a synthetic textbook reclaim; does NOT arm without a prior dip; sizePosition respects the $500 risk and 25% position ceilings.</td><td>FAIL on any assertion — &ldquo;do not trust live proposals until fixed&rdquo;.</td></tr>
+<tr><td>Autonomous monitors</td><td>Enumerates admin users&rsquo; monitors and state breakdown.</td><td>WARN on KILLED monitors; OK when idle (valid state).</td></tr>
+<tr><td>Ticket gate</td><td>Ticket store readable; state distribution; stale READY_FOR_CONFIRMATION past expiry.</td><td>WARN on stale tickets; FAIL on store error (critical path).</td></tr>
+<tr><td>Intelligence (LLM)</td><td>Live 8-token ping to the configured model with latency.</td><td>WARN without API key; FAIL on HTTP/network error.</td></tr>
+<tr><td>Memory</td><td>chat_messages readable.</td><td>FAIL on error.</td></tr>
+<tr><td>Learning loop</td><td>trade_outcomes readable and non-empty.</td><td>WARN when empty (nothing to learn from yet); FAIL on error.</td></tr>
+</tbody>
+</table>
+<p><b>AI diagnosis:</b> on any WARN/FAIL — and on every post-close run — the issues go to GPT-5.6 with a reliability-engineer system prompt that includes the architecture summary and a hard rule: <i>never suggest loosening risk limits, bypassing governance, or auto-executing without confirmation</i>. Output sections: BROKEN (what/cause/exact fix), PREVENT (systemic fix per failure class), GROWTH (2–3 weekly improvements). Diagnosis failure (no key, model error) degrades to the deterministic remediation hints — never blocks the report.</p>
+<p><b>Noise policy:</b> WARN/FAIL always notify all admin users (CRITICAL/HIGH priority, via the alerts table the notification center already polls); a clean run notifies only on the daily post-close (LOW &ldquo;all clear&rdquo;); pre-open and manual clean runs stay silent.</p>
+<p><b>Scheduler:</b> 60s tick, ET time via <code>Intl.DateTimeFormat</code> (America/New_York), Mon–Fri only; windows 09:00–09:25 and 16:15–16:40 with per-day latches; <code>.unref()</code>ed timer. Concurrency-guarded (a manual run during a scheduled run returns the latest report rather than double-running).</p>
+</div>
+
+
+<div class="part" id="sec7"><h1>7. Operations — environment, schedule, failure modes</h1>
+<h2>7.1 Environment variables</h2>
+<table>
+<thead><tr><th style="width:26%">Variable</th><th style="width:14%">Required</th><th style="width:60%">Effect in this version</th></tr></thead>
+<tbody>
+<tr><td><code>OPENAI_API_KEY</code></td><td>Optional</td><td>Enables Intelligence reasoning loop AND System Check AI diagnosis. Without it: chat falls back to canned answers; System Check still runs all probes and reports with deterministic remediation hints (WARN on the LLM probe).</td></tr>
+<tr><td><code>OPENAI_MODEL</code></td><td>Optional</td><td>Overrides the <code>gpt-5.6</code> default everywhere (chat, diagnosis, LLM probe). Tiers: <code>gpt-5.6</code> (Sol, flagship), <code>gpt-5.6-terra</code> (balanced), <code>gpt-5.6-luna</code> (fast/cheap).</td></tr>
+<tr><td><code>GOVERNANCE_VAULT_KEY</code></td><td><b>Required</b></td><td>Missing ⇒ governance probe FAILS and engine config loading throws by design.</td></tr>
+<tr><td><code>DATABASE_URL</code></td><td><b>Required</b></td><td>Missing ⇒ database probe FAILS; memory/learning degrade silently in chat but reports will show it.</td></tr>
+<tr><td><code>IBKR_GATEWAY_URL</code></td><td>Optional</td><td>Defaults to localhost gateway; WARN from the feed probe in deployments without a gateway.</td></tr>
+<tr><td><code>NODE_ENV</code></td><td><b>Required</b></td><td>Must be <code>production</code> — otherwise the server never listens and the scheduler never starts.</td></tr>
+</tbody>
+</table>
+<h2>7.2 Schedule (all times America/New_York, Mon–Fri)</h2>
+<table>
+<thead><tr><th style="width:22%">Run</th><th style="width:20%">Window</th><th style="width:58%">Behavior</th></tr></thead>
+<tbody>
+<tr><td>Pre-open</td><td>09:00–09:25</td><td>Full 11-probe check. Notifies admins only on WARN/FAIL. AI diagnosis on issues.</td></tr>
+<tr><td>Post-close</td><td>16:15–16:40</td><td>Full check + AI diagnosis always (adds GROWTH suggestions even when clean). Clean runs send one LOW &ldquo;all clear&rdquo; notification.</td></tr>
+<tr><td>Manual</td><td>any time</td><td>Owner console &ldquo;Run now&rdquo;. Same probes; notification follows the noise policy.</td></tr>
+</tbody>
+</table>
+<h2>7.3 Failure modes (designed, not accidental)</h2>
+<table>
+<thead><tr><th style="width:30%">Failure</th><th style="width:70%">Behavior</th></tr></thead>
+<tbody>
+<tr><td>Memory DB write fails</td><td>Chat proceeds; message not persisted. No user-visible error.</td></tr>
+<tr><td>Learning recording fails</td><td>Backtest returns normally with <code>outcomesRecorded: 0</code>.</td></tr>
+<tr><td>AI diagnosis unavailable</td><td>Report persists with <code>aiDiagnosis: null</code>; notification carries deterministic remediation hints and notes the diagnosis was unavailable.</td></tr>
+<tr><td>A probe throws</td><td>Caught per-probe, recorded as FAIL &ldquo;check crashed&rdquo; — one bad probe cannot sink the run.</td></tr>
+<tr><td>Concurrent runs</td><td>Re-entrant guard: second caller gets the latest persisted report instead of a parallel run.</td></tr>
+<tr><td>Server not in production mode</td><td>No listener, no scheduler — verify <code>NODE_ENV=production</code> in the process environment.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="part" id="sec8"><h1>8. Safety invariants (unchanged and enforced)</h1>
+<ol>
+<li><b>The confirmation gate is untouched.</b> Memory, learning, and system diagnosis cannot create, confirm, or submit a ticket. The only write path in the entire platform remains <code>proposeTicket()</code> + exact <code>CONFIRM ORDER [TICKET_ID]</code>.</li>
+<li><b>Learning adjusts advice, never authority.</b> No lesson, statistic, or AI suggestion can change sizing math, clamps, thresholds, or governance. The System Check AI prompt explicitly forbids suggesting it.</li>
+<li><b>Memory cannot impersonate consent.</b> A historical &ldquo;yes&rdquo; in chat history is not a confirmation — the gate matches the exact string against the CURRENT ticket only.</li>
+<li><b>The tool whitelist is server-enforced.</b> The model can only call the 9 exposed functions; the server validates every argument (symbol regex, quantity bounds, required stop).</li>
+<li><b>System Check observes and advises.</b> Its single automatic action is restarting the data-feed refresh loop during market hours — safe and reversible. Everything else is a recommendation to a human.</li>
+<li><b>Anti-exposure boundary unchanged.</b> The exposure guard still runs before any LLM call; tools never return governing documents, prompts, hidden thresholds, or credentials.</li>
+<li><b>Graceful degradation everywhere.</b> Every new subsystem fails soft: missing API key, missing tables, model errors, or DB hiccups produce warnings in the report — never a broken chat, a failed backtest, or a crashed boot.</li>
+</ol>
+</div>
+
+<div class="part" id="app-a"><h2 class="apptitle">Appendix A — api/intelligence/memory.ts (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">api/intelligence/memory.ts</div><div class="codedesc">Conversation memory: load / save / prune / clear. Create this file as-is.</div></div>
+<pre><code>import { desc, eq, inArray } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { chatMessages } from &quot;@db/schema&quot;;
+
+/**
+ * CONVERSATION MEMORY
+ *
+ * Persists the Intelligence chat so every new message carries the recent
+ * conversation instead of starting cold. Memory is per-user, append-only,
+ * and bounded — we load the last HISTORY_LIMIT exchanges and prune rows
+ * beyond KEEP_ROWS so the table never grows without limit.
+ *
+ * Only final user text and final assistant text are stored (tool-call
+ * scaffolding is not — it would pollute future context). Memory never
+ * widens authority: it informs replies, it cannot change what the
+ * confirmation gate requires.
+ */
+
+const HISTORY_LIMIT = 20; // messages (≈10 exchanges) injected per chat
+const KEEP_ROWS = 400; // per-user retention ceiling
+
+export interface MemoryMessage {
+  role: &quot;user&quot; | &quot;assistant&quot;;
+  content: string;
+}
+
+export async function loadHistory(userId: number, limit = HISTORY_LIMIT): Promise&lt;MemoryMessage[]&gt; {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    const rows = await db
+      .select({ role: chatMessages.role, content: chatMessages.content })
+      .from(chatMessages)
+      .where(eq(chatMessages.userId, userId))
+      .orderBy(desc(chatMessages.id))
+      .limit(limit);
+    return rows
+      .reverse()
+      .filter((r) =&gt; r.role === &quot;user&quot; || r.role === &quot;assistant&quot;)
+      .map((r) =&gt; ({ role: r.role as &quot;user&quot; | &quot;assistant&quot;, content: r.content }));
+  } catch {
+    return []; // memory is an enhancement — never block a chat on it
+  }
+}
+
+export async function saveMessage(userId: number, role: &quot;user&quot; | &quot;assistant&quot;, content: string): Promise&lt;void&gt; {
+  const db = await getDb();
+  if (!db) return;
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  try {
+    await db.insert(chatMessages).values({ userId, role, content: trimmed.slice(0, 8000) });
+    await prune(userId);
+  } catch {
+    /* swallow — a memory write failure must not break the chat */
+  }
+}
+
+async function prune(userId: number): Promise&lt;void&gt; {
+  const db = await getDb();
+  if (!db) return;
+  const rows = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(eq(chatMessages.userId, userId))
+    .orderBy(desc(chatMessages.id))
+    .limit(1000);
+  if (rows.length &lt;= KEEP_ROWS) return;
+  const cutoff = rows[KEEP_ROWS - 1].id;
+  const ids = rows.filter((r) =&gt; r.id &lt; cutoff).map((r) =&gt; Number(r.id));
+  if (ids.length === 0) return;
+  await db.delete(chatMessages).where(inArray(chatMessages.id, ids));
+}
+
+export async function clearHistory(userId: number): Promise&lt;{ cleared: boolean }&gt; {
+  const db = await getDb();
+  if (!db) return { cleared: false };
+  await db.delete(chatMessages).where(eq(chatMessages.userId, userId));
+  return { cleared: true };
+}
+</code></pre></div>
+<div class="part" id="app-b"><h2 class="apptitle">Appendix B — api/engine/learning.ts (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">api/engine/learning.ts</div><div class="codedesc">Learning loop: record, diagnose, feed back. Create this file as-is.</div></div>
+<pre><code>import { desc, eq } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { tradeOutcomes, type TradeOutcome } from &quot;@db/schema&quot;;
+import type { BacktestReport, BacktestTrade } from &quot;./backtest&quot;;
+
+/**
+ * LEARNING LOOP — &quot;learn from mistakes,&quot; implemented honestly.
+ *
+ * This is NOT neural-network training and it does not reweight any model.
+ * It is a deterministic feedback layer that does three things:
+ *
+ *   1. RECORD — every completed trade (backtest today; paper/live as those
+ *      paths produce closed outcomes) is logged with its full decision
+ *      context: strategy, variant, entry/exit, R-multiple, exit reason.
+ *   2. DIAGNOSE — outcomes are aggregated into per-variant performance and
+ *      classified mistakes (stop-outs, stalls, flatten losses), plus a
+ *      divergence flag when live results drift from backtest expectations
+ *      — the exact &quot;if live results diverge from backtest, flag it&quot; rule
+ *      from the engine build spec.
+ *   3. FEED BACK — the distilled lessons are injected into the Intelligence
+ *      snapshot (so the AI advises from OUR outcomes, not generic theory)
+ *      and exposed to the simulator so variant ranking can see live stats.
+ *
+ * What this deliberately does NOT do: change sizing, loosen clamps, or
+ * alter governance. Learning adjusts RANKING and ADVICE. Authority stays
+ * exactly where the constitution put it.
+ */
+
+/* ---------- 1. RECORD ---------- */
+
+function classifyLesson(t: BacktestTrade): string {
+  const reason = t.exitReason.toLowerCase();
+  if (t.r &gt; 0) {
+    if (reason.includes(&quot;target&quot;)) return &quot;plan worked: target ladder paid&quot;;
+    if (reason.includes(&quot;flatten&quot;)) return &quot;held to close: modest gain, no target hit&quot;;
+    return &quot;winner: &quot; + t.exitReason;
+  }
+  if (reason.includes(&quot;stop&quot;)) return &quot;mistake candidate: stopped out — entry quality or stop placement&quot;;
+  if (reason.includes(&quot;stall&quot;) || reason.includes(&quot;timer&quot;)) return &quot;mistake candidate: stalled — trigger fired but no follow-through&quot;;
+  if (reason.includes(&quot;flatten&quot;)) return &quot;mistake candidate: faded into the close — late entry or weak trend&quot;;
+  if (reason.includes(&quot;chase&quot;)) return &quot;avoided: chase-cancel invalidated entry&quot;;
+  return &quot;loser: &quot; + t.exitReason;
+}
+
+export async function recordBacktestOutcomes(
+  userId: number,
+  symbol: string,
+  strategyId: string,
+  report: BacktestReport
+): Promise&lt;{ recorded: number }&gt; {
+  const db = await getDb();
+  if (!db || report.trades.length === 0) return { recorded: 0 };
+  const rows = report.trades.map((t) =&gt; ({
+    userId,
+    symbol,
+    strategyId,
+    variantId: t.variantId,
+    source: &quot;BACKTEST&quot; as const,
+    entry: String(t.entry),
+    exitPrice: String(t.avgExit),
+    qty: t.qty,
+    pnl: String(t.pnl.toFixed(2)),
+    rMultiple: String(t.r.toFixed(3)),
+    exitReason: t.exitReason,
+    lesson: classifyLesson(t),
+  }));
+  try {
+    await db.insert(tradeOutcomes).values(rows);
+    return { recorded: rows.length };
+  } catch {
+    return { recorded: 0 }; // learning is additive — never fail a backtest over it
+  }
+}
+
+/* ---------- 2. DIAGNOSE ---------- */
+
+export interface VariantStats {
+  strategyId: string;
+  variantId: string | null;
+  source: string;
+  trades: number;
+  wins: number;
+  winRate: number | null;
+  expectancyR: number | null;
+  profitFactor: number | null;
+  totalPnl: number;
+}
+
+export interface DivergenceFlag {
+  strategyId: string;
+  variantId: string | null;
+  backtestExpectancyR: number;
+  liveExpectancyR: number;
+  liveTrades: number;
+  message: string;
+}
+
+export interface LearningReport {
+  totalOutcomes: number;
+  byVariant: VariantStats[];
+  divergences: DivergenceFlag[];
+  mistakePatterns: { category: string; count: number; shareOfLosses: number }[];
+  worstVariant: { strategyId: string; variantId: string | null; expectancyR: number; trades: number } | null;
+  lessons: string[];
+}
+
+function aggregate(rows: TradeOutcome[]): VariantStats[] {
+  const groups = new Map&lt;string, TradeOutcome[]&gt;();
+  for (const r of rows) {
+    const key = `${r.strategyId}|${r.variantId ?? &quot;-&quot;}|${r.source}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(r);
+    groups.set(key, arr);
+  }
+  const stats: VariantStats[] = [];
+  for (const [key, arr] of groups) {
+    const [strategyId, variantId, source] = key.split(&quot;|&quot;);
+    const rs = arr.map((r) =&gt; Number(r.rMultiple ?? 0));
+    const pnls = arr.map((r) =&gt; Number(r.pnl ?? 0));
+    const wins = arr.filter((r) =&gt; Number(r.pnl ?? 0) &gt; 0);
+    const grossWin = wins.reduce((a, r) =&gt; a + Number(r.pnl ?? 0), 0);
+    const grossLoss = Math.abs(arr.filter((r) =&gt; Number(r.pnl ?? 0) &lt;= 0).reduce((a, r) =&gt; a + Number(r.pnl ?? 0), 0));
+    stats.push({
+      strategyId,
+      variantId: variantId === &quot;-&quot; ? null : variantId,
+      source,
+      trades: arr.length,
+      wins: wins.length,
+      winRate: arr.length &gt; 0 ? +((wins.length / arr.length) * 100).toFixed(1) : null,
+      expectancyR: arr.length &gt; 0 ? +(rs.reduce((a, b) =&gt; a + b, 0) / arr.length).toFixed(3) : null,
+      profitFactor: grossLoss &gt; 0 ? +(grossWin / grossLoss).toFixed(2) : grossWin &gt; 0 ? Infinity : null,
+      totalPnl: +pnls.reduce((a, b) =&gt; a + b, 0).toFixed(2),
+    });
+  }
+  return stats.sort((a, b) =&gt; (b.expectancyR ?? -99) - (a.expectancyR ?? -99));
+}
+
+function mistakeCategory(outcome: TradeOutcome): string | null {
+  if (Number(outcome.pnl ?? 0) &gt; 0) return null;
+  const reason = (outcome.exitReason ?? &quot;&quot;).toLowerCase();
+  if (reason.includes(&quot;stop&quot;)) return &quot;stopped_out&quot;;
+  if (reason.includes(&quot;stall&quot;) || reason.includes(&quot;timer&quot;)) return &quot;stalled_no_followthrough&quot;;
+  if (reason.includes(&quot;flatten&quot;)) return &quot;faded_into_close&quot;;
+  return &quot;other_loss&quot;;
+}
+
+export async function getLearningReport(userId: number): Promise&lt;LearningReport&gt; {
+  const empty: LearningReport = {
+    totalOutcomes: 0, byVariant: [], divergences: [], mistakePatterns: [], worstVariant: null,
+    lessons: [&quot;No outcomes logged yet — run a backtest to start the learning loop.&quot;],
+  };
+  const db = await getDb();
+  if (!db) return empty;
+  let rows: TradeOutcome[];
+  try {
+    rows = await db
+      .select()
+      .from(tradeOutcomes)
+      .where(eq(tradeOutcomes.userId, userId))
+      .orderBy(desc(tradeOutcomes.id))
+      .limit(5000);
+  } catch {
+    return empty;
+  }
+  if (rows.length === 0) return empty;
+
+  const byVariant = aggregate(rows);
+
+  // Divergence: live (PAPER/LIVE) expectancy vs backtest expectancy, same strategy+variant
+  const divergences: DivergenceFlag[] = [];
+  for (const live of byVariant.filter((s) =&gt; (s.source === &quot;PAPER&quot; || s.source === &quot;LIVE&quot;) &amp;&amp; s.trades &gt;= 5)) {
+    const bt = byVariant.find(
+      (s) =&gt; s.source === &quot;BACKTEST&quot; &amp;&amp; s.strategyId === live.strategyId &amp;&amp; s.variantId === live.variantId &amp;&amp; s.trades &gt;= 10
+    );
+    if (!bt || bt.expectancyR == null || live.expectancyR == null) continue;
+    if (Math.abs(live.expectancyR - bt.expectancyR) &gt; 0.5) {
+      divergences.push({
+        strategyId: live.strategyId,
+        variantId: live.variantId,
+        backtestExpectancyR: bt.expectancyR,
+        liveExpectancyR: live.expectancyR,
+        liveTrades: live.trades,
+        message:
+          `DIVERGENCE: ${live.strategyId}/${live.variantId ?? &quot;?&quot;} backtest expectancy ${bt.expectancyR}R ` +
+          `but live is ${live.expectancyR}R over ${live.trades} trades — live results diverge from backtest. Investigate before trusting this variant.`,
+      });
+    }
+  }
+
+  // Mistake patterns across all losers
+  const losers = rows.filter((r) =&gt; Number(r.pnl ?? 0) &lt;= 0);
+  const catCounts = new Map&lt;string, number&gt;();
+  for (const r of losers) {
+    const c = mistakeCategory(r);
+    if (c) catCounts.set(c, (catCounts.get(c) ?? 0) + 1);
+  }
+  const mistakePatterns = [...catCounts.entries()]
+    .map(([category, count]) =&gt; ({ category, count, shareOfLosses: losers.length &gt; 0 ? +((count / losers.length) * 100).toFixed(1) : 0 }))
+    .sort((a, b) =&gt; b.count - a.count);
+
+  // Worst variant with a meaningful sample
+  const worstVariant =
+    byVariant
+      .filter((s) =&gt; s.trades &gt;= 5 &amp;&amp; s.expectancyR != null &amp;&amp; s.expectancyR &lt; 0)
+      .sort((a, b) =&gt; (a.expectancyR ?? 0) - (b.expectancyR ?? 0))[0] ?? null;
+
+  // Distilled lessons (human- and LLM-readable)
+  const lessons: string[] = [];
+  for (const d of divergences) lessons.push(d.message);
+  if (mistakePatterns[0] &amp;&amp; losers.length &gt;= 5) {
+    lessons.push(
+      `Most common mistake: ${mistakePatterns[0].category} — ${mistakePatterns[0].count} of ${losers.length} losing trades (${mistakePatterns[0].shareOfLosses}%). ` +
+        (mistakePatterns[0].category === &quot;stopped_out&quot;
+          ? &quot;Consider whether entries are chasing or stops are too tight for current ATR.&quot;
+          : mistakePatterns[0].category === &quot;stalled_no_followthrough&quot;
+            ? &quot;Triggers fire but moves fail — consider raising min_signals_armed or the volume threshold.&quot;
+            : &quot;Entries may be too late in the session — check the no-entries-after cutoff.&quot;)
+    );
+  }
+  if (worstVariant) {
+    lessons.push(
+      `Weakest variant: ${worstVariant.strategyId}/${worstVariant.variantId ?? &quot;?&quot;} — expectancy ${worstVariant.expectancyR}R over ${worstVariant.trades} trades. Deprioritize it in the ladder.`
+    );
+  }
+  const best = byVariant.find((s) =&gt; s.trades &gt;= 5 &amp;&amp; (s.expectancyR ?? -99) &gt; 0);
+  if (best) {
+    lessons.push(`Best performer: ${best.strategyId}/${best.variantId ?? &quot;?&quot;} (${best.source}) — expectancy ${best.expectancyR}R, win rate ${best.winRate}%.`);
+  }
+  if (lessons.length === 0) lessons.push(`${rows.length} outcomes logged; no strong patterns yet — keep collecting.`);
+
+  return { totalOutcomes: rows.length, byVariant: byVariant.slice(0, 30), divergences, mistakePatterns, worstVariant, lessons };
+}
+
+/* ---------- 3. FEED BACK (into the Intelligence snapshot) ---------- */
+
+export async function learningSummaryLines(userId: number): Promise&lt;string[]&gt; {
+  const report = await getLearningReport(userId).catch(() =&gt; null);
+  if (!report || report.totalOutcomes === 0) return [];
+  return report.lessons.slice(0, 5);
+}
+</code></pre></div>
+<div class="part" id="app-c"><h2 class="apptitle">Appendix C — api/intelligence/tools.ts (edits to the existing file)</h2><p>Seven edits. Apply them in order; each snippet shows enough context to locate the insertion point.</p>
+<div class="codehead"><div class="codetitle">C1 — imports (top of file)</div><div class="codedesc">Add the last two import lines.</div></div>
+<pre><code>import { scanFeeds } from &quot;../engine/scanner&quot;;
+import { SWARM_MASTER_PROMPT } from &quot;../prompts/swarm-master&quot;;
+import { loadHistory, saveMessage } from &quot;./memory&quot;;
+import { getLearningReport, learningSummaryLines, recordBacktestOutcomes } from &quot;../engine/learning&quot;;</code></pre>
+<div class="codehead"><div class="codetitle">C2 — buildSnapshot(): LEARNING section</div><div class="codedesc">Replace the final two lines of buildSnapshot (the STRATEGY CONFIGS push and return) with this block.</div></div>
+<pre><code>  sections.push(`STRATEGY CONFIGS AVAILABLE: ${BUILTIN_CONFIGS.map((c) =&gt; `${c.strategy_id} (&quot;${c.label}&quot;)`).join(&quot;, &quot;)}`);
+
+  try {
+    const lessons = await learningSummaryLines(userId);
+    if (lessons.length &gt; 0) {
+      sections.push(
+        &quot;LEARNING (distilled from our logged trade outcomes — treat these as hard-won facts about OUR system, not generic theory):\n&quot; +
+          lessons.map((l) =&gt; `- ${l}`).join(&quot;\n&quot;)
+      );
+    }
+  } catch {
+    /* learning section optional */
+  }
+
+  return sections.join(&quot;\n&quot;);</code></pre>
+<div class="codehead"><div class="codetitle">C3 — TOOL_DEFS: add getLearningReport</div><div class="codedesc">Insert the second entry immediately after the getGovernanceStatus definition.</div></div>
+<pre><code>  { type: &quot;function&quot;, function: { name: &quot;getGovernanceStatus&quot;, description: &quot;Get the active signed governance package version and integrity status.&quot;, parameters: { type: &quot;object&quot;, properties: {} } } },
+  { type: &quot;function&quot;, function: { name: &quot;getLearningReport&quot;, description: &quot;Get the learning-loop report: per-variant performance from logged outcomes, classified mistake patterns (stop-outs, stalls, fades), divergence flags where live results drift from backtest, and distilled lessons. Use when asked what the system has learned, what keeps failing, or which variant to trust.&quot;, parameters: { type: &quot;object&quot;, properties: {} } } },</code></pre>
+<div class="codehead"><div class="codetitle">C4 — executeTool(): dispatch case</div><div class="codedesc">Insert the getLearningReport case after getGovernanceStatus.</div></div>
+<pre><code>    case &quot;getGovernanceStatus&quot;:
+      return publicPackageStatus();
+    case &quot;getLearningReport&quot;:
+      return getLearningReport(userId);</code></pre>
+<div class="codehead"><div class="codetitle">C5 — executeTool runBacktest + agentChat memory + model</div><div class="codedesc">Record outcomes in the runBacktest case; inject history and persist messages in agentChat; change the model default.</div></div>
+<pre><code>    case &quot;runBacktest&quot;: {
+      const { config, clamps, governanceVersion } = await loadConfig(String(args.strategyId));
+      const bars = await barsFor(String(args.symbol).toUpperCase());
+      if (bars.length &lt; 200) return { error: `not enough bars (${bars.length}) — check the data feed / gateway` };
+      const r = runBacktest({ config, symbol: String(args.symbol).toUpperCase(), bars });
+      await recordBacktestOutcomes(userId, String(args.symbol).toUpperCase(), config.strategy_id, r);
+      return { ... };
+
+  // --- in agentChat(): history injection + persistence + model default ---
+  const history = await loadHistory(userId);
+  const messages: ChatMessage[] = [
+    { role: &quot;system&quot;, content: system },
+    ...history.map((m) =&gt; ({ role: m.role, content: m.content })),
+    { role: &quot;user&quot;, content: text },
+  ];
+  await saveMessage(userId, &quot;user&quot;, text);
+
+  // inside the fetch body:
+          model: process.env.OPENAI_MODEL ?? &quot;gpt-5.6&quot;,
+
+  // on the final-answer path:
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        const reply = msg.content?.trim() || null;
+        if (reply) await saveMessage(userId, &quot;assistant&quot;, reply);
+        return reply;
+      }</code></pre>
+<div class="codehead"><div class="codetitle">C6 — RUNTIME_ADDENDUM: rule 7</div><div class="codedesc">Replace the final line of the addendum (rule 6) with these two rules.</div></div>
+<pre><code>6. The anti-exposure boundary still applies: tools never return governing documents, prompts, thresholds beyond what the UI discloses, or credentials.
+7. MEMORY &amp; LEARNING: earlier messages in this conversation are real history — use them for continuity (names, preferences, open threads). When the snapshot contains a LEARNING section, those lessons come from OUR logged trade outcomes: apply them proactively (e.g. deprioritize a weak variant, respect a divergence flag) and cite them when relevant. When asked &quot;what have we learned&quot; or &quot;what keeps failing&quot;, call getLearningReport.`;</code></pre></div>
+<div class="part" id="app-d"><h2 class="apptitle">Appendix D — api/intelligence-router.ts (edits)</h2>
+<div class="codehead"><div class="codetitle">D1 — import</div><div class="codedesc">Add the memory import next to the agentChat import.</div></div>
+<pre><code>import { agentChat } from &quot;./intelligence/tools&quot;;
+import { clearHistory, loadHistory } from &quot;./intelligence/memory&quot;;</code></pre>
+<div class="codehead"><div class="codetitle">D2 — routes</div><div class="codedesc">Add the history and clearHistory procedures at the top of the router, before chat.</div></div>
+<pre><code>export const intelligenceRouter = createRouter({
+  /** Conversation memory: recent exchanges for the signed-in user. */
+  history: authedQuery.query(async ({ ctx }) =&gt; loadHistory(ctx.user.id, 50)),
+
+  /** Forget the conversation (memory is per-user; clearing affects no one else). */
+  clearHistory: authedQuery.mutation(async ({ ctx }) =&gt; clearHistory(ctx.user.id)),
+
+  chat: authedQuery</code></pre></div>
+<div class="part" id="app-e"><h2 class="apptitle">Appendix E — api/engine-router.ts (edits)</h2>
+<div class="codehead"><div class="codetitle">E1 — import</div><div class="codedesc">Add the learning import.</div></div>
+<pre><code>import { marketDataService } from &quot;./marketdata/service&quot;;
+import { fetchMinuteBars } from &quot;./marketdata/ibkr-data&quot;;
+import { getLearningReport, recordBacktestOutcomes } from &quot;./engine/learning&quot;;</code></pre>
+<div class="codehead"><div class="codetitle">E2 — backtest handler + learning query</div><div class="codedesc">The backtest handler gains ctx and records outcomes; add the learning query (shown here placed after scan).</div></div>
+<pre><code>  backtest: authedQuery
+    .input(strategyInput.extend({ period: z.enum([&quot;2d&quot;, &quot;1w&quot;, &quot;2w&quot;, &quot;1m&quot;]).default(&quot;1w&quot;) }))
+    .mutation(async ({ ctx, input }) =&gt; {
+      const { config, clamps, governanceVersion } = await loadConfig(input.strategyId);
+      const bars = await barsFor(input.symbol, input.period);
+      if (bars.length &lt; 200) throw new Error(`Not enough bars for ${input.symbol.toUpperCase()} (${bars.length}) — check the data feed`);
+      const report = runBacktest({ config, symbol: input.symbol.toUpperCase(), bars });
+      // Learning loop: every backtest&#x27;s outcomes feed the mistake/lesson layer.
+      const { recorded } = await recordBacktestOutcomes(ctx.user.id, input.symbol.toUpperCase(), config.strategy_id, report);
+      return { ...report, events: report.events.slice(-30), governanceVersion, clamps, outcomesRecorded: recorded };
+    }),
+
+  /** Learning loop report: per-variant stats, mistake patterns, divergences, lessons. */
+  learning: authedQuery.query(async ({ ctx }) =&gt; getLearningReport(ctx.user.id)),</code></pre></div>
+<div class="part" id="app-f"><h2 class="apptitle">Appendix F — api/systemcheck/checks.ts (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">api/systemcheck/checks.ts</div><div class="codedesc">The 11 component probes. Create directory api/systemcheck/ first, then this file.</div></div>
+<pre><code>import { desc, eq } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { users, orderTickets, chatMessages, tradeOutcomes } from &quot;@db/schema&quot;;
+import { marketDataService } from &quot;../marketdata/service&quot;;
+import { publicPackageStatus } from &quot;../governance/runtime&quot;;
+import { BUILTIN_CONFIGS, loadConfig } from &quot;../engine/config&quot;;
+import { TRIGGERS, runTrigger } from &quot;../engine/triggers&quot;;
+import { sizePosition } from &quot;../engine/risk&quot;;
+import { listMonitors } from &quot;../engine/monitor&quot;;
+import type { Bar } from &quot;../marketdata/indicators&quot;;
+
+/**
+ * SYSTEM CHECK — component health probes.
+ *
+ * Each check is a real, executable probe — not a ping that always passes.
+ * The signal check, for example, feeds synthetic bars through the actual
+ * trigger functions and asserts the expected output: it proves the signal
+ * math FIRES, not merely that the file imports.
+ *
+ * Every check returns a remediation hint so failures arrive with a fix,
+ * and the AI diagnosis layer (service.ts) turns those into full
+ * what-broken / why / how-to-fix / how-to-improve guidance.
+ */
+
+export interface CheckResult {
+  id: string;
+  name: string;
+  status: &quot;OK&quot; | &quot;WARN&quot; | &quot;FAIL&quot;;
+  detail: string;
+  remediation?: string;
+}
+
+type CheckFn = () =&gt; Promise&lt;CheckResult&gt;;
+
+function ok(id: string, name: string, detail: string): CheckResult {
+  return { id, name, status: &quot;OK&quot;, detail };
+}
+function warn(id: string, name: string, detail: string, remediation: string): CheckResult {
+  return { id, name, status: &quot;WARN&quot;, detail, remediation };
+}
+function fail(id: string, name: string, detail: string, remediation: string): CheckResult {
+  return { id, name, status: &quot;FAIL&quot;, detail, remediation };
+}
+
+/* ---------- 1. environment ---------- */
+
+const checkEnvironment: CheckFn = async () =&gt; {
+  const id = &quot;environment&quot;;
+  const name = &quot;Environment &amp; secrets&quot;;
+  const missing: string[] = [];
+  if (!process.env.APP_ID) missing.push(&quot;APP_ID&quot;);
+  if (!process.env.DATABASE_URL) missing.push(&quot;DATABASE_URL&quot;);
+  if (!process.env.GOVERNANCE_VAULT_KEY) missing.push(&quot;GOVERNANCE_VAULT_KEY&quot;);
+  if (missing.length &gt; 0) {
+    return fail(id, name, `Missing required env vars: ${missing.join(&quot;, &quot;)} — governance and/or database will refuse to operate`,
+      &quot;Set the missing variables in the deployment environment and restart the service.&quot;);
+  }
+  const warnings: string[] = [];
+  if (!process.env.OPENAI_API_KEY) warnings.push(&quot;OPENAI_API_KEY not set — Intelligence runs in fallback mode&quot;);
+  if (!process.env.IBKR_GATEWAY_URL) warnings.push(&quot;IBKR_GATEWAY_URL not set — data feed targets localhost default&quot;);
+  if (warnings.length &gt; 0) {
+    return warn(id, name, warnings.join(&quot; · &quot;),
+      &quot;Set the listed variables in deployment. OPENAI_API_KEY restores full Intelligence; IBKR_GATEWAY_URL points the feed at the real Client Portal gateway.&quot;);
+  }
+  return ok(id, name, &quot;All required and optional env vars present&quot;);
+};
+
+/* ---------- 2. database ---------- */
+
+const checkDatabase: CheckFn = async () =&gt; {
+  const id = &quot;database&quot;;
+  const name = &quot;Database&quot;;
+  try {
+    const db = getDb();
+    await db.select({ id: users.id }).from(users).limit(1);
+    // verify the newer tables this module depends on
+    await db.select({ id: chatMessages.id }).from(chatMessages).limit(1);
+    await db.select({ id: tradeOutcomes.id }).from(tradeOutcomes).limit(1);
+    return ok(id, name, &quot;Connection healthy; core + memory + learning tables present&quot;);
+  } catch (e) {
+    return fail(id, name, `Database error: ${(e as Error).message}`,
+      &quot;Check DATABASE_URL and that the MySQL/TiDB instance is reachable from this deployment. Boot runs ensureSchema() — a missing table here means boot schema creation failed; check server logs.&quot;);
+  }
+};
+
+/* ---------- 3. governance ---------- */
+
+const checkGovernance: CheckFn = async () =&gt; {
+  const id = &quot;governance&quot;;
+  const name = &quot;Governance package&quot;;
+  try {
+    const pkgs = await publicPackageStatus();
+    const active = pkgs.find((p) =&gt; p.status === &quot;ACTIVE&quot;);
+    if (!active) {
+      return fail(id, name, &quot;NO ACTIVE governance package — engine config loading will throw GOVERNANCE_UNAVAILABLE&quot;,
+        &quot;Boot should stage a genesis package via ensureGovernanceReady(). Check GOVERNANCE_VAULT_KEY is set and inspect governance router status; activate a signed package manually if needed.&quot;);
+    }
+    return ok(id, name, `Package ${active.version} ACTIVE (hash ${active.hashShort})`);
+  } catch (e) {
+    return fail(id, name, `Governance status error: ${(e as Error).message}`,
+      &quot;Check the governance runtime and vault key; the engine cannot run without an active signed package.&quot;);
+  }
+};
+
+/* ---------- 4. market data feed (with safe auto-remediation) ---------- */
+
+const checkMarketData: CheckFn = async () =&gt; {
+  const id = &quot;market_data&quot;;
+  const name = &quot;Market data feed&quot;;
+  try {
+    const feed = await marketDataService.status();
+    const problems: string[] = [];
+    if (!feed.gatewayOk) problems.push(`gateway DOWN (${feed.gatewayDetail})`);
+    if (feed.marketOpen &amp;&amp; !feed.loopRunning &amp;&amp; feed.symbols.length &gt; 0) {
+      // SAFE auto-remediation: the loop is supposed to run during market hours — restart it.
+      marketDataService.ensureLoop();
+      problems.push(&quot;refresh loop was down during market hours — AUTO-REMEDIATED (restarted)&quot;);
+    }
+    const errored = feed.symbols.filter((s) =&gt; s.error);
+    if (errored.length &gt; 0) problems.push(`${errored.length} tracked symbol(s) erroring: ${errored.map((s) =&gt; s.symbol).join(&quot;, &quot;)}`);
+    if (feed.symbols.length === 0) problems.push(&quot;no symbols tracked — scanner and monitors have nothing to evaluate&quot;);
+    if (problems.length &gt; 0) {
+      const isFail = !feed.gatewayOk &amp;&amp; feed.symbols.length &gt; 0;
+      const detail = problems.join(&quot; · &quot;);
+      const status = isFail ? &quot;FAIL&quot; : &quot;WARN&quot;;
+      return (status === &quot;FAIL&quot; ? fail : warn)(id, name, detail,
+        &quot;Verify the IBKR Client Portal gateway is running and authenticated (GET /iserver/auth/status). If the gateway is intentional (off-hours / dev), this is expected. Track symbols via the Data Feed panel.&quot;);
+    }
+    return ok(id, name, `gateway OK · market ${feed.marketOpen ? &quot;OPEN&quot; : &quot;CLOSED&quot;} · ${feed.symbols.length} symbol(s) tracked · loop ${feed.loopRunning ? &quot;running&quot; : &quot;standby (off-hours)&quot;}`);
+  } catch (e) {
+    return fail(id, name, `Feed status error: ${(e as Error).message}`,
+      &quot;Inspect the marketdata service and gateway connectivity.&quot;);
+  }
+};
+
+/* ---------- 5. engine configs (governance-clamped) ---------- */
+
+const checkEngineConfigs: CheckFn = async () =&gt; {
+  const id = &quot;engine_configs&quot;;
+  const name = &quot;Engine configs &amp; governance clamps&quot;;
+  try {
+    const loaded: string[] = [];
+    for (const c of BUILTIN_CONFIGS) {
+      const { config, clamps, governanceVersion } = await loadConfig(c.strategy_id);
+      loaded.push(`${config.strategy_id} v${config.version} (${clamps.length} clamp(s), gov ${governanceVersion})`);
+    }
+    return ok(id, name, `${BUILTIN_CONFIGS.length} configs load under governance: ${loaded.join(&quot; · &quot;)}`);
+  } catch (e) {
+    return fail(id, name, `Config load failed: ${(e as Error).message}`,
+      &quot;If this is GOVERNANCE_UNAVAILABLE, activate a governance package first. Otherwise inspect engine/config.ts clamping against the active package ceiling.&quot;);
+  }
+};
+
+/* ---------- 6. signals self-test (proves the math fires) ---------- */
+
+function syntheticBar(t: number, c: number, v = 100): Bar {
+  return { t, o: c, h: c + 0.1, l: c - 0.1, c, v };
+}
+
+const checkSignals: CheckFn = async () =&gt; {
+  const id = &quot;signals&quot;;
+  const name = &quot;Signal stack self-test&quot;;
+  const problems: string[] = [];
+  try {
+    const triggerCount = Object.keys(TRIGGERS).length;
+    if (triggerCount &lt; 9) problems.push(`trigger registry has ${triggerCount} entries, expected ≥ 9`);
+
+    // Positive test: dip below VWAP then reclaim and hold → MUST arm
+    const t0 = Date.UTC(2026, 0, 5, 14, 30); // fixed synthetic session
+    const session: Bar[] = [
+      syntheticBar(t0 + 0 * 60000, 100),
+      syntheticBar(t0 + 1 * 60000, 100),
+      syntheticBar(t0 + 2 * 60000, 100),
+      syntheticBar(t0 + 3 * 60000, 99), // below vwap
+      syntheticBar(t0 + 4 * 60000, 102),
+      syntheticBar(t0 + 5 * 60000, 102),
+      syntheticBar(t0 + 6 * 60000, 102),
+      syntheticBar(t0 + 7 * 60000, 102),
+    ];
+    const pos = runTrigger(&quot;vwap_reclaim&quot;, { session, priorDay: { high: 101, low: 98, close: 99.5 } }, { hold_minutes: 3 });
+    if (!pos.armed) problems.push(`vwap_reclaim FAILED to arm on a textbook reclaim pattern (evidence: ${JSON.stringify(pos.evidence)})`);
+
+    // Negative test: never below VWAP → MUST NOT arm (guards against always-on regression)
+    const flat = Array.from({ length: 8 }, (_, i) =&gt; syntheticBar(t0 + i * 60000, 100 + i * 0.01));
+    const neg = runTrigger(&quot;vwap_reclaim&quot;, { session: flat, priorDay: { high: 101, low: 98, close: 99.5 } }, { hold_minutes: 3 });
+    if (neg.armed) problems.push(&quot;vwap_reclaim armed WITHOUT a prior dip — trigger logic regressed&quot;);
+
+    // Risk sizing sanity: 0.5% of 100k = $500 risk, $1/share → 500 qty, capped by 25% position cap
+    const sizing = sizePosition({ accountEquity: 100000, entry: 100, stop: 99, maxRiskPct: 0.5, maxPositionPct: 25 });
+    if (!(sizing.qty &gt; 0)) problems.push(&quot;sizePosition returned zero qty on a valid setup&quot;);
+    if (sizing.dollarRisk &gt; 500.01) problems.push(`sizePosition risk $${sizing.dollarRisk} exceeds the $500 ceiling — risk math regressed`);
+    if (sizing.positionValue &gt; 25000.01) problems.push(`sizePosition value $${sizing.positionValue} exceeds the 25% position cap`);
+
+    if (problems.length &gt; 0) {
+      return fail(id, name, problems.join(&quot; · &quot;),
+        &quot;Signal or risk math regressed — do NOT trust live proposals until fixed. Run engine.backtest on a tracked symbol to reproduce, then inspect engine/triggers.ts and engine/risk.ts.&quot;);
+    }
+    return ok(id, name, `${triggerCount} triggers registered · reclaim self-test armed correctly · negative test held · risk sizing within ceilings (qty ${sizing.qty}, risk $${sizing.dollarRisk.toFixed(0)})`);
+  } catch (e) {
+    return fail(id, name, `Signal self-test threw: ${(e as Error).message}`,
+      &quot;A trigger or risk function crashed on synthetic input — inspect engine/triggers.ts and engine/risk.ts before trusting any proposal.&quot;);
+  }
+};
+
+/* ---------- 7. autonomous monitors ---------- */
+
+const checkAutonomous: CheckFn = async () =&gt; {
+  const id = &quot;autonomous&quot;;
+  const name = &quot;Autonomous monitors&quot;;
+  try {
+    const db = getDb();
+    const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, &quot;admin&quot;));
+    let total = 0;
+    const states = new Map&lt;string, number&gt;();
+    for (const a of admins) {
+      for (const m of listMonitors(a.id)) {
+        total += 1;
+        states.set(m.state, (states.get(m.state) ?? 0) + 1);
+      }
+    }
+    if (total === 0) return ok(id, name, &quot;No active monitors (idle is a valid state — monitors start from the Engine panel or scanner)&quot;);
+    const breakdown = [...states.entries()].map(([s, n]) =&gt; `${s}:${n}`).join(&quot; · &quot;);
+    const killed = states.get(&quot;KILLED&quot;) ?? 0;
+    if (killed &gt; 0) {
+      return warn(id, name, `${total} monitor(s): ${breakdown} — ${killed} KILLED monitor(s) present`,
+        &quot;Inspect killed monitors&#x27; last events (engine.monitors) — a kill means the state machine invalidated the setup, which is working as designed, but repeated kills on the same symbol suggest a config/feed issue.&quot;);
+    }
+    return ok(id, name, `${total} monitor(s) active: ${breakdown}`);
+  } catch (e) {
+    return fail(id, name, `Monitor check error: ${(e as Error).message}`,
+      &quot;Inspect engine/monitor.ts — monitors failing to enumerate means the autonomous path is unhealthy.&quot;);
+  }
+};
+
+/* ---------- 8. ticket gate ---------- */
+
+const checkTicketGate: CheckFn = async () =&gt; {
+  const id = &quot;ticket_gate&quot;;
+  const name = &quot;Order ticket gate&quot;;
+  try {
+    const db = getDb();
+    const recent = await db.select().from(orderTickets).orderBy(desc(orderTickets.id)).limit(50);
+    const now = Date.now();
+    const staleAwaiting = recent.filter(
+      (t) =&gt; t.state === &quot;READY_FOR_CONFIRMATION&quot; &amp;&amp; t.expiresAt &amp;&amp; new Date(t.expiresAt).getTime() &lt; now - 10 * 60 * 1000
+    );
+    if (staleAwaiting.length &gt; 0) {
+      return warn(id, name, `${staleAwaiting.length} ticket(s) still READY_FOR_CONFIRMATION past expiry — expiry sweeper may not be running`,
+        &quot;Expired tickets must never route. Verify the ticket expiry/sweep path in queries/tickets.ts; stale rows should transition to EXPIRED.&quot;);
+    }
+    const byState = new Map&lt;string, number&gt;();
+    for (const t of recent) byState.set(t.state, (byState.get(t.state) ?? 0) + 1);
+    return ok(id, name, `Ticket store healthy · recent ${recent.length}: ${[...byState.entries()].map(([s, n]) =&gt; `${s}:${n}`).join(&quot; · &quot;) || &quot;none yet&quot;}`);
+  } catch (e) {
+    return fail(id, name, `Ticket gate error: ${(e as Error).message}`,
+      &quot;The confirmation gate is the ONLY path to a broker — if it errors, treat as critical. Inspect queries/tickets.ts and the order_tickets table.&quot;);
+  }
+};
+
+/* ---------- 9. intelligence (live ping) ---------- */
+
+const checkIntelligence: CheckFn = async () =&gt; {
+  const id = &quot;intelligence&quot;;
+  const name = &quot;Intelligence (LLM)&quot;;
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    return warn(id, name, &quot;OPENAI_API_KEY not set — chat runs on canned fallback answers only&quot;,
+      &quot;Set OPENAI_API_KEY (and optionally OPENAI_MODEL) in deployment to enable the reasoning loop.&quot;);
+  }
+  try {
+    const started = Date.now();
+    const res = await fetch(&quot;https://api.openai.com/v1/chat/completions&quot;, {
+      method: &quot;POST&quot;,
+      headers: { &quot;Content-Type&quot;: &quot;application/json&quot;, Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL ?? &quot;gpt-5.6&quot;,
+        messages: [{ role: &quot;user&quot;, content: &quot;Reply with exactly: OK&quot; }],
+        max_tokens: 8,
+      }),
+    });
+    const latency = Date.now() - started;
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 200);
+      return fail(id, name, `OpenAI ping failed: HTTP ${res.status} — ${body}`,
+        &quot;Check the API key validity, billing/quota, and that OPENAI_MODEL names a model your account can access. Intelligence falls back to canned answers while this fails.&quot;);
+    }
+    return ok(id, name, `Model ${process.env.OPENAI_MODEL ?? &quot;gpt-5.6&quot;} responding (${latency}ms)`);
+  } catch (e) {
+    return fail(id, name, `OpenAI ping error: ${(e as Error).message}`,
+      &quot;Network path to api.openai.com failed from this deployment — check egress/proxy. Intelligence falls back to canned answers.&quot;);
+  }
+};
+
+/* ---------- 10. memory ---------- */
+
+const checkMemory: CheckFn = async () =&gt; {
+  const id = &quot;memory&quot;;
+  const name = &quot;Conversation memory&quot;;
+  try {
+    const db = getDb();
+    const rows = await db.select({ id: chatMessages.id }).from(chatMessages).orderBy(desc(chatMessages.id)).limit(1);
+    return ok(id, name, `Memory table healthy (${rows.length &gt; 0 ? &quot;messages present&quot; : &quot;empty — no chats yet, which is fine&quot;})`);
+  } catch (e) {
+    return fail(id, name, `Memory error: ${(e as Error).message}`,
+      &quot;chat_messages table missing or unreadable — boot ensureSchema() should have created it; check server logs and DATABASE_URL permissions.&quot;);
+  }
+};
+
+/* ---------- 11. learning loop ---------- */
+
+const checkLearning: CheckFn = async () =&gt; {
+  const id = &quot;learning&quot;;
+  const name = &quot;Learning loop&quot;;
+  try {
+    const db = getDb();
+    const rows = await db.select({ id: tradeOutcomes.id }).from(tradeOutcomes).orderBy(desc(tradeOutcomes.id)).limit(1);
+    if (rows.length === 0) {
+      return warn(id, name, &quot;Learning table healthy but EMPTY — no outcomes logged yet, so the system has nothing to learn from&quot;,
+        &quot;Run a backtest (Engine panel or ask Intelligence) — outcomes start flowing automatically from there. Paper/live outcomes hook in as those paths close trades.&quot;);
+    }
+    return ok(id, name, &quot;Learning table healthy with logged outcomes&quot;);
+  } catch (e) {
+    return fail(id, name, `Learning loop error: ${(e as Error).message}`,
+      &quot;trade_outcomes table missing or unreadable — boot ensureSchema() should have created it; check server logs.&quot;);
+  }
+};
+
+/* ---------- registry ---------- */
+
+export const CHECKS: { fn: CheckFn }[] = [
+  { fn: checkEnvironment },
+  { fn: checkDatabase },
+  { fn: checkGovernance },
+  { fn: checkMarketData },
+  { fn: checkEngineConfigs },
+  { fn: checkSignals },
+  { fn: checkAutonomous },
+  { fn: checkTicketGate },
+  { fn: checkIntelligence },
+  { fn: checkMemory },
+  { fn: checkLearning },
+];
+
+export async function runAllChecks(): Promise&lt;CheckResult[]&gt; {
+  const results: CheckResult[] = [];
+  for (const { fn } of CHECKS) {
+    try {
+      results.push(await fn());
+    } catch (e) {
+      results.push({ id: &quot;unknown&quot;, name: fn.name, status: &quot;FAIL&quot;, detail: `check crashed: ${(e as Error).message}`, remediation: &quot;Inspect the systemcheck module — a probe itself threw.&quot; });
+    }
+  }
+  return results;
+}
+</code></pre></div>
+<div class="part" id="app-g"><h2 class="apptitle">Appendix G — api/systemcheck/service.ts (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">api/systemcheck/service.ts</div><div class="codedesc">Runner, AI diagnosis, notifications, ET scheduler. Create this file as-is.</div></div>
+<pre><code>import { desc, eq } from &quot;drizzle-orm&quot;;
+import { getDb } from &quot;../queries/connection&quot;;
+import { users, alerts, systemCheckReports } from &quot;@db/schema&quot;;
+import { etParts } from &quot;../marketdata/indicators&quot;;
+import { runAllChecks, type CheckResult } from &quot;./checks&quot;;
+
+/**
+ * SYSTEM CHECK SERVICE — the platform&#x27;s immune system.
+ *
+ * Runs the full component probe suite on a schedule (before market open,
+ * after market close, ET, Mon–Fri) and on demand from the owner console.
+ *
+ *   1. PROBE — 11 real component checks (environment, database, governance,
+ *      data feed, engine configs, signals self-test, autonomous monitors,
+ *      ticket gate, intelligence, memory, learning).
+ *   2. DIAGNOSE — when anything is degraded, the AI receives the failures
+ *      and returns: what&#x27;s broken, likely cause, exact fix steps, and one
+ *      systemic improvement per failure — plus a short GROWTH section on
+ *      making the platform better. On the daily post-close run it adds
+ *      growth suggestions even when all checks pass.
+ *   3. REPORT — every run persists to system_check_reports (owner console
+ *      history) and pushes an in-app notification to all admin users via
+ *      the alerts table (NotificationCenter polls it — no new UI plumbing).
+ *
+ * BOUNDARY: this module OBSERVES and ADVISES. The only automatic action it
+ * ever takes is restarting the market-data refresh loop when it should be
+ * running — everything else arrives as a recommendation for a human.
+ */
+
+export type SystemCheckTrigger = &quot;PRE_OPEN&quot; | &quot;POST_CLOSE&quot; | &quot;MANUAL&quot;;
+
+export interface StoredReport {
+  id: number;
+  triggerType: string;
+  overall: string;
+  okCount: number;
+  warnCount: number;
+  failCount: number;
+  checks: CheckResult[];
+  aiDiagnosis: string | null;
+  createdAt: Date;
+}
+
+/* ---------- AI diagnosis ---------- */
+
+async function diagnoseWithAi(results: CheckResult[], includeGrowth: boolean): Promise&lt;string | null&gt; {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  const issues = results.filter((r) =&gt; r.status !== &quot;OK&quot;);
+  if (issues.length === 0 &amp;&amp; !includeGrowth) return null;
+
+  const issueText = issues.length &gt; 0
+    ? issues.map((r) =&gt; `[${r.status}] ${r.name}: ${r.detail}${r.remediation ? ` (hint: ${r.remediation})` : &quot;&quot;}`).join(&quot;\n&quot;)
+    : &quot;All 11 component checks passed — no failures this run.&quot;;
+
+  const system = [
+    &quot;You are the chief reliability engineer of Requi Trading, an autonomous trading SaaS.&quot;,
+    &quot;Architecture: React/tRPC frontend; Hono server; Drizzle + MySQL; a deterministic strategy engine (trigger library, setup state machine, backtester, simulator, scanner); a signed governance package that clamps all risk config; an order-ticket confirmation gate (nothing reaches a broker without a human CONFIRM); IBKR Client Portal market data; an LLM intelligence layer with tool access; conversation memory; and a learning loop over logged trade outcomes.&quot;,
+    &quot;You receive system health-check results. Respond in plain text, concise and technical, with these sections:&quot;,
+    &quot;BROKEN: for each FAIL/WARN — what is broken, the most likely cause, and the exact fix (env vars, restart steps, file to inspect).&quot;,
+    &quot;PREVENT: one systemic improvement per failure class so it cannot recur silently.&quot;,
+    &quot;GROWTH: 2-3 concrete suggestions to make the whole platform better this week (reliability, observability, or trading quality).&quot;,
+    &quot;Never suggest loosening risk limits, bypassing governance, or auto-executing without confirmation. If you suggest it, it must keep those invariants.&quot;,
+  ].join(&quot;\n&quot;);
+
+  try {
+    const res = await fetch(&quot;https://api.openai.com/v1/chat/completions&quot;, {
+      method: &quot;POST&quot;,
+      headers: { &quot;Content-Type&quot;: &quot;application/json&quot;, Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL ?? &quot;gpt-5.6&quot;,
+        messages: [
+          { role: &quot;system&quot;, content: system },
+          { role: &quot;user&quot;, content: `Health check results (${new Date().toISOString()}):\n${issueText}` },
+        ],
+        max_tokens: 1400,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    return data.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/* ---------- notifications (in-app, via the alerts table) ---------- */
+
+async function notifyAdmins(overall: string, results: CheckResult[], diagnosis: string | null, trigger: SystemCheckTrigger) {
+  const db = getDb();
+  const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, &quot;admin&quot;));
+  if (admins.length === 0) return;
+
+  const issues = results.filter((r) =&gt; r.status !== &quot;OK&quot;);
+  const fails = issues.filter((r) =&gt; r.status === &quot;FAIL&quot;);
+  const triggerLabel = trigger === &quot;PRE_OPEN&quot; ? &quot;pre-open&quot; : trigger === &quot;POST_CLOSE&quot; ? &quot;post-close&quot; : &quot;manual&quot;;
+
+  // Noise policy: WARN/FAIL always notify; a clean run only notifies on the
+  // daily post-close (a once-a-day &quot;all clear&quot;), never on pre-open/manual spam.
+  const shouldNotify = overall !== &quot;OK&quot; || trigger === &quot;POST_CLOSE&quot;;
+  if (!shouldNotify) return;
+
+  const title =
+    overall === &quot;FAIL&quot;
+      ? `System Check FAILED — ${fails.length} component(s) down`
+      : overall === &quot;WARN&quot;
+        ? `System Check: ${issues.length} warning(s) detected`
+        : &quot;System Check: all clear&quot;;
+
+  const bodyLines = [
+    `${triggerLabel} run · ${results.filter((r) =&gt; r.status === &quot;OK&quot;).length} OK · ${issues.filter((r) =&gt; r.status === &quot;WARN&quot;).length} WARN · ${fails.length} FAIL`,
+    ...issues.slice(0, 5).map((r) =&gt; `${r.status} — ${r.name}: ${r.detail}`),
+  ];
+  if (diagnosis) bodyLines.push(&quot;&quot;, &quot;AI diagnosis:&quot;, diagnosis.slice(0, 900));
+  else if (overall !== &quot;OK&quot;) bodyLines.push(&quot;&quot;, &quot;(AI diagnosis unavailable — OPENAI_API_KEY missing or model error; see owner System Check page for check details.)&quot;);
+
+  for (const a of admins) {
+    await db.insert(alerts).values({
+      userId: a.id,
+      type: &quot;SYSTEM_STATE&quot;,
+      priority: overall === &quot;FAIL&quot; ? &quot;CRITICAL&quot; : overall === &quot;WARN&quot; ? &quot;HIGH&quot; : &quot;LOW&quot;,
+      title,
+      body: bodyLines.join(&quot;\n&quot;).slice(0, 2000),
+      state: overall === &quot;OK&quot; ? &quot;WATCHING&quot; : &quot;ACTION_REQUIRED&quot;,
+    });
+  }
+}
+
+/* ---------- runner ---------- */
+
+let running = false;
+
+export async function runSystemCheck(trigger: SystemCheckTrigger): Promise&lt;StoredReport&gt; {
+  if (running) {
+    const latest = await getLatestReport();
+    if (latest) return latest;
+  }
+  running = true;
+  try {
+    const results = await runAllChecks();
+    const failCount = results.filter((r) =&gt; r.status === &quot;FAIL&quot;).length;
+    const warnCount = results.filter((r) =&gt; r.status === &quot;WARN&quot;).length;
+    const okCount = results.length - failCount - warnCount;
+    const overall = failCount &gt; 0 ? &quot;FAIL&quot; : warnCount &gt; 0 ? &quot;WARN&quot; : &quot;OK&quot;;
+
+    // AI diagnosis: on issues always; on the daily post-close even when clean (growth suggestions).
+    const diagnosis = await diagnoseWithAi(results, trigger === &quot;POST_CLOSE&quot;);
+
+    const db = getDb();
+    const [inserted] = await db
+      .insert(systemCheckReports)
+      .values({
+        triggerType: trigger,
+        overall,
+        okCount,
+        warnCount,
+        failCount,
+        checksJson: JSON.stringify(results),
+        aiDiagnosis: diagnosis,
+      })
+      .$returningId();
+
+    await notifyAdmins(overall, results, diagnosis, trigger).catch(() =&gt; undefined);
+
+    return {
+      id: inserted?.id ?? 0,
+      triggerType: trigger,
+      overall,
+      okCount,
+      warnCount,
+      failCount,
+      checks: results,
+      aiDiagnosis: diagnosis,
+      createdAt: new Date(),
+    };
+  } finally {
+    running = false;
+  }
+}
+
+/* ---------- history ---------- */
+
+function toStored(row: typeof systemCheckReports.$inferSelect): StoredReport {
+  let checks: CheckResult[] = [];
+  try {
+    checks = JSON.parse(row.checksJson) as CheckResult[];
+  } catch {
+    checks = [];
+  }
+  return {
+    id: Number(row.id),
+    triggerType: row.triggerType,
+    overall: row.overall,
+    okCount: row.okCount,
+    warnCount: row.warnCount,
+    failCount: row.failCount,
+    checks,
+    aiDiagnosis: row.aiDiagnosis ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+export async function getLatestReport(): Promise&lt;StoredReport | null&gt; {
+  const db = getDb();
+  const rows = await db.select().from(systemCheckReports).orderBy(desc(systemCheckReports.id)).limit(1);
+  return rows.length &gt; 0 ? toStored(rows[0]) : null;
+}
+
+export async function listReports(limit = 20): Promise&lt;StoredReport[]&gt; {
+  const db = getDb();
+  const rows = await db.select().from(systemCheckReports).orderBy(desc(systemCheckReports.id)).limit(Math.min(limit, 50));
+  return rows.map(toStored);
+}
+
+/* ---------- scheduler: pre-open 09:00 ET, post-close 16:15 ET, Mon–Fri ---------- */
+
+const PRE_OPEN_MIN = 9 * 60; // 09:00 ET, window 09:00–09:25
+const POST_CLOSE_MIN = 16 * 60 + 15; // 16:15 ET, window 16:15–16:40
+const WINDOW = 25;
+
+let schedulerTimer: NodeJS.Timeout | null = null;
+const ranSlots = new Set&lt;string&gt;();
+
+function etWeekday(now: number): number {
+  return new Date(new Date(now).toLocaleString(&quot;en-US&quot;, { timeZone: &quot;America/New_York&quot; })).getDay();
+}
+
+async function schedulerTick() {
+  const now = Date.now();
+  const dow = etWeekday(now);
+  if (dow === 0 || dow === 6) return;
+  const { day, minutes } = etParts(now);
+
+  if (minutes &gt;= PRE_OPEN_MIN &amp;&amp; minutes &lt; PRE_OPEN_MIN + WINDOW &amp;&amp; !ranSlots.has(`${day}:PRE_OPEN`)) {
+    ranSlots.add(`${day}:PRE_OPEN`);
+    await runSystemCheck(&quot;PRE_OPEN&quot;).catch(() =&gt; ranSlots.delete(`${day}:PRE_OPEN`));
+  }
+  if (minutes &gt;= POST_CLOSE_MIN &amp;&amp; minutes &lt; POST_CLOSE_MIN + WINDOW &amp;&amp; !ranSlots.has(`${day}:POST_CLOSE`)) {
+    ranSlots.add(`${day}:POST_CLOSE`);
+    await runSystemCheck(&quot;POST_CLOSE&quot;).catch(() =&gt; ranSlots.delete(`${day}:POST_CLOSE`));
+  }
+  // bound the latch set (keep today + yesterday only)
+  if (ranSlots.size &gt; 6) {
+    const keep = [...ranSlots].slice(-4);
+    ranSlots.clear();
+    for (const k of keep) ranSlots.add(k);
+  }
+}
+
+export function ensureSystemCheckLoop(): void {
+  if (schedulerTimer) return;
+  schedulerTimer = setInterval(() =&gt; {
+    schedulerTick().catch(() =&gt; undefined);
+  }, 60_000);
+  schedulerTimer.unref();
+}
+
+export function systemCheckLoopStatus(): { running: boolean; ranToday: string[] } {
+  return { running: schedulerTimer !== null, ranToday: [...ranSlots] };
+}
+</code></pre></div>
+<div class="part" id="app-h"><h2 class="apptitle">Appendix H — api/systemcheck-router.ts (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">api/systemcheck-router.ts</div><div class="codedesc">Owner-only routes. Create this file as-is.</div></div>
+<pre><code>import { createRouter, adminQuery } from &quot;./middleware&quot;;
+import { getLatestReport, listReports, runSystemCheck, systemCheckLoopStatus } from &quot;./systemcheck/service&quot;;
+
+/**
+ * SYSTEM CHECK API — owner-only (admin role). The platform&#x27;s health and
+ * self-diagnosis surface: latest report, history, manual run, scheduler
+ * status. Scheduled runs (pre-open / post-close ET) happen server-side;
+ * these routes expose them to the owner console.
+ */
+export const systemCheckRouter = createRouter({
+  latest: adminQuery.query(async () =&gt; ({
+    report: await getLatestReport(),
+    loop: systemCheckLoopStatus(),
+  })),
+
+  history: adminQuery.query(async () =&gt; listReports(20)),
+
+  runNow: adminQuery.mutation(async () =&gt; runSystemCheck(&quot;MANUAL&quot;)),
+});
+</code></pre></div>
+<div class="part" id="app-i"><h2 class="apptitle">Appendix I — api/router.ts + api/boot.ts (edits)</h2>
+<div class="codehead"><div class="codetitle">I1 — api/router.ts</div><div class="codedesc">Import and register the systemCheck router.</div></div>
+<pre><code>import { marketDataRouter } from &quot;./marketdata-router&quot;;
+import { engineRouter } from &quot;./engine-router&quot;;
+import { systemCheckRouter } from &quot;./systemcheck-router&quot;;
+
+// ...inside createRouter({...}):
+  marketData: marketDataRouter,
+  engine: engineRouter,
+  systemCheck: systemCheckRouter,
+});</code></pre>
+<div class="codehead"><div class="codetitle">I2 — api/boot.ts</div><div class="codedesc">Import and start the scheduler at the top of the production block.</div></div>
+<pre><code>import { ensureSchema } from &quot;./lib/ensure-schema&quot;;
+import { ensureGovernanceReady } from &quot;./governance/runtime&quot;;
+import { ensureSystemCheckLoop } from &quot;./systemcheck/service&quot;;
+
+if (env.isProduction) {
+  await ensureSchema(); // fresh databases work on first boot — live stream, alerts, limits
+  await ensureGovernanceReady(); // registry sync + signed genesis governance package if none active
+  ensureSystemCheckLoop(); // pre-open (09:00 ET) + post-close (16:15 ET) health runs, Mon–Fri</code></pre></div>
+<div class="part" id="app-j"><h2 class="apptitle">Appendix J — db/schema.ts (append these table definitions)</h2>
+<div class="codehead"><div class="codetitle">db/schema.ts — additions</div><div class="codedesc">Append after the existing tables. bigint/text/int/decimal/timestamp/mysqlEnum/serial/varchar are already imported in this file.</div></div>
+<pre><code>/* ---------- Intelligence: conversation memory ---------- */
+
+export const chatMessages = mysqlTable(&quot;chat_messages&quot;, {
+  id: serial(&quot;id&quot;).primaryKey(),
+  userId: bigint(&quot;userId&quot;, { mode: &quot;number&quot;, unsigned: true }).notNull(),
+  role: varchar(&quot;role&quot;, { length: 16 }).notNull(), // &#x27;user&#x27; | &#x27;assistant&#x27;
+  content: text(&quot;content&quot;).notNull(),
+  createdAt: timestamp(&quot;createdAt&quot;).defaultNow().notNull(),
+});
+export type ChatMessageRow = typeof chatMessages.$inferSelect;
+
+/* ---------- Learning loop: logged trade outcomes ---------- */
+
+export const tradeOutcomes = mysqlTable(&quot;trade_outcomes&quot;, {
+  id: serial(&quot;id&quot;).primaryKey(),
+  userId: bigint(&quot;userId&quot;, { mode: &quot;number&quot;, unsigned: true }).notNull(),
+  symbol: varchar(&quot;symbol&quot;, { length: 16 }).notNull(),
+  strategyId: varchar(&quot;strategyId&quot;, { length: 64 }).notNull(),
+  variantId: varchar(&quot;variantId&quot;, { length: 64 }),
+  source: mysqlEnum(&quot;source&quot;, [&quot;BACKTEST&quot;, &quot;SIMULATION&quot;, &quot;PAPER&quot;, &quot;LIVE&quot;]).notNull(),
+  entry: decimal(&quot;entry&quot;, { precision: 12, scale: 4 }),
+  exitPrice: decimal(&quot;exitPrice&quot;, { precision: 12, scale: 4 }),
+  qty: int(&quot;qty&quot;),
+  pnl: decimal(&quot;pnl&quot;, { precision: 12, scale: 2 }),
+  rMultiple: decimal(&quot;rMultiple&quot;, { precision: 8, scale: 3 }),
+  exitReason: varchar(&quot;exitReason&quot;, { length: 32 }),
+  lesson: varchar(&quot;lesson&quot;, { length: 255 }),
+  createdAt: timestamp(&quot;createdAt&quot;).defaultNow().notNull(),
+});
+export type TradeOutcome = typeof tradeOutcomes.$inferSelect;
+
+/* ---------- System check module: health reports (owner-facing) ---------- */
+
+export const systemCheckReports = mysqlTable(&quot;system_check_reports&quot;, {
+  id: serial(&quot;id&quot;).primaryKey(),
+  triggerType: varchar(&quot;triggerType&quot;, { length: 24 }).notNull(), // &#x27;PRE_OPEN&#x27; | &#x27;POST_CLOSE&#x27; | &#x27;MANUAL&#x27;
+  overall: varchar(&quot;overall&quot;, { length: 8 }).notNull(), // &#x27;OK&#x27; | &#x27;WARN&#x27; | &#x27;FAIL&#x27;
+  okCount: int(&quot;okCount&quot;).notNull().default(0),
+  warnCount: int(&quot;warnCount&quot;).notNull().default(0),
+  failCount: int(&quot;failCount&quot;).notNull().default(0),
+  checksJson: text(&quot;checksJson&quot;).notNull(),
+  aiDiagnosis: text(&quot;aiDiagnosis&quot;),
+  createdAt: timestamp(&quot;createdAt&quot;).defaultNow().notNull(),
+});
+export type SystemCheckReport = typeof systemCheckReports.$inferSelect;
+</code></pre></div>
+<div class="part" id="app-k"><h2 class="apptitle">Appendix K — api/lib/ensure-schema.ts (additions)</h2>
+<div class="codehead"><div class="codetitle">K1 — STATEMENTS array</div><div class="codedesc">Add the three CREATE TABLE statements at the end of the STATEMENTS array (before the closing bracket). All idempotent — safe on every boot.</div></div>
+<pre><code>  `CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    userId BIGINT UNSIGNED NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    content TEXT NOT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_user (userId, createdAt)
+  )`,
+  `CREATE TABLE IF NOT EXISTS trade_outcomes (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    userId BIGINT UNSIGNED NOT NULL,
+    symbol VARCHAR(16) NOT NULL,
+    strategyId VARCHAR(64) NOT NULL,
+    variantId VARCHAR(64),
+    source ENUM(&#x27;BACKTEST&#x27;,&#x27;SIMULATION&#x27;,&#x27;PAPER&#x27;,&#x27;LIVE&#x27;) NOT NULL,
+    entry DECIMAL(12,4),
+    exitPrice DECIMAL(12,4),
+    qty INT,
+    pnl DECIMAL(12,2),
+    rMultiple DECIMAL(8,3),
+    exitReason VARCHAR(32),
+    lesson VARCHAR(255),
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_outcomes_user (userId, strategyId)
+  )`,
+  `CREATE TABLE IF NOT EXISTS system_check_reports (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    triggerType VARCHAR(24) NOT NULL,
+    overall VARCHAR(8) NOT NULL,
+    okCount INT NOT NULL DEFAULT 0,
+    warnCount INT NOT NULL DEFAULT 0,
+    failCount INT NOT NULL DEFAULT 0,
+    checksJson TEXT NOT NULL,
+    aiDiagnosis TEXT,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+];</code></pre>
+<div class="codehead"><div class="codetitle">K2 — USER_ID_TABLES</div><div class="codedesc">Add chat_messages and trade_outcomes so duplicate-user merges repoint them. (system_check_reports is system-level, not user-scoped.)</div></div>
+<pre><code>const USER_ID_TABLES = [&quot;strategies&quot;, &quot;broker_accounts&quot;, &quot;alerts&quot;, &quot;run_events&quot;, &quot;run_sessions&quot;, &quot;ai_limits&quot;, &quot;support_tickets&quot;, &quot;chat_messages&quot;, &quot;trade_outcomes&quot;];</code></pre></div>
+<div class="part" id="app-l"><h2 class="apptitle">Appendix L — src/pages/app/owner/SystemCheck.tsx (new file, full source)</h2>
+<div class="codehead"><div class="codetitle">src/pages/app/owner/SystemCheck.tsx</div><div class="codedesc">Owner console page. Create this file as-is.</div></div>
+<pre><code>import {
+  Activity, CheckCircle2, XCircle, AlertTriangle, PlayCircle, RefreshCw,
+  HeartPulse, BrainCircuit, Clock,
+} from &#x27;lucide-react&#x27;;
+import { trpc } from &#x27;@/providers/trpc&#x27;;
+import { Badge, PageHeader, StatCard, TableShell, th, thCls, trCls } from &#x27;./shared&#x27;;
+
+interface CheckResult {
+  id: string;
+  name: string;
+  status: &#x27;OK&#x27; | &#x27;WARN&#x27; | &#x27;FAIL&#x27;;
+  detail: string;
+  remediation?: string;
+}
+interface StoredReport {
+  id: number;
+  triggerType: string;
+  overall: string;
+  okCount: number;
+  warnCount: number;
+  failCount: number;
+  checks: CheckResult[];
+  aiDiagnosis: string | null;
+  createdAt: string | Date;
+}
+
+function StatusIcon({ status }: { status: string }) {
+  if (status === &#x27;OK&#x27;) return &lt;CheckCircle2 className=&quot;h-4 w-4 text-teal-600&quot; /&gt;;
+  if (status === &#x27;FAIL&#x27;) return &lt;XCircle className=&quot;h-4 w-4 text-red-600&quot; /&gt;;
+  return &lt;AlertTriangle className=&quot;h-4 w-4 text-amber-500&quot; /&gt;;
+}
+function statusTone(s: string): &#x27;teal&#x27; | &#x27;amber&#x27; | &#x27;red&#x27; {
+  return s === &#x27;OK&#x27; ? &#x27;teal&#x27; : s === &#x27;FAIL&#x27; ? &#x27;red&#x27; : &#x27;amber&#x27;;
+}
+function triggerLabel(t: string) {
+  return t === &#x27;PRE_OPEN&#x27; ? &#x27;Pre-open&#x27; : t === &#x27;POST_CLOSE&#x27; ? &#x27;Post-close&#x27; : &#x27;Manual&#x27;;
+}
+
+export default function SystemCheck() {
+  const utils = trpc.useUtils();
+  const { data, refetch, isFetching } = trpc.systemCheck.latest.useQuery(undefined, { refetchInterval: 30000, retry: false });
+  const { data: history } = trpc.systemCheck.history.useQuery(undefined, { retry: false });
+  const runNow = trpc.systemCheck.runNow.useMutation({
+    onSuccess: () =&gt; {
+      utils.systemCheck.latest.invalidate();
+      utils.systemCheck.history.invalidate();
+    },
+  });
+
+  const report = data?.report as StoredReport | null | undefined;
+  const loop = data?.loop as { running: boolean; ranToday: string[] } | undefined;
+
+  return (
+    &lt;div className=&quot;space-y-6&quot;&gt;
+      &lt;PageHeader
+        kicker=&quot;SaaS Owner · Reliability&quot;
+        title=&quot;System Check&quot;
+        description=&quot;Automated health probes across every major component — data feed, engine, signals, autonomous monitors, ticket gate, intelligence, memory, and the learning loop. Runs automatically before market open (09:00 ET) and after close (16:15 ET), Mon–Fri. Failures are diagnosed by AI and pushed to your notifications.&quot;
+        actions={
+          &lt;button
+            onClick={() =&gt; runNow.mutate()}
+            disabled={runNow.isPending}
+            className=&quot;inline-flex items-center gap-2 rounded-xl bg-royal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-royal-500 disabled:opacity-50&quot;
+          &gt;
+            {runNow.isPending ? &lt;RefreshCw className=&quot;h-4 w-4 animate-spin&quot; /&gt; : &lt;PlayCircle className=&quot;h-4 w-4&quot; /&gt;}
+            {runNow.isPending ? &#x27;Running 11 checks…&#x27; : &#x27;Run now&#x27;}
+          &lt;/button&gt;
+        }
+      /&gt;
+
+      {/* scheduler + overall */}
+      &lt;div className=&quot;grid gap-4 sm:grid-cols-3&quot;&gt;
+        &lt;StatCard
+          icon={HeartPulse}
+          label=&quot;Latest overall&quot;
+          value={report ? report.overall : &#x27;—&#x27;}
+          sub={report ? `${triggerLabel(report.triggerType)} run · ${new Date(report.createdAt).toLocaleString()}` : &#x27;No runs yet — click Run now&#x27;}
+        /&gt;
+        &lt;StatCard
+          icon={Activity}
+          label=&quot;Components&quot;
+          value={report ? `${report.okCount} / ${report.okCount + report.warnCount + report.failCount} OK` : &#x27;—&#x27;}
+          sub={report ? `${report.warnCount} warning(s) · ${report.failCount} failure(s)` : undefined}
+        /&gt;
+        &lt;StatCard
+          icon={Clock}
+          label=&quot;Scheduler&quot;
+          value={loop?.running ? &#x27;Active&#x27; : &#x27;Off&#x27;}
+          sub={loop?.ranToday?.length ? `Today: ${loop.ranToday.map((s) =&gt; s.split(&#x27;:&#x27;)[1]).join(&#x27;, &#x27;)}` : &#x27;Pre-open 09:00 ET · Post-close 16:15 ET&#x27;}
+        /&gt;
+      &lt;/div&gt;
+
+      {/* component table */}
+      &lt;TableShell
+        title=&quot;Component checks&quot;
+        aside={
+          &lt;button onClick={() =&gt; refetch()} className=&quot;inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700&quot;&gt;
+            &lt;RefreshCw className={`h-3.5 w-3.5 ${isFetching ? &#x27;animate-spin&#x27; : &#x27;&#x27;}`} /&gt; Refresh
+          &lt;/button&gt;
+        }
+      &gt;
+        {!report &amp;&amp; &lt;p className=&quot;px-6 py-10 text-center text-sm text-slate-500&quot;&gt;No system check has run yet. Use “Run now” for the first report — scheduled runs happen automatically around market hours.&lt;/p&gt;}
+        {report &amp;&amp; (
+          &lt;table className=&quot;w-full text-sm&quot;&gt;
+            &lt;thead&gt;
+              &lt;tr className={thCls}&gt;
+                &lt;th className={th}&gt;Component&lt;/th&gt;
+                &lt;th className={th}&gt;Status&lt;/th&gt;
+                &lt;th className={th}&gt;Detail&lt;/th&gt;
+                &lt;th className={th}&gt;Remediation&lt;/th&gt;
+              &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+              {report.checks.map((c) =&gt; (
+                &lt;tr key={c.id} className={trCls}&gt;
+                  &lt;td className=&quot;px-6 py-3 font-medium text-slate-800&quot;&gt;
+                    &lt;span className=&quot;inline-flex items-center gap-2&quot;&gt;&lt;StatusIcon status={c.status} /&gt;{c.name}&lt;/span&gt;
+                  &lt;/td&gt;
+                  &lt;td className=&quot;px-6 py-3&quot;&gt;&lt;Badge tone={statusTone(c.status)}&gt;{c.status}&lt;/Badge&gt;&lt;/td&gt;
+                  &lt;td className=&quot;max-w-md px-6 py-3 text-slate-600&quot;&gt;{c.detail}&lt;/td&gt;
+                  &lt;td className=&quot;max-w-xs px-6 py-3 text-xs text-slate-500&quot;&gt;{c.remediation ?? &#x27;—&#x27;}&lt;/td&gt;
+                &lt;/tr&gt;
+              ))}
+            &lt;/tbody&gt;
+          &lt;/table&gt;
+        )}
+      &lt;/TableShell&gt;
+
+      {/* AI diagnosis */}
+      {report?.aiDiagnosis &amp;&amp; (
+        &lt;div className=&quot;glass rounded-2xl p-6&quot;&gt;
+          &lt;div className=&quot;mb-3 flex items-center gap-2&quot;&gt;
+            &lt;BrainCircuit className=&quot;h-4 w-4 text-violet-600&quot; /&gt;
+            &lt;h3 className=&quot;font-display text-base font-bold text-slate-900&quot;&gt;AI diagnosis &amp; improvement plan&lt;/h3&gt;
+          &lt;/div&gt;
+          &lt;pre className=&quot;whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-700&quot;&gt;{report.aiDiagnosis}&lt;/pre&gt;
+        &lt;/div&gt;
+      )}
+
+      {/* history */}
+      &lt;TableShell title=&quot;Run history&quot;&gt;
+        {!history || history.length === 0 ? (
+          &lt;p className=&quot;px-6 py-10 text-center text-sm text-slate-500&quot;&gt;No history yet.&lt;/p&gt;
+        ) : (
+          &lt;table className=&quot;w-full text-sm&quot;&gt;
+            &lt;thead&gt;
+              &lt;tr className={thCls}&gt;
+                &lt;th className={th}&gt;When&lt;/th&gt;
+                &lt;th className={th}&gt;Trigger&lt;/th&gt;
+                &lt;th className={th}&gt;Overall&lt;/th&gt;
+                &lt;th className={th}&gt;OK / Warn / Fail&lt;/th&gt;
+                &lt;th className={th}&gt;AI diagnosis&lt;/th&gt;
+              &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+              {(history as StoredReport[]).map((r) =&gt; (
+                &lt;tr key={r.id} className={trCls}&gt;
+                  &lt;td className=&quot;px-6 py-3 text-slate-600&quot;&gt;{new Date(r.createdAt).toLocaleString()}&lt;/td&gt;
+                  &lt;td className=&quot;px-6 py-3 text-slate-600&quot;&gt;{triggerLabel(r.triggerType)}&lt;/td&gt;
+                  &lt;td className=&quot;px-6 py-3&quot;&gt;&lt;Badge tone={statusTone(r.overall)}&gt;{r.overall}&lt;/Badge&gt;&lt;/td&gt;
+                  &lt;td className=&quot;px-6 py-3 text-slate-600&quot;&gt;{r.okCount} / {r.warnCount} / {r.failCount}&lt;/td&gt;
+                  &lt;td className=&quot;px-6 py-3 text-slate-500&quot;&gt;{r.aiDiagnosis ? &#x27;Yes&#x27; : &#x27;—&#x27;}&lt;/td&gt;
+                &lt;/tr&gt;
+              ))}
+            &lt;/tbody&gt;
+          &lt;/table&gt;
+        )}
+      &lt;/TableShell&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre></div>
+<div class="part" id="app-m"><h2 class="apptitle">Appendix M — src/App.tsx + src/pages/app/AppLayout.tsx (edits)</h2>
+<div class="codehead"><div class="codetitle">M1 — src/App.tsx</div><div class="codedesc">Import the page and add the route alongside the other owner routes.</div></div>
+<pre><code>import OwnerGovernance from &#x27;./pages/app/owner/Governance&#x27;;
+import OwnerSystemCheck from &#x27;./pages/app/owner/SystemCheck&#x27;;
+
+// ...inside the owner routes:
+        &lt;Route path=&quot;owner/governance&quot; element={&lt;OwnerGovernance /&gt;} /&gt;
+        &lt;Route path=&quot;owner/system-check&quot; element={&lt;OwnerSystemCheck /&gt;} /&gt;
+        &lt;Route path=&quot;owner/support&quot; element={&lt;OwnerSupport /&gt;} /&gt;</code></pre>
+<div class="codehead"><div class="codetitle">M2 — src/pages/app/AppLayout.tsx</div><div class="codedesc">Add HeartPulse to the lucide imports and the nav item to ownerNav.</div></div>
+<pre><code>  ChevronDown, Menu, X, Zap, LayoutDashboard, Users, CreditCard, Plug2, LifeBuoy, ShieldCheck, HeartPulse,
+} from &#x27;lucide-react&#x27;;
+
+const ownerNav = [
+  { to: &#x27;/app/owner&#x27;, label: &#x27;Owner Overview&#x27;, icon: LayoutDashboard, end: true },
+  { to: &#x27;/app/owner/users&#x27;, label: &#x27;Users&#x27;, icon: Users },
+  { to: &#x27;/app/owner/billing&#x27;, label: &#x27;Billing&#x27;, icon: CreditCard },
+  { to: &#x27;/app/owner/connectors&#x27;, label: &#x27;MCP Connectors&#x27;, icon: Plug2 },
+  { to: &#x27;/app/owner/governance&#x27;, label: &#x27;Governance&#x27;, icon: ShieldCheck },
+  { to: &#x27;/app/owner/system-check&#x27;, label: &#x27;System Check&#x27;, icon: HeartPulse },
+  { to: &#x27;/app/owner/support&#x27;, label: &#x27;Support&#x27;, icon: LifeBuoy },
+];</code></pre></div>
+</body>
+</html>
