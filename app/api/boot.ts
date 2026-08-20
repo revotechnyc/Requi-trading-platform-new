@@ -58,9 +58,9 @@ if (env.isProduction) {
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);
 
-  const port = parseInt(process.env.PORT || "3000");
-  serve({ fetch: app.fetch, port }, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  const port = env.port;
+  serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 } else {
   // Dev server (vite @hono/vite-dev-server): the autonomous session runner and

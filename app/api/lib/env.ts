@@ -12,6 +12,8 @@ export const env = {
   appId: required("APP_ID"),
   appSecret: required("APP_SECRET"),
   isProduction: process.env.NODE_ENV === "production",
+  /** HTTP listen port — set PORT in .env (default 3000). */
+  port: Number.parseInt(process.env.PORT || "3000", 10) || 3000,
 
   /**
    * PostgreSQL (canonical system of record; Supabase-compatible).
