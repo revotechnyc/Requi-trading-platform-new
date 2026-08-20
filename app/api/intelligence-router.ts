@@ -3,6 +3,7 @@ import { createRouter, authedQuery } from "./middleware";
 import { createStrategy, findAccountsByUser } from "./queries/trading";
 import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
+import { luciaPromptChat } from "./intelligence/lucia-prompt";
 import { clearHistory, loadHistory, saveMessage } from "./intelligence/memory";
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations } from "@db/schema";
@@ -82,43 +83,44 @@ export function parseStrategyText(text: string): ParsedPlan | null {
   return { title: raw[0].replace(/\.$/, ""), lines, asset };
 }
 
-const CANNED: Record<string, string> = {
-  "portfolio status":
-    "Portfolio status — aggregate equity $542,801.79 across 6 accounts. Day P&L +$4,164.92 (+0.77%). 4 strategies live, 1 in paper, 1 paused. No margin calls or sync errors.",
-  "flatten all futures positions":
-    "Flatten request received for the futures book. Working order submitted — 4 contracts across NinjaTrader Futures Eval #2 and Paper Sandbox. Estimated completion < 200ms.",
-  "pause general intraday":
-    "Done — General Intraday is now paused across all connected accounts. Open positions remain untouched; no new entries will be routed until you resume it.",
-  "what filled in the last hour?":
-    "7 fills in the last hour: ALPHA +120 (6 accts, 84ms), BRAVO +45 (8 accts, 91ms), CHARLIE −0.85, FOXTROT −200, GOLF +30, DELTA +4 working, ECHO condor routed. Median latency 91ms, zero rejections.",
-};
-
 /**
  * Optional OpenAI-backed parsing. Active only when OPENAI_API_KEY is set;
  * otherwise the deterministic parser above is used (still fully functional).
  */
 async function openAiParse(text: string): Promise<ParsedPlan | null> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) return null;
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6";
+  const usesCompletionTokens = /^(gpt-5|o[1-9])/i.test(model);
+  const body: Record<string, unknown> = {
+    model,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          'Parse the trading strategy into JSON: {"title": string, "asset": "Stocks"|"Crypto"|"Options"|"Futures", "lines": [{"label": "ENTRY"|"EXIT"|"SIZING"|"FILTER"|"STRUCTURE"|"GRID", "body": string}]}. Only include labels present in the text. Return only JSON.',
+      },
+      { role: "user", content: text },
+    ],
+  };
+  if (usesCompletionTokens) {
+    body.max_completion_tokens = 600;
+    body.reasoning_effort = "none";
+  } else {
+    body.max_tokens = 600;
+    body.temperature = 0.2;
+  }
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              'Parse the trading strategy into JSON: {"title": string, "asset": "Stocks"|"Crypto"|"Options"|"Futures", "lines": [{"label": "ENTRY"|"EXIT"|"SIZING"|"FILTER"|"STRUCTURE"|"GRID", "body": string}]}. Only include labels present in the text. Return only JSON.',
-          },
-          { role: "user", content: text },
-        ],
-        max_tokens: 600,
-      }),
+      body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[intelligence] openAiParse HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300));
+      return null;
+    }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "null");
     if (!parsed?.lines?.length) return null;
@@ -155,7 +157,7 @@ export const intelligenceRouter = createRouter({
  * starts a new conversation titled from the first message; an id that does
  * not belong to the caller is rejected (never write across users).
  */
-async function ensureConversation(userId: string, conversationId: string | undefined, firstText: string): Promise<string> {
+export async function ensureConversation(userId: string, conversationId: string | undefined, firstText: string): Promise<string> {
   const db = getDb();
   if (conversationId) {
     const owned = await db
@@ -198,6 +200,26 @@ export async function runIntelligenceChat(
     },
   });
 
+  /**
+   * Prefer stored OpenAI prompt (Responses + OPENAI_PROMPT_ID) like the live
+   * app. Fall back to swarm agentChat (function tools) when prompt id is
+   * unset or Responses returns empty. Write-tool turns always use agentChat.
+   */
+  async function conversationalReply(
+    userText: string,
+    options: AgentChatOptions & { developerExtra?: string } = {},
+  ): Promise<string | null> {
+    if (options.allowTradeTool) {
+      return agentChat(ctx.user.id, userText, withMarket(options));
+    }
+    const lucia = await luciaPromptChat(ctx.user.id, userText, {
+      conversationId: options.conversationId ?? conversationId,
+      developerExtra: options.developerExtra,
+    });
+    if (lucia?.reply) return lucia.reply;
+    return agentChat(ctx.user.id, userText, withMarket(options));
+  }
+
   const result = await (async (): Promise<{ kind: string; reply?: string; [k: string]: unknown }> => {
 
 
@@ -237,7 +259,11 @@ export async function runIntelligenceChat(
           // 2a) imperative follow-up on a FRESH advisory → the one turn where the
           //     write tool exists. The engine's advisory rides along verbatim.
           if (intent.followUp && advisoryFresh(thread.advisory)) {
-            const staged = await agentChat(ctx.user.id, text, withMarket({ allowTradeTool: true, advisory: thread.advisory, conversationId }));
+            const staged = await conversationalReply(text, {
+              allowTradeTool: true,
+              advisory: thread.advisory,
+              conversationId,
+            });
             // fail-safe toward CONVERSING: the advisory is consumed by this turn
             clearThreadState(ctx.user.id);
             if (staged) return { kind: "text" as const, reply: staged };
@@ -260,7 +286,12 @@ export async function runIntelligenceChat(
           try {
             const advisory = await composeAdvisory(ctx.user.id, intent.symbol, intent.side ?? "BUY");
             setThreadState(ctx.user.id, { advisory });
-            const narrated = await agentChat(ctx.user.id, text, withMarket({ allowTradeTool: false, advisory, conversationId }));
+            const narrated = await conversationalReply(text, {
+              allowTradeTool: false,
+              advisory,
+              conversationId,
+              developerExtra: `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n${JSON.stringify(advisory)}`,
+            });
             if (narrated) return { kind: "text" as const, reply: narrated };
             // Deterministic fallback narration if the model is unavailable —
             // the verdict still comes from the engine, never invented.
@@ -286,8 +317,11 @@ export async function runIntelligenceChat(
         if (intent.mode === "STRATEGIZE") {
           // falls through to the deterministic strategy-builder branch below
         } else {
-          // CHAT / STATUS_QUERY → pure AI-model turn with the write tool removed.
-          const reply = await agentChat(ctx.user.id, text, withMarket({ allowTradeTool: false, conversationId }));
+          // CHAT / STATUS_QUERY → stored prompt (Lucia) first, then swarm tools.
+          const reply = await conversationalReply(text, {
+            allowTradeTool: false,
+            conversationId,
+          });
           if (reply) return { kind: "text" as const, reply };
         }
       } else {
@@ -319,11 +353,9 @@ export async function runIntelligenceChat(
         }
       }
 
-      // 3) canned ops answers for well-known commands
-      const canned = CANNED[text.toLowerCase()];
-      if (canned) return { kind: "text" as const, reply: canned };
-
-      // 2) strategy parse — OpenAI when configured, deterministic otherwise
+      // 3) No canned fake portfolio/fills — real answers come from agentChat
+      //    tools (live snapshot). If the model is offline, fall through to
+      //    strategy parse / honest fallback below.
       const parsed = (await openAiParse(text)) ?? parseStrategyText(text);
       if (parsed) {
         const saved = await createStrategy({
@@ -342,11 +374,13 @@ export async function runIntelligenceChat(
         };
       }
 
-      // 3) swarm-governed agentic chat — live state + tools + reasoning loop
-      //    (requires OPENAI_API_KEY; falls back to the fixed reply otherwise).
+      // 3) Lucia (OPENAI_PROMPT_ID) first; swarm agentChat as fallback.
       //    With the intent router on, this tail only serves STRATEGIZE requests the
       //    parser couldn't handle — the write tool stays removed.
-      const swarmReply = await agentChat(ctx.user.id, text, withMarket(routerOn ? { allowTradeTool: false, conversationId } : { conversationId }));
+      const swarmReply = await conversationalReply(text, {
+        allowTradeTool: routerOn ? false : undefined,
+        conversationId,
+      });
       if (swarmReply) return { kind: "text" as const, reply: swarmReply };
 
       return {

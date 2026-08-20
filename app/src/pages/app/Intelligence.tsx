@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles, SendHorizonal, Copy, Check, ClipboardPaste, Layers, Wallet, Radio,
-  TrendingUp, ShieldCheck, Route, CircleCheck,
+  TrendingUp, ShieldCheck, Route, CircleCheck, Square,
 } from 'lucide-react';
 import type { Strategy } from '@/lib/data';
 import { trpc } from '@/providers/trpc';
 import { cn } from '@/lib/utils';
 import ConversationsPanel from './intelligence/ConversationsPanel';
 import ScheduledTasksPanel from './intelligence/ScheduledTasksPanel';
+import { AssistantMessageContent } from '@/components/AssistantMessageContent';
+import ReasoningIndicator, {
+  inferThinkingHint,
+  type ThinkingHint,
+} from '@/components/ReasoningIndicator';
+import { streamIntelligenceChat } from '@/lib/intelligenceStream';
 
 /* ─── message model ─────────────────────────────────────────────────────── */
 
@@ -23,18 +29,18 @@ interface Msg {
   kind: 'text' | 'parsed';
   text?: string;
   parsed?: ParsedStrategy;
+  streaming?: boolean;
 }
 
 let mid = 0;
 const nextId = () => ++mid;
 
-// Master Build §5/§11: no "Getting Started" prompt, no seeded onboarding
-// message, no example strategies — the conversation starts empty and every
-// message reflects real user input or a real system response.
+// Master Build §5/§11: no seeded onboarding — conversation starts empty.
 const seed: Msg[] = [];
 
 const quickPrompts = [
   'Portfolio status',
+  'Buy 25 ALPHA at 150 limit',
   'What filled in the last hour?',
 ];
 
@@ -63,7 +69,7 @@ function Bubble({ msg }: { msg: Msg }) {
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-display text-sm font-semibold text-slate-900">Strategy parsed — {p.title}</p>
               <span className="rounded-full border border-teal-600/25 bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700">
-                RISK CHECK PASSED
+                SAVED
               </span>
             </div>
             <div className="mt-3 space-y-2">
@@ -99,7 +105,7 @@ function Bubble({ msg }: { msg: Msg }) {
         <Sparkles className="h-4 w-4 text-white" />
       </div>
       <div className="glass max-w-[85%] rounded-2xl rounded-tl-md px-4 py-3 text-sm leading-relaxed text-slate-700">
-        {msg.text}
+        <AssistantMessageContent content={msg.text ?? ''} streaming={msg.streaming} />
       </div>
     </div>
   );
@@ -111,22 +117,29 @@ export default function Intelligence() {
   const [messages, setMessages] = useState<Msg[]>(seed);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [thinkingHint, setThinkingHint] = useState<ThinkingHint>('default');
+  const [streamPhase, setStreamPhase] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [panel, setPanel] = useState<'library' | 'conversations' | 'scheduled'>('library');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const streamMsgIdRef = useRef<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: strategyRows } = trpc.trading.strategies.useQuery();
-  // Discreet market-data source visibility (Market Data spec §12) — which
-  // provider the deterministic gateway is serving, plus the freshness of the
-  // last verified snapshot attached to a chat reply.
   const { data: gwSource } = trpc.marketData.gatewaySource.useQuery(undefined, { refetchInterval: 15000 });
   const [marketMeta, setMarketMeta] = useState<{ sourceName: string | null; timestamp: string | null; stale: boolean } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 5000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
   }, []);
 
   const library = useMemo<Strategy[]>(
@@ -146,42 +159,17 @@ export default function Intelligence() {
     [strategyRows],
   );
 
-  const chat = trpc.intelligence.chat.useMutation({
-    onSuccess: (res) => {
-      const reply: Msg =
-        res.kind === 'parsed'
-          ? { id: nextId(), role: 'ai', kind: 'parsed', parsed: (res as unknown as { parsed: ParsedStrategy }).parsed }
-          : { id: nextId(), role: 'ai', kind: 'text', text: res.reply };
-      setMessages((m) => [...m, reply]);
-      setThinking(false);
-      if (res.conversationId && res.conversationId !== conversationId) {
-        setConversationId(res.conversationId);
-      }
-      const meta = (res as { market?: { sourceName: string | null; timestamp: string | null; stale: boolean } }).market;
-      if (meta) setMarketMeta(meta);
-      utils.conversations.list.invalidate();
-      if (res.kind === 'parsed') {
-        // a new strategy was persisted server-side — refresh the library
-        utils.trading.strategies.invalidate();
-      }
-    },
-    onError: () => {
-      setMessages((m) => [
-        ...m,
-        {
-          id: nextId(),
-          role: 'ai',
-          kind: 'text',
-          text: 'Connection hiccup — I could not reach the engine. Please try again in a moment.',
-        },
-      ]);
-      setThinking(false);
-    },
-  });
-
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, thinking]);
+  }, [messages, thinking, streamPhase]);
+
+  const stopStream = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setThinking(false);
+    setStreamPhase(null);
+    streamMsgIdRef.current = null;
+  };
 
   const send = (raw?: string) => {
     const text = (raw ?? input).trim();
@@ -189,16 +177,109 @@ export default function Intelligence() {
     setInput('');
     setMessages((m) => [...m, { id: nextId(), role: 'user', kind: 'text', text }]);
     setThinking(true);
-    chat.mutate({ text, ...(conversationId ? { conversationId } : {}) });
+    setThinkingHint(inferThinkingHint(text));
+    setStreamPhase('initializing');
+
+    const aiId = nextId();
+    streamMsgIdRef.current = aiId;
+
+    abortRef.current?.abort();
+    abortRef.current = streamIntelligenceChat(
+      text,
+      {
+        onConversation: (id) => {
+          setConversationId(id);
+          utils.conversations.list.invalidate();
+        },
+        onPhase: (phase) => setStreamPhase(phase),
+        onToken: (_chunk, full) => {
+          setThinking(false);
+          setMessages((m) => {
+            const exists = m.some((x) => x.id === aiId);
+            if (!exists) {
+              return [...m, { id: aiId, role: 'ai', kind: 'text', text: full, streaming: true }];
+            }
+            return m.map((x) => (x.id === aiId ? { ...x, text: full, streaming: true } : x));
+          });
+        },
+        onDone: (res) => {
+          setThinking(false);
+          setStreamPhase(null);
+          streamMsgIdRef.current = null;
+          abortRef.current = null;
+          if (res.conversationId) setConversationId(res.conversationId);
+          if (res.market) setMarketMeta(res.market);
+          utils.conversations.list.invalidate();
+
+          if (res.kind === 'parsed') {
+            setMessages((m) => {
+              const withoutStream = m.filter((x) => x.id !== aiId);
+              return [
+                ...withoutStream,
+                {
+                  id: nextId(),
+                  role: 'ai',
+                  kind: 'parsed',
+                  parsed: {
+                    title: res.parsed.title,
+                    lines: res.parsed.lines,
+                    accounts: (res.parsed as { accounts?: number }).accounts ?? 0,
+                  },
+                },
+              ];
+            });
+            utils.trading.strategies.invalidate();
+            return;
+          }
+
+          setMessages((m) => {
+            const exists = m.some((x) => x.id === aiId);
+            if (!exists) {
+              return [...m, { id: aiId, role: 'ai', kind: 'text', text: res.reply, streaming: false }];
+            }
+            return m.map((x) =>
+              x.id === aiId ? { ...x, text: res.reply, streaming: false } : x,
+            );
+          });
+        },
+        onError: (message) => {
+          setThinking(false);
+          setStreamPhase(null);
+          streamMsgIdRef.current = null;
+          abortRef.current = null;
+          setMessages((m) => {
+            const withoutStream = m.filter((x) => x.id !== aiId || (x.text && x.text.trim()));
+            return [
+              ...withoutStream.filter((x) => x.id !== aiId || Boolean(x.text?.trim())),
+              {
+                id: nextId(),
+                role: 'ai',
+                kind: 'text',
+                text: message || 'Connection hiccup — I could not reach the engine. Please try again in a moment.',
+              },
+            ];
+          });
+        },
+        onAborted: () => {
+          setThinking(false);
+          setStreamPhase(null);
+          streamMsgIdRef.current = null;
+          abortRef.current = null;
+        },
+      },
+      { conversationId },
+    );
   };
 
   const openConversation = (id: string) => {
+    stopStream();
     setConversationId(id);
     setMessages([]);
     loadMessages.mutate({ conversationId: id });
   };
 
   const newChat = () => {
+    stopStream();
     setConversationId(null);
     setMessages([]);
   };
@@ -222,8 +303,6 @@ export default function Intelligence() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
-  // Header stats — canonical sources only (Production Revision §2). Anything
-  // unavailable renders an explicit state, never an assumed figure.
   const { data: accountRows } = trpc.trading.accounts.useQuery(undefined, { refetchInterval: 60000 });
   const { data: signalsToday } = trpc.signals.todayCount.useQuery(undefined, { refetchInterval: 30000 });
   const { data: positionRows } = trpc.financials.positions.useQuery(undefined, { refetchInterval: 30000 });
@@ -235,7 +314,7 @@ export default function Intelligence() {
       (p) => p.status === 'CLOSED' && p.closedAt !== null &&
         new Date(p.closedAt).toLocaleDateString('en-US', { timeZone: 'America/New_York' }) === etToday,
     );
-    if (closedToday.length === 0) return null; // explicit "no closed trades today" — not $0.00
+    if (closedToday.length === 0) return null;
     return closedToday.reduce((a, p) => a + (p.realizedPnl ?? 0), 0);
   }, [positionRows]);
 
@@ -264,7 +343,6 @@ export default function Intelligence() {
 
   return (
     <div className="flex h-full flex-col space-y-5">
-      {/* header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <p className="text-sm text-slate-500">Requi AI Engine 2.0</p>
@@ -289,7 +367,6 @@ export default function Intelligence() {
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.7fr_1fr]">
-        {/* console */}
         <div className="glass flex min-h-[520px] flex-col overflow-hidden rounded-2xl lg:h-[calc(100vh-16.5rem)] lg:min-h-0">
           <div className="flex items-center gap-2.5 border-b border-slate-900/5 px-5 py-3.5">
             <div className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-royal-500 via-sky-500 to-teal-500">
@@ -302,7 +379,7 @@ export default function Intelligence() {
             {(gwSource || marketMeta) && (
               <div
                 className="ml-auto flex items-center gap-1.5 rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1"
-                title="Market data is served by the deterministic RTI gateway (connected broker first, Yahoo Finance fallback), validated and normalized before the AI ever sees it."
+                title="Market data is served by the deterministic RTI gateway"
               >
                 <span className={cn('h-1.5 w-1.5 rounded-full', marketMeta?.stale ? 'bg-amber-500' : 'bg-teal-600')} />
                 <span className="text-[10px] font-medium tabular-nums text-slate-500">
@@ -328,31 +405,18 @@ export default function Intelligence() {
               <Bubble key={m.id} msg={m} />
             ))}
             {thinking && (
-              <div className="flex gap-3">
-                <div className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-royal-500 via-sky-500 to-teal-500">
-                  <Sparkles className="h-4 w-4 animate-pulse text-white" />
-                </div>
-                <div className="glass flex items-center gap-1.5 rounded-2xl rounded-tl-md px-4 py-3.5">
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-600"
-                      style={{ animationDelay: `${i * 0.15}s` }}
-                    />
-                  ))}
-                </div>
-              </div>
+              <ReasoningIndicator phase={streamPhase} hint={thinkingHint} />
             )}
           </div>
 
-          {/* input */}
           <div className="border-t border-slate-900/5 p-4">
             <div className="mb-3 flex flex-wrap gap-2">
               {quickPrompts.map((q) => (
                 <button
                   key={q}
                   onClick={() => send(q)}
-                  className="rounded-full border border-slate-900/8 bg-slate-900/[0.03] px-3 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-sky-600/40 hover:text-sky-600"
+                  disabled={thinking}
+                  className="rounded-full border border-slate-900/8 bg-slate-900/[0.03] px-3 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-sky-600/40 hover:text-sky-600 disabled:opacity-40"
                 >
                   {q}
                 </button>
@@ -372,19 +436,28 @@ export default function Intelligence() {
                 placeholder={'Paste a text strategy here (ENTRY / EXIT / SIZING…) or ask a question…\nCtrl+V works — then press Enter to send.'}
                 className="font-mono-num max-h-40 flex-1 resize-none rounded-xl border border-slate-900/10 bg-slate-900/[0.03] px-4 py-3 text-xs leading-relaxed text-slate-700 placeholder:text-slate-600 outline-none focus:border-sky-600/50"
               />
-              <button
-                onClick={() => send()}
-                disabled={!input.trim() || thinking}
-                className="btn-glow grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-royal-500 text-white transition-all hover:bg-royal-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-                aria-label="Send"
-              >
-                <SendHorizonal className="h-4.5 w-4.5" />
-              </button>
+              {thinking ? (
+                <button
+                  onClick={stopStream}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-900/15 bg-white text-slate-600 transition-all hover:bg-slate-50"
+                  aria-label="Stop"
+                >
+                  <Square className="h-4 w-4 fill-current" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => send()}
+                  disabled={!input.trim()}
+                  className="btn-glow grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-royal-500 text-white transition-all hover:bg-royal-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                  aria-label="Send"
+                >
+                  <SendHorizonal className="h-4.5 w-4.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* right panel — Strategy Library / Recent Conversations / Scheduled Tasks */}
         <div className="glass flex min-h-0 flex-col overflow-hidden rounded-2xl lg:h-[calc(100vh-16.5rem)]">
           <div className="flex border-b border-slate-900/5">
             {(
@@ -419,6 +492,11 @@ export default function Intelligence() {
             <p className="text-[11px] text-slate-500">Text-based — copy & paste into the console</p>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {library.length === 0 && (
+              <p className="px-1 py-6 text-center text-xs text-slate-400">
+                No strategies yet. Paste ENTRY / EXIT / SIZING text into the console to save one.
+              </p>
+            )}
             {library.map((s) => (
               <div key={s.id} className="rounded-xl border border-slate-900/8 bg-slate-900/[0.02] p-4 transition-colors hover:border-sky-600/30">
                 <div className="flex items-start justify-between gap-2">

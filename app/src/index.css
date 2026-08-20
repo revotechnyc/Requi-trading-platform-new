@@ -186,6 +186,15 @@
   50% { transform: translateY(-10px); }
 }
 
+@keyframes waveform {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.7; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
 .animate-float {
   animation: float-y 6s ease-in-out infinite;
+}
+
+.animate-waveform {
+  animation: waveform 0.9s ease-in-out infinite;
 }

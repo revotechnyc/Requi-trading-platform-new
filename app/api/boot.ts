@@ -18,6 +18,7 @@ import { createStripeWebhookHandler } from "./billing/stripe-webhook";
 import { startHealthScheduler } from "./platform/scheduler";
 import { startTaskScheduler } from "./scheduler-runner";
 import { startAutonomousRunner } from "./autonomous/runner";
+import { intelligenceStreamHandler } from "./intelligence-stream";
 import { Paths } from "@contracts/constants";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -29,6 +30,7 @@ app.get("/api/auth/google", createGoogleStartHandler());
 app.get("/api/auth/google/callback", createGoogleCallbackHandler());
 // Stripe webhooks: verified + idempotent; browser is never authoritative.
 app.post("/api/webhooks/stripe", createStripeWebhookHandler());
+app.post("/api/intelligence/stream", (c) => intelligenceStreamHandler(c));
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

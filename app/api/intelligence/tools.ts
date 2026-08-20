@@ -365,8 +365,13 @@ export interface AgentChatOptions {
 }
 
 export async function agentChat(userId: string, text: string, opts?: AgentChatOptions): Promise<string | null> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) return null;
+
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6";
+  // gpt-5 / o-series reject `max_tokens` — same fix as the live trading app.
+  const usesCompletionTokens = /^(gpt-5|o[1-9])/i.test(model);
+  const maxOut = Number(process.env.OPENAI_MAX_TOKENS) || (usesCompletionTokens ? 4096 : 1600);
 
   const snapshot = await buildSnapshot(userId).catch(() => "snapshot unavailable");
   let system = `${SWARM_MASTER_PROMPT}\n${RUNTIME_ADDENDUM}\n\n=== LIVE SYSTEM STATE (as of ${new Date().toISOString()}) ===\n${snapshot}`;
@@ -402,18 +407,33 @@ export async function agentChat(userId: string, text: string, opts?: AgentChatOp
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
+      const body: Record<string, unknown> = {
+        model,
+        messages,
+        tools,
+        tool_choice: "auto",
+      };
+      if (usesCompletionTokens) {
+        body.max_completion_tokens = Math.min(maxOut, 1600);
+        // gpt-5 + function tools on chat/completions requires reasoning_effort=none
+        // (otherwise API 400 → silent fallback). Live app uses /v1/responses instead.
+        body.reasoning_effort = "none";
+      } else {
+        body.max_tokens = Math.min(maxOut, 1600);
+        const temp = Number(process.env.OPENAI_TEMPERATURE ?? "0.2");
+        if (Number.isFinite(temp)) body.temperature = temp;
+      }
+
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL ?? "gpt-5.6",
-          messages,
-          tools,
-          tool_choice: "auto",
-          max_tokens: 1600,
-        }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error("[intelligence] agentChat HTTP", res.status, errBody.slice(0, 400));
+        return null;
+      }
       const data = (await res.json()) as { choices?: { message?: ChatMessage }[] };
       const msg = data.choices?.[0]?.message;
       if (!msg) return null;
@@ -439,7 +459,8 @@ export async function agentChat(userId: string, text: string, opts?: AgentChatOp
     }
     const exhausted = "I gathered what I could but ran out of reasoning rounds — try asking more specifically, or split it into two questions.";
     return exhausted;
-  } catch {
+  } catch (err) {
+    console.error("[intelligence] agentChat failed", err);
     return null;
   }
 }
