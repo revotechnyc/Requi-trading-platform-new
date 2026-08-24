@@ -49,6 +49,14 @@ export const env = {
   /** Key that encrypts the private governance vault. MUST be set in production. */
   governanceVaultKey: process.env.GOVERNANCE_VAULT_KEY ?? "",
 
+  /**
+   * Public HTTPS origin for OAuth redirects (Robinhood Agentic MCP).
+   * Example: https://requitrading.com — localhost is rejected by Robinhood.
+   */
+  publicAppUrl: (process.env.PUBLIC_APP_URL ?? "").trim().replace(/\/$/, ""),
+  /** Optional full override for Robinhood OAuth callback URL. */
+  robinhoodRedirectUri: process.env.ROBINHOOD_MCP_REDIRECT_URI?.trim() || "",
+
   /** Payments — Stripe. Webhooks are signature-verified and idempotent. */
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",

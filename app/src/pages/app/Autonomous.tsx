@@ -50,7 +50,8 @@ export default function Autonomous() {
   const { data: openPositions } = trpc.autonomous.positions.useQuery(undefined, { refetchInterval: 5000 });
   const { data: orders } = trpc.autonomous.orders.useQuery(undefined, { refetchInterval: 8000 });
   const { data: trades } = trpc.autonomous.trades.useQuery(undefined, { refetchInterval: 8000 });
-  const { data: accounts } = trpc.trading.accounts.useQuery();
+  const { data: accountsPayload } = trpc.trading.accounts.useQuery();
+  const accounts = accountsPayload?.accounts;
 
   const [tab, setTab] = useState<'positions' | 'orders' | 'trades'>('positions');
   const [setupOpen, setSetupOpen] = useState(false);

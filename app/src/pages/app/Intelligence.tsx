@@ -303,7 +303,8 @@ export default function Intelligence() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
-  const { data: accountRows } = trpc.trading.accounts.useQuery(undefined, { refetchInterval: 60000 });
+  const { data: accountsPayload } = trpc.trading.accounts.useQuery(undefined, { refetchInterval: 60000 });
+  const accountRows = accountsPayload?.accounts;
   const { data: signalsToday } = trpc.signals.todayCount.useQuery(undefined, { refetchInterval: 30000 });
   const { data: positionRows } = trpc.financials.positions.useQuery(undefined, { refetchInterval: 30000 });
 

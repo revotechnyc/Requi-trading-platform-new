@@ -10,6 +10,30 @@ import { findTicketsByUser, findAllTickets, createTicket, setTicketStatus } from
 import { getDb } from "./queries/connection";
 import { brokerAccounts, users } from "@db/schema";
 import { desc } from "drizzle-orm";
+import { env } from "./lib/env";
+import { isIbkrAccountConfigured } from "./brokers/ibkr";
+import {
+  completeRobinhoodConnect,
+  disconnectRobinhood,
+  getRobinhoodConnectionPublic,
+  refreshRobinhoodHealth,
+  startRobinhoodConnect,
+} from "./brokers/robinhood-mcp/store";
+
+function requestOrigin(req: Request): string {
+  if (env.publicAppUrl) return env.publicAppUrl;
+  const url = new URL(req.url);
+  const xfProto = req.headers.get("x-forwarded-proto");
+  const xfHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const host = (xfHost ?? url.host).split(",")[0]!.trim();
+  let proto = ((xfProto ?? url.protocol.replace(":", "")) || "https").split(",")[0]!.trim();
+  const isLoopback =
+    /^localhost(?::\d+)?$/i.test(host) ||
+    /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
+    /^\[::1\](?::\d+)?$/.test(host);
+  if (!isLoopback && proto === "http") proto = "https";
+  return `${proto}://${host}`;
+}
 
 export const tradingRouter = createRouter({
   strategies: authedQuery.query(({ ctx }) => findStrategiesByUser(ctx.user.id)),
@@ -24,7 +48,16 @@ export const tradingRouter = createRouter({
     .input(z.object({ id: z.string(), status: z.enum(["Live", "Paper", "Paused"]) }))
     .mutation(({ ctx, input }) => setStrategyStatus(ctx.user.id, input.id, input.status)),
 
-  accounts: authedQuery.query(({ ctx }) => findAccountsByUser(ctx.user.id)),
+  accounts: authedQuery.query(async ({ ctx }) => {
+    const rows = await findAccountsByUser(ctx.user.id);
+    const rh = await getRobinhoodConnectionPublic(ctx.user.id).catch(() => null);
+    return {
+      accounts: rows,
+      robinhoodMcp: rh,
+      ibkrServerLinked: isIbkrAccountConfigured(),
+      ibkrAccountId: process.env.IBKR_ACCOUNT?.trim() || null,
+    };
+  }),
 
   /**
    * Connect a paper brokerage account — a real broker_accounts row backed by
@@ -51,6 +84,51 @@ export const tradingRouter = createRouter({
         .returning();
       return row;
     }),
+
+  robinhoodMcpStart: authedQuery.mutation(async ({ ctx }) => {
+    try {
+      return await startRobinhoodConnect({
+        userId: ctx.user.id,
+        origin: requestOrigin(ctx.req),
+      });
+    } catch (e) {
+      throw new TRPCError({
+        code: "BAD_GATEWAY",
+        message: e instanceof Error ? e.message : "Failed to start Robinhood MCP connect",
+      });
+    }
+  }),
+
+  robinhoodMcpComplete: publicQuery
+    .input(z.object({ code: z.string().min(1), state: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      try {
+        return await completeRobinhoodConnect({
+          code: input.code,
+          state: input.state,
+        });
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Robinhood MCP connect failed",
+        });
+      }
+    }),
+
+  robinhoodMcpDisconnect: authedQuery.mutation(async ({ ctx }) => {
+    return disconnectRobinhood(ctx.user.id);
+  }),
+
+  robinhoodMcpRefresh: authedQuery.mutation(async ({ ctx }) => {
+    try {
+      return await refreshRobinhoodHealth(ctx.user.id);
+    } catch (e) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: e instanceof Error ? e.message : "Robinhood MCP health refresh failed",
+      });
+    }
+  }),
 });
 
 export const marketplaceRouter = createRouter({

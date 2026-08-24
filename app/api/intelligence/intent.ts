@@ -1,4 +1,5 @@
 import { marketDataService } from "../marketdata/service";
+import { getSnapshot } from "../marketdata/gateway/gateway";
 import { identifyStrategy } from "../engine/scanner";
 import { sizePosition, portfolioHeatPct, returnCorrelation, GLOBAL_RISK } from "../engine/risk";
 import { openRiskDollars, listPositions } from "../engine/portfolio";
@@ -193,6 +194,26 @@ export async function composeAdvisory(userId: string, symbol: string, side: "BUY
   if (feed?.error) reasons.push(`data feed: ${feed.error}`);
   if (!fresh && !feed?.error) reasons.push(`insufficient fresh bars (${bars}) or stale feed (delay ${delaySeconds}s) — the engine never estimates missing data`);
 
+  // New setup Market Data Gateway fallback (broker → Yahoo) when Eyes bars are thin.
+  let gatewayLast: number | null = null;
+  let gatewaySource: string | null = null;
+  if (!fresh || feed?.error) {
+    try {
+      const snap = await getSnapshot(userId, sym);
+      if (snap.market_data_available && typeof snap.price === "number" && snap.price > 0) {
+        gatewayLast = snap.price;
+        gatewaySource = snap.source_name ?? snap.source ?? "Market Data Gateway";
+        reasons.push(
+          `gateway quote: ${gatewayLast} via ${gatewaySource}` +
+            (snap.stale ? " (stale)" : "") +
+            " — used for advisory when intraday bar feed is incomplete",
+        );
+      }
+    } catch (e) {
+      reasons.push(`gateway quote unavailable: ${(e as Error).message}`);
+    }
+  }
+
   // ── 2. ANALYZE — best-fit setup from the deterministic scanner
   let setup: Advisory["setup"] = null;
   const ind = feed?.indicators;
@@ -249,18 +270,23 @@ export async function composeAdvisory(userId: string, symbol: string, side: "BUY
   if (corrBlock) reasons.push(corrBlock);
 
   // ── 4. VERDICT ──
-  const last = ind?.last ?? null;
+  const last = ind?.last ?? gatewayLast;
   let verdict: Advisory["verdict"];
   let watchFor: string | null = null;
-  if (feed?.error || !fresh) {
+  const noUsablePrice = last === null || !(last > 0);
+  if (noUsablePrice && (feed?.error || !fresh)) {
     verdict = "UNFAVORABLE";
-    watchFor = "restore a fresh data feed, then ask again";
+    watchFor = "restore a fresh data feed or gateway quote, then ask again";
   } else if (!governanceActive || heat >= GLOBAL_RISK.portfolioHeatMaxPct || corrBlock) {
     verdict = "BLOCKED";
     watchFor = !governanceActive ? "governance must be active" : heat >= GLOBAL_RISK.portfolioHeatMaxPct ? "portfolio heat must fall below the cap" : "correlated exposure must come down";
-  } else if (!marketOpen) {
+  } else if (!fresh || !marketOpen) {
+    // Gateway quote alone is enough to discuss / optionally stage under WAIT —
+    // full FAVORABLE still requires engine bars + setup.
     verdict = "WAIT";
-    watchFor = "regular session opens 09:30 ET";
+    watchFor = !fresh
+      ? "intraday bar feed incomplete — gateway quote available; staging allowed after you say stage it (CONFIRM still required)"
+      : "regular session / bar indicators not ready — ask me to watch it";
   } else if (!setup) {
     verdict = "WAIT";
     watchFor = "a confirmed engine setup (scanner currently sees no candidate) — ask me to watch it";
@@ -285,7 +311,7 @@ export async function composeAdvisory(userId: string, symbol: string, side: "BUY
     dataQuality: { fresh, bars, marketOpen, delaySeconds },
     setup,
     sizingPreview,
-    proposed: last !== null ? { lastPrice: last, note: "entry/stop finalize when you stage — the engine sizes from YOUR stop, never an invented one" } : null,
+    proposed: last !== null ? { lastPrice: last, note: gatewaySource && !fresh ? `gateway ${gatewaySource} — entry/stop finalize when you stage` : "entry/stop finalize when you stage — the engine sizes from YOUR stop, never an invented one" } : null,
     watchFor,
     currentHeatPct: heat,
     governanceVersion,

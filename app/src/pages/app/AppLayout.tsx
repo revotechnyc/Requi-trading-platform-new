@@ -52,7 +52,8 @@ function sessionChip(state?: string): { label: string; live: boolean } {
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
   const { data: stats } = trpc.engine.strategyStats.useQuery(undefined, { refetchInterval: 60000 });
-  const { data: accounts } = trpc.trading.accounts.useQuery(undefined, { refetchInterval: 60000 });
+  const { data: accountsPayload } = trpc.trading.accounts.useQuery(undefined, { refetchInterval: 60000 });
+  const accounts = accountsPayload?.accounts;
   const { data: signalsToday } = trpc.signals.todayCount.useQuery(undefined, { refetchInterval: 30000 });
 
   return (

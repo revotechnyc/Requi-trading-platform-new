@@ -11,11 +11,12 @@ import { getDb } from "./queries/connection";
 import {
   advisoryFresh,
   classifyIntent,
-  clearThreadState,
   composeAdvisory,
   getThreadState,
   setThreadState,
 } from "./intelligence/intent";
+import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
+import { resolveIntelligenceBroker } from "./queries/autonomous-exec-policy";
 
 const KNOWN_LABELS = ["ENTRY", "EXIT", "SIZING", "FILTER", "STRUCTURE", "GRID"];
 
@@ -256,26 +257,17 @@ export async function runIntelligenceChat(
         const intent = classifyIntent(text, thread);
 
         if (intent.mode === "TRADE_INTENT") {
-          // 2a) imperative follow-up on a FRESH advisory → the one turn where the
-          //     write tool exists. The engine's advisory rides along verbatim.
+          // 2a) "stage it" on a FRESH advisory → deterministic proposeTicket
+          //     (venue from resolveIntelligenceBroker). No LLM write-tool.
           if (intent.followUp && advisoryFresh(thread.advisory)) {
-            const staged = await conversationalReply(text, {
-              allowTradeTool: true,
-              advisory: thread.advisory,
-              conversationId,
+            const staged = await stageTicketFromAdvisory(ctx.user.id, thread.advisory!, {
+              quantity: intent.quantity,
             });
-            // fail-safe toward CONVERSING: the advisory is consumed by this turn
-            clearThreadState(ctx.user.id);
-            if (staged) return { kind: "text" as const, reply: staged };
-            return {
-              kind: "text" as const,
-              reply:
-                "I couldn't reach the reasoning model just now. The advisory stands — say \"stage it\" again in a moment, or place the trade from the Tickets panel.",
-            };
+            return { kind: "text" as const, reply: staged.reply };
           }
 
           // 2b) fresh imperative ("buy apple") → deterministic advisory FIRST.
-          //     No ticket is created on this turn; the write tool is absent.
+          //     No ticket is created on this turn; Lucia (or fallback) narrates.
           if (!intent.symbol) {
             return {
               kind: "text" as const,
@@ -290,11 +282,9 @@ export async function runIntelligenceChat(
               allowTradeTool: false,
               advisory,
               conversationId,
-              developerExtra: `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n${JSON.stringify(advisory)}`,
+              developerExtra: `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n${JSON.stringify(advisory)}\nIf verdict is FAVORABLE or WAIT, tell the user they can say "stage it" to prepare a ticket. If UNFAVORABLE or BLOCKED, do not invite staging.`,
             });
             if (narrated) return { kind: "text" as const, reply: narrated };
-            // Deterministic fallback narration if the model is unavailable —
-            // the verdict still comes from the engine, never invented.
             const a = advisory;
             return {
               kind: "text" as const,
@@ -302,9 +292,9 @@ export async function runIntelligenceChat(
                 `**${a.symbol} ${a.side} — verdict: ${a.verdict}**\n\n` +
                 a.reasons.map((r) => `· ${r}`).join("\n") +
                 (a.watchFor ? `\n\nWatch for: ${a.watchFor}` : "") +
-                (a.verdict === "FAVORABLE"
+                (a.verdict === "FAVORABLE" || a.verdict === "WAIT"
                   ? "\n\nIf you want to proceed, say \"stage it\" and I'll prepare a ticket — nothing trades without your CONFIRM."
-                  : ""),
+                  : "\n\nNothing was staged."),
             };
           } catch (e) {
             return {
@@ -329,9 +319,11 @@ export async function runIntelligenceChat(
         const tradeMatch = text.match(/^(buy|sell)\s+(\d+)\s+([A-Za-z.]{1,12})(?:\s+(?:at|@)\s+(\d+(?:\.\d+)?))?(?:\s+(limit|market))?/i);
         if (tradeMatch) {
           const [, sideRaw, qtyRaw, symbolRaw, priceRaw, typeRaw] = tradeMatch;
+          const { broker, accountId, note } = await resolveIntelligenceBroker(ctx.user.id);
           const res = await proposeTicket(ctx.user.id, {
             strategy: "MANUAL",
-            broker: "PAPER",
+            broker,
+            accountId,
             symbol: symbolRaw.toUpperCase(),
             side: sideRaw.toUpperCase() as "BUY" | "SELL",
             quantity: parseInt(qtyRaw, 10),
@@ -346,6 +338,7 @@ export async function runIntelligenceChat(
               `I've staged that as ticket **${t.ticketId}** — nothing has been sent to any broker.\n\n` +
               `· ${t.symbol} ${t.side} ${t.quantity} @ ${t.orderType}${t.limitPrice ? ` ${t.limitPrice}` : ""}\n` +
               `· Venue: ${t.effectiveBroker}${res.degradedNote ? ` (${res.degradedNote})` : ""}\n` +
+              `· Policy: ${note}\n` +
               `· Expires: 5 minutes\n\n` +
               `To authorize it, reply exactly:\n\`CONFIRM ORDER ${t.ticketId}\`\nTo cancel it, reply:\n\`REJECT ORDER ${t.ticketId}\`\n\n` +
               `You'll also find it in the notification center with CONFIRM / REJECT buttons.`,

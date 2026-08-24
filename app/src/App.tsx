@@ -16,6 +16,7 @@ import Accounts from './pages/app/Accounts';
 import Marketplace from './pages/app/Marketplace';
 import Library from './pages/app/Library';
 import Settings from './pages/app/Settings';
+import RobinhoodCallback from './pages/RobinhoodCallback';
 import OwnerOverview from './pages/app/owner/OwnerOverview';
 import OwnerUsers from './pages/app/owner/Users';
 import OwnerBilling from './pages/app/owner/Billing';
@@ -68,6 +69,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/robinhood/callback" element={<RobinhoodCallback />} />
       <Route path="/legal" element={<LegalCenter />} />
       <Route path="/legal/:slug" element={<LegalDoc />} />
       <Route

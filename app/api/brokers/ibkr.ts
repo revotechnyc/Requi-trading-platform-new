@@ -202,3 +202,8 @@ export class IbkrBroker implements BrokerAdapter {
     };
   }
 }
+
+/** True when operator has configured a target IBKR account id. */
+export function isIbkrAccountConfigured(): boolean {
+  return Boolean(process.env.IBKR_ACCOUNT?.trim());
+}

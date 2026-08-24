@@ -1,5 +1,6 @@
 import { listMonitors } from "../engine/monitor";
 import { listTickets, proposeTicket } from "../queries/tickets";
+import { resolveIntelligenceBroker } from "../queries/autonomous-exec-policy";
 import { findAlertsByUser } from "../queries/alerts";
 import { marketDataService } from "../marketdata/service";
 import { fetchMinuteBars } from "../marketdata/ibkr-data";
@@ -210,9 +211,11 @@ async function executeTool(userId: string, name: string, args: Record<string, un
       if (quantity <= 0 || quantity > 100000) return { ok: false, error: "quantity must be a positive integer — ask the user how many shares" };
       if (!(stop > 0)) return { ok: false, error: "a protective stop price is required — ask the user where the stop goes before staging anything" };
       const orderType = args.orderType === "MKT" ? "MKT" : args.orderType === "LMT" ? "LMT" : "STP";
+      const { broker, accountId, note } = await resolveIntelligenceBroker(userId);
       const res = await proposeTicket(userId, {
         strategy: "INTEL",
-        broker: "PAPER",
+        broker,
+        accountId,
         symbol,
         side,
         quantity,
@@ -228,6 +231,8 @@ async function executeTool(userId: string, name: string, args: Record<string, un
         ok: true,
         staged: true,
         executed: false,
+        venue: res.ticket.effectiveBroker ?? broker,
+        policy: note,
         ticket: res.ticket,
         instructionForUser: `To authorize, reply exactly: CONFIRM ORDER ${res.ticket.ticketId} — to cancel: REJECT ORDER ${res.ticket.ticketId}`,
       };
