@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Brain, FileText, Globe } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /** Fallback rotator when stream hasn't sent a phase yet. */
 const STATUS_MESSAGES = [
   'Reasoning…',
-  'Searching Files…',
+  'Fetching market data…',
   'Thinking…',
-  'Searching the Web…',
-  'Checking Sources…',
-  'Verifying Information…',
-  'Clarifying Context…',
-  'Preparing Response…',
+  'Checking gateway…',
+  'Verifying prices…',
+  'Clarifying context…',
+  'Preparing response…',
 ] as const;
 
 const ROTATE_MS = 2800;
@@ -20,9 +19,7 @@ const PHASE_LABELS: Record<string, string> = {
   initializing: 'Starting…',
   processing: 'Processing…',
   generating: 'Writing response…',
-  searching_files: 'Searching Files…',
-  searching_web: 'Searching the Web…',
-  search_complete: 'Sources ready…',
+  fetching_market: 'Fetching market data…',
   reasoning: 'Reasoning…',
   staging_ticket: 'Staging order ticket…',
   validating_confirmation: 'Validating confirmation…',
@@ -78,7 +75,7 @@ function hintSeed(hint: ThinkingHint): string {
     case 'strategy':
       return 'Parsing strategy…';
     case 'chat':
-      return 'Searching Files…';
+      return 'Fetching market data…';
     default:
       return STATUS_MESSAGES[0];
   }
@@ -91,7 +88,7 @@ interface ReasoningIndicatorProps {
   /** Live chain-of-thought text from the model. */
   reasoningText?: string;
   reasoningDone?: boolean;
-  /** Kept for call-site compatibility; file names are not rendered. */
+  /** Kept for call-site compatibility; research tools are disabled in Intelligence. */
   filenames?: string[];
   activeTools?: Array<'file_search' | 'web_search'>;
   className?: string;
@@ -102,7 +99,6 @@ export default function ReasoningIndicator({
   phase = null,
   reasoningText = '',
   reasoningDone = false,
-  activeTools,
   className,
 }: ReasoningIndicatorProps) {
   const seed = hintSeed(hint);
@@ -129,13 +125,6 @@ export default function ReasoningIndicator({
     ? PHASE_LABELS[phase] ?? phase.replace(/_/g, ' ')
     : (rotation[currentIndex] ?? seed);
 
-  const tools =
-    activeTools ??
-    ([
-      ...(phase === 'searching_files' || phase === 'search_complete' ? (['file_search'] as const) : []),
-      ...(phase === 'searching_web' ? (['web_search'] as const) : []),
-    ] as Array<'file_search' | 'web_search'>);
-
   return (
     <div className={cn('flex w-full flex-col gap-2.5', className)} role="status" aria-live="polite">
       <div className="requi-thinking-shell rounded-2xl rounded-tl-md px-4 py-3.5">
@@ -155,21 +144,6 @@ export default function ReasoningIndicator({
           </div>
         </div>
       </div>
-
-      {tools.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-1 animate-in fade-in duration-300">
-          {tools.includes('file_search') && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-sky-600/20 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-700">
-              <FileText className="h-3 w-3" /> File search
-            </span>
-          )}
-          {tools.includes('web_search') && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-teal-600/20 bg-teal-500/10 px-2 py-1 text-[10px] font-semibold text-teal-700">
-              <Globe className="h-3 w-3" /> Web search
-            </span>
-          )}
-        </div>
-      )}
 
       {reasoningText.trim().length > 0 && (
         <div className="animate-in fade-in duration-200">

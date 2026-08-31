@@ -217,7 +217,10 @@ export async function runIntelligenceChat(
       conversationId: options.conversationId ?? conversationId,
       developerExtra: options.developerExtra,
     });
-    if (lucia?.reply) return lucia.reply;
+    if (lucia?.reply) {
+      if (lucia.marketMeta) marketMeta = lucia.marketMeta;
+      return lucia.reply;
+    }
     return agentChat(ctx.user.id, userText, withMarket(options));
   }
 

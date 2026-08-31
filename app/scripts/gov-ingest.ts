@@ -26,6 +26,6 @@ const DOCUMENTS = [
 for (const doc of DOCUMENTS) {
   const plaintext = readFileSync(join(SOURCE_DIR, doc.file));
   const entry = sealDocument(doc.docKey, doc.title, doc.version, plaintext);
-  console.log(`sealed ${entry.docKey.padEnd(22)} v${entry.version.padEnd(10)} sha256:${entry.sha256.slice(0, 16)}… (${entry.bytes} bytes)`);
+  console.log(`sealed ${entry.docKey.padEnd(22)} ${entry.version.padEnd(10)} sha256:${entry.sha256.slice(0, 16)}… (${entry.bytes} bytes)`);
 }
 console.log("vault sealed — raw sources remain outside the repository");

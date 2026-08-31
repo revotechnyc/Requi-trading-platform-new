@@ -6,6 +6,7 @@
  */
 import { loadHistory } from "./memory";
 import { learningSummaryLines } from "../engine/learning";
+import { buildMarketContextBlock, type MarketMeta } from "./tools";
 
 export type ChatWebSource = { title: string; url: string };
 
@@ -16,7 +17,7 @@ export type ChatMeta = {
   urls: ChatWebSource[];
 };
 
-export type LuciaChatResult = { reply: string; meta: ChatMeta };
+export type LuciaChatResult = { reply: string; meta: ChatMeta; marketMeta?: MarketMeta | null };
 
 const EMPTY_META: ChatMeta = {
   fileSearch: false,
@@ -125,7 +126,45 @@ function openaiUserFacingError(status: number, body: string): string {
   if (status === 401 || status === 403) {
     return "Lucia can't authenticate with OpenAI — check `OPENAI_API_KEY` on the server.";
   }
+  if (/reasoning\.summary/i.test(body) && /verify.*organization/i.test(body)) {
+    return "Lucia is temporarily using the fallback engine — OpenAI prompt v29 needs a **verified organization** for reasoning summaries. Verify at platform.openai.com → Settings → Organization, or keep `OPENAI_PROMPT_VERSION=28` until then.";
+  }
   return "Lucia hit a temporary OpenAI error. Please try again in a moment.";
+}
+
+/** Stored prompts carry their own model; overriding with o4-mini re-triggers summary=detailed on v29+. */
+function shouldAttachResponsesModel(): boolean {
+  return process.env.OPENAI_RESPONSES_MODEL_OVERRIDE === "1";
+}
+
+/** v29+ may pin summary=detailed (needs verified OpenAI org). Fallback version works today. */
+function promptVersionsToTry(): string[] {
+  const primary = process.env.OPENAI_PROMPT_VERSION?.trim();
+  const fallback = process.env.OPENAI_PROMPT_FALLBACK_VERSION?.trim() || "28";
+  const versions: string[] = [];
+  if (primary) versions.push(primary);
+  if (!versions.includes(fallback)) versions.push(fallback);
+  return versions;
+}
+
+function isReasoningSummaryOrgError(status: number, body: string): boolean {
+  return status === 400 && /reasoning\.summary/i.test(body) && /verify.*organization/i.test(body);
+}
+
+async function callResponsesApi(
+  key: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: true; data: unknown } | { ok: false; status: number; body: string }> {
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return { ok: true, data: await res.json() };
+  return { ok: false, status: res.status, body: await res.text().catch(() => "") };
 }
 
 export function promptIdConfigured(): boolean {
@@ -162,40 +201,12 @@ export async function luciaPromptChat(
       : "";
 
   let marketBlock = "";
+  let marketMeta: MarketMeta | null = null;
   if (opts?.injectMarket !== false) {
     try {
-      const stop = new Set([
-        "A", "I", "AND", "THE", "FOR", "BUY", "SELL", "STOP", "USD", "LIVE", "PAPER", "ORDER", "CONFIRM", "HI", "HELLO",
-      ]);
-      const syms = [
-        ...new Set(
-          (text.toUpperCase().match(/\b[A-Z]{1,5}\b/g) ?? [])
-            .filter((s) => !stop.has(s))
-            .slice(0, 4),
-        ),
-      ];
-      if (syms.length > 0) {
-        const { getSnapshot, getIndicators } = await import("../marketdata/gateway/gateway");
-        const lines: string[] = [];
-        for (const sym of syms) {
-          const snap = await getSnapshot(userId, sym);
-          if (!snap.market_data_available) {
-            lines.push(`${sym}: UNAVAILABLE`);
-            continue;
-          }
-          const ind = await getIndicators(userId, sym).catch(() => null);
-          const rsi =
-            ind?.available && ind.indicators
-              ? String((ind.indicators as { rsi_14?: number | null }).rsi_14 ?? "n/a")
-              : "n/a";
-          lines.push(
-            `${sym}: price=${snap.price} src=${snap.source_name} ts=${snap.timestamp} stale=${snap.stale} rsi14=${rsi}`,
-          );
-        }
-        if (lines.length) {
-          marketBlock = `=== VERIFIED MARKET DATA (RTI Market Data Gateway — AUTHORITATIVE) ===\n${lines.join("\n")}\nUse these values exactly; never estimate prices.`;
-        }
-      }
+      const market = await buildMarketContextBlock(userId, text);
+      marketBlock = market.block.trim();
+      marketMeta = market.meta;
     } catch (e) {
       console.error("[intelligence] lucia market inject failed", e);
     }
@@ -238,34 +249,49 @@ export async function luciaPromptChat(
     }
 
     const responsesModel = process.env.OPENAI_RESPONSES_MODEL?.trim();
-    if (responsesModel) body.model = responsesModel;
+    if (responsesModel && shouldAttachResponsesModel()) body.model = responsesModel;
 
-    const res = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let data: Parameters<typeof extractResponsesText>[0] &
+      Parameters<typeof extractChatMeta>[0] | null = null;
+    let lastErr = "";
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      console.error("[intelligence] luciaPromptChat Responses HTTP", res.status, errBody.slice(0, 500));
-      return {
-        reply: openaiUserFacingError(res.status, errBody),
-        meta: EMPTY_META,
+    for (const version of promptVersionsToTry()) {
+      const attemptBody = {
+        ...body,
+        prompt: { id: promptId, version },
       };
+      const result = await callResponsesApi(key, attemptBody);
+      if (result.ok) {
+        data = result.data as typeof data;
+        if (version !== promptVersion) {
+          console.warn(`[intelligence] luciaPromptChat: prompt v${version} used (v${promptVersion ?? "?"} unavailable — org verification or model override)`);
+        }
+        break;
+      }
+      lastErr = result.body;
+      if (!isReasoningSummaryOrgError(result.status, result.body)) {
+        console.error("[intelligence] luciaPromptChat Responses HTTP", result.status, result.body.slice(0, 500));
+        return {
+          reply: openaiUserFacingError(result.status, result.body),
+          meta: EMPTY_META,
+          marketMeta,
+        };
+      }
+      console.warn(`[intelligence] luciaPromptChat: prompt v${version} blocked (reasoning summary / org) — trying fallback`);
     }
 
-    const data = (await res.json()) as Parameters<typeof extractResponsesText>[0] &
-      Parameters<typeof extractChatMeta>[0];
+    if (!data) {
+      console.error("[intelligence] luciaPromptChat Responses HTTP 400", lastErr.slice(0, 500));
+      // Let intelligence-router fall back to agentChat instead of a dead-end error bubble.
+      return null;
+    }
+
     const reply = extractResponsesText(data);
     if (!reply) {
       console.error("[intelligence] luciaPromptChat: empty output");
       return null;
     }
-    return { reply, meta: extractChatMeta(data) };
+    return { reply, meta: extractChatMeta(data), marketMeta };
   } catch (err) {
     console.error("[intelligence] luciaPromptChat failed", err);
     return null;
