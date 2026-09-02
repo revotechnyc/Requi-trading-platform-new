@@ -4,6 +4,7 @@ import { getDb } from "../queries/connection";
 import { governanceDocuments, governancePackages } from "@db/schema";
 import { compileGovernance } from "./compiler";
 import { listVaultDocuments, sha256, vaultKey, vaultSealed } from "./vault";
+import { env } from "../lib/env";
 
 /**
  * RUNTIME POLICY ENGINE
@@ -170,10 +171,49 @@ export async function documentRegistry() {
   return rows.map((d) => ({ docKey: d.docKey, title: d.title, version: d.version, sha256Short: d.sha256.slice(0, 12), status: d.status, registeredAt: d.registeredAt }));
 }
 
+/** Non-production fallback when the vault cannot compile — enables paper Intelligence staging. */
+async function ensureDevPaperGovernancePackage(): Promise<void> {
+  if (env.isProduction) return;
+  const db = getDb();
+  const [active] = await db
+    .select({ id: governancePackages.id })
+    .from(governancePackages)
+    .where(eq(governancePackages.status, "ACTIVE"))
+    .limit(1);
+  if (active) return;
+
+  const artifactObj = {
+    A: {
+      "confirmation.format": { value: "CONFIRM ORDER [TICKET_ID]", status: "COMPILED" },
+      "confirmation.rejectFormat": { value: "REJECT ORDER [TICKET_ID]", status: "COMPILED" },
+      "rescan.cadence.intradayMinutes": { value: 5, status: "COMPILED" },
+      "rescan.cadence.earningsMinutes": { value: [10, 15], status: "COMPILED" },
+    },
+  };
+  const artifact = JSON.stringify(artifactObj);
+  const hash = sha256(artifact);
+  const signature = createHmac("sha256", vaultKey()).update(hash).digest("hex");
+  await db.insert(governancePackages).values({
+    version: "dev-paper-1.0",
+    hash,
+    signature,
+    status: "ACTIVE",
+    artifact,
+    report: JSON.stringify({
+      dev: true,
+      note: "Local paper-mode package — vault compile unavailable; Intelligence staging only",
+    }),
+    activatedAt: new Date(),
+  });
+  cache = null;
+  console.warn("[governance] activated dev-paper-1.0 package for local Intelligence paper staging");
+}
+
 /** Sync the encrypted vault into the document registry, then ensure a signed ACTIVE package exists (genesis compile on first boot). */
 export async function ensureGovernanceReady(): Promise<void> {
   if (!vaultSealed()) {
     console.warn("[governance] vault not sealed — governance compiler inactive");
+    await ensureDevPaperGovernancePackage();
     return;
   }
   const db = getDb();
@@ -199,5 +239,6 @@ export async function ensureGovernanceReady(): Promise<void> {
     console.log(`[governance] genesis package ${compiled.version} compiled, signed, and activated (${compiled.report.rulesCompiled} rules)`);
   } catch (e) {
     console.error(`[governance] genesis compilation blocked: ${(e as Error).message}`);
+    await ensureDevPaperGovernancePackage();
   }
 }

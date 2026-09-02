@@ -13,6 +13,8 @@ import { SWARM_MASTER_PROMPT } from "../prompts/swarm-master";
 import { loadHistory } from "./memory";
 import { getLearningReport, learningSummaryLines, recordBacktestOutcomes } from "../engine/learning";
 import { getMarketContext, type MarketContext } from "../marketdata/gateway/gateway";
+import { buildIntelligenceBundle } from "../intelligence-data/gateway";
+import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
 
 /**
  * INTELLIGENCE RUNTIME — stages 1–4 of the Intelligence upgrade.
@@ -251,24 +253,9 @@ async function executeTool(userId: string, name: string, args: Record<string, un
  * validated + normalized + indicators computed internally). The verified
  * bundle is attached to the system message as AUTHORITATIVE context.
  */
-const MARKET_STOPWORDS = new Set([
-  "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "ON", "OR", "SO", "TO", "UP", "US", "WE",
-  "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HAS", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET", "HIM", "HIS", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "SEE", "WAY", "WHO", "DID", "LET", "SAY", "SHE", "TOO", "USE",
-  "BUY", "SELL", "LONG", "SHORT", "STOP", "RSI", "VWAP", "MACD", "ATR", "EMA", "SMA", "PAPER", "LIVE", "ORDER", "TRADE", "PRICE", "QUOTE", "CHART", "TODAY", "WHAT", "WHEN", "WITH", "THIS", "THAT", "FROM", "SHOW", "TELL", "ABOUT", "YOUR", "OPEN", "HIGH", "LOW", "LAST",
-]);
-const MARKET_QUESTION_RE = /\b(price|quote|stock|ticker|chart|market|trading at|worth|rsi|macd|vwap|moving average|bollinger|52.?week|volume|analysis|analy[sz]e|technical|momentum|overbought|oversold|support|resistance)\b/i;
-
-/** Pull candidate symbols out of free text ($TICKER or bare UPPERCASE tokens). */
+/** Pull candidate symbols out of free text — delegates to intelligence-data resolver. */
 export function extractSymbols(text: string): string[] {
-  const out: string[] = [];
-  for (const m of text.matchAll(/\$([A-Za-z][A-Za-z0-9.-]{0,9})/g)) out.push(m[1].toUpperCase());
-  if (MARKET_QUESTION_RE.test(text) || out.length > 0) {
-    for (const m of text.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g)) {
-      const t = m[0];
-      if (!MARKET_STOPWORDS.has(t) && !out.includes(t)) out.push(t);
-    }
-  }
-  return [...new Set(out)].slice(0, 2);
+  return resolveSymbolsFromText(text).slice(0, 4);
 }
 
 export interface MarketMeta {
@@ -279,47 +266,24 @@ export interface MarketMeta {
   timestamp: string | null;
 }
 
-/** Resolve gateway context for the message; returns meta for the UI chip. */
+/** Resolve full intelligence bundle for the message; returns meta for the UI chip. */
 export async function buildMarketContextBlock(
   userId: string,
   text: string,
 ): Promise<{ block: string; meta: MarketMeta | null }> {
-  const symbols = extractSymbols(text);
-  if (symbols.length === 0) return { block: "", meta: null };
-
-  const bundles: { symbol: string; context?: MarketContext["market_context"]; unavailable?: string }[] = [];
-  for (const symbol of symbols) {
-    const res = await getMarketContext(userId, symbol, "INTELLIGENCE").catch(() => null);
-    if (res?.available && res.context) bundles.push({ symbol, context: res.context.market_context });
-    else bundles.push({ symbol, unavailable: res?.error?.reason ?? "No valid market data source available." });
+  const { block, meta, bundle } = await buildIntelligenceBundle(userId, text);
+  if (!bundle.symbols.length && !bundle.layers.some((l) => l.available)) {
+    return { block: "", meta: null };
   }
-
-  const ok = bundles.filter((b) => b.context);
-  const failed = bundles.filter((b) => b.unavailable);
-  const lines: string[] = [];
-  if (ok.length > 0) {
-    lines.push(
-      "=== VERIFIED MARKET DATA (RTI Market Data Gateway — AUTHORITATIVE) ===",
-      "The attached market_context is authoritative, provider-verified market data. Do not invent, independently estimate, or replace its numerical values. When discussing price, indicators, volume, or technical state for these symbols, use ONLY these values, cite the source and timestamp, and note if the data is stale.",
-    );
-    for (const b of ok) lines.push(JSON.stringify({ market_context: b.context }));
-  }
-  if (failed.length > 0) {
-    lines.push(
-      "=== MARKET DATA UNAVAILABLE (deterministic gateway result — do NOT fill in numbers) ===",
-      ...failed.map((b) => `${b.symbol}: ${b.unavailable} Explicitly disclose this limitation to the user; never estimate or fabricate a price.`),
-    );
-  }
-
-  const first = ok[0]?.context;
+  const priceLayer = bundle.layers.find((l) => l.layer === "prices" && l.available);
   return {
-    block: lines.length ? `\n\n${lines.join("\n")}` : "",
+    block: block ? `\n\n${block}` : "",
     meta: {
-      symbols,
-      source: first?.source ?? null,
-      sourceName: first?.source_name ?? null,
-      stale: ok.some((b) => b.context?.stale),
-      timestamp: first?.timestamp ?? null,
+      symbols: bundle.symbols,
+      source: priceLayer?.source?.toLowerCase() ?? null,
+      sourceName: priceLayer?.source ?? meta.sources[0] ?? null,
+      stale: meta.stale,
+      timestamp: meta.timestamp,
     },
   };
 }
@@ -420,9 +384,8 @@ export async function agentChat(userId: string, text: string, opts?: AgentChatOp
       };
       if (usesCompletionTokens) {
         body.max_completion_tokens = Math.min(maxOut, 1600);
-        // gpt-5 + function tools on chat/completions requires reasoning_effort=none
-        // (otherwise API 400 → silent fallback). Live app uses /v1/responses instead.
-        body.reasoning_effort = "none";
+        // o-series / gpt-5 reasoning models reject effort=none; use low for tool-capable fallback.
+        body.reasoning_effort = /^o[1-9]/i.test(model) ? "low" : "none";
       } else {
         body.max_tokens = Math.min(maxOut, 1600);
         const temp = Number(process.env.OPENAI_TEMPERATURE ?? "0.2");

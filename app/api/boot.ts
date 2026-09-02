@@ -53,6 +53,8 @@ if (env.isProduction) {
   startHealthScheduler(); // light checks every 5m + deep audit 2×/day, auto-incidents
   startTaskScheduler(); // due scheduled Intelligence tasks every 60s
   startAutonomousRunner(); // advances RUNNING autonomous sessions every 2.5s
+  const { startIntelligenceDataEngine } = await import("./intelligence-data/engine");
+  startIntelligenceDataEngine(); // Engine A — background layer prefetch (PDF §5)
   const { syncIndicatorRegistry } = await import("./indicators/registry");
   await syncIndicatorRegistry(); // mirror the code indicator registry into indicator_registry (audit mirror)
   await ensureLegalDocsSeeded(); // versioned legal library (LEGAL_REVIEW drafts) — never overwrites existing rows
@@ -69,5 +71,6 @@ if (env.isProduction) {
   // task scheduler still run so sessions/streaming work outside production.
   startTaskScheduler();
   startAutonomousRunner();
+  void import("./intelligence-data/engine").then((m) => m.startIntelligenceDataEngine());
   void import("./indicators/registry").then((m) => m.syncIndicatorRegistry());
 }

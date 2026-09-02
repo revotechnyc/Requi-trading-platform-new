@@ -17,6 +17,7 @@ import { notificationsRouter } from "./notifications-router";
 import { billingRouter } from "./billing-router";
 import { conversationsRouter } from "./conversations-router";
 import { scheduledTasksRouter } from "./scheduled-tasks-router";
+import { intelligenceDataRouter } from "./intelligence-data-router";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ status: "ok", ts: new Date().toISOString() })),
@@ -41,6 +42,7 @@ export const appRouter = createRouter({
   billing: billingRouter,
   conversations: conversationsRouter,
   scheduledTasks: scheduledTasksRouter,
+  intelligenceData: intelligenceDataRouter,
 });
 
 export type AppRouter = typeof appRouter;

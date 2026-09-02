@@ -52,6 +52,28 @@ function makeTicketId(strategy: string, seq: number): string {
   return `${strat}-${ymd}-${String(seq).padStart(4, "0")}`;
 }
 
+function ticketIdPrefix(strategy: string): string {
+  const strat = strategy.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6) || "MANUAL";
+  const d = new Date();
+  const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+  return `${strat}-${ymd}-`;
+}
+
+/** ticketId is globally unique — sequence by strategy+day across all users. */
+async function nextTicketSequence(db: ReturnType<typeof getDb>, strategy: string): Promise<number> {
+  const prefix = ticketIdPrefix(strategy);
+  const rows = await db
+    .select({ ticketId: orderTickets.ticketId })
+    .from(orderTickets)
+    .where(sql`${orderTickets.ticketId} LIKE ${`${prefix}%`}`);
+  let max = 0;
+  for (const row of rows) {
+    const m = row.ticketId.match(/-(\d+)$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max + 1;
+}
+
 function idemKey(userId: string, input: ProposeInput): string {
   const day = new Date().toISOString().slice(0, 10);
   return createHash("sha256")
@@ -99,8 +121,7 @@ export async function proposeTicket(userId: string, input: ProposeInput): Promis
 
   const { effective, degraded, note } = resolveBroker(input.broker);
 
-  const [countRow] = await db.select({ n: sql<number>`COUNT(*)` }).from(orderTickets).where(eq(orderTickets.userId, userId));
-  const ticketId = makeTicketId(input.strategy, Number(countRow.n) + 1);
+  const ticketId = makeTicketId(input.strategy, await nextTicketSequence(db, input.strategy));
 
   await db.insert(orderTickets).values({
     ticketId,

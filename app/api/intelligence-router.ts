@@ -4,6 +4,7 @@ import { createStrategy, findAccountsByUser } from "./queries/trading";
 import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
+import { tryDeterministicPriceReply } from "./intelligence/price-reply";
 import { clearHistory, loadHistory, saveMessage } from "./intelligence/memory";
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations } from "@db/schema";
@@ -107,7 +108,7 @@ async function openAiParse(text: string): Promise<ParsedPlan | null> {
   };
   if (usesCompletionTokens) {
     body.max_completion_tokens = 600;
-    body.reasoning_effort = "none";
+    body.reasoning_effort = /^o[1-9]/i.test(model) ? "low" : "none";
   } else {
     body.max_tokens = 600;
     body.temperature = 0.2;
@@ -212,6 +213,15 @@ export async function runIntelligenceChat(
   ): Promise<string | null> {
     if (options.allowTradeTool) {
       return agentChat(ctx.user.id, userText, withMarket(options));
+    }
+    // Simple price/quote questions are answered from the gateway directly —
+    // the LLM must never be the source of a dollar figure.
+    if (!options.advisory && !options.developerExtra) {
+      const deterministic = await tryDeterministicPriceReply(ctx.user.id, userText).catch(() => null);
+      if (deterministic) {
+        marketMeta = deterministic.meta;
+        return deterministic.reply;
+      }
     }
     const lucia = await luciaPromptChat(ctx.user.id, userText, {
       conversationId: options.conversationId ?? conversationId,

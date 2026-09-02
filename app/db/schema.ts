@@ -917,6 +917,20 @@ export const intelligenceResults = pgTable("intelligence_results", {
   createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export type IntelligenceResult = typeof intelligenceResults.$inferSelect;
+
+/** Per-user Intelligence watchlist — triggers background Engine A prefetch (PDF §6). */
+export const intelligenceWatchlist = pgTable("intelligence_watchlist", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id),
+  symbol: varchar("symbol", { length: 16 }).notNull(),
+  createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type IntelligenceWatchlistRow = typeof intelligenceWatchlist.$inferSelect;
+
 /** Operational telemetry for every AI/agent run (§31). */
 export const agentRuns = pgTable("agent_runs", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
