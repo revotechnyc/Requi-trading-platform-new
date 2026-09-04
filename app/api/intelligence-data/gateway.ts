@@ -125,8 +125,12 @@ export async function buildIntelligenceBundle(
   userId: string,
   text: string,
   extraSymbols: string[] = [],
+  opts?: { includeWatchlist?: boolean },
 ): Promise<{ bundle: IntelligenceBundle; block: string; meta: IntelligenceMeta }> {
-  const watchlist = await listWatchlistSymbols(userId).catch(() => [] as string[]);
+  const watchlist =
+    opts?.includeWatchlist === true
+      ? await listWatchlistSymbols(userId).catch(() => [] as string[])
+      : [];
   const symbols = resolveSymbolsFromText(text, [...extraSymbols, ...watchlist]);
   const { layers: routed } = routeLayers(text, symbols);
 

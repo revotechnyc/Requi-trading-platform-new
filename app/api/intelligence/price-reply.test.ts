@@ -24,6 +24,13 @@ describe("isDeterministicPriceQuery", () => {
     expect(isDeterministicPriceQuery("What is NVDA's RSI?", ["NVDA"])).toBe(false);
   });
 
+  it("does not treat sentiment compare as a price query", () => {
+    expect(
+      isDeterministicPriceQuery("Compare social sentiment for AMD and NVDA.", ["AMD", "NVDA"]),
+    ).toBe(false);
+    expect(isDeterministicPriceQuery("What is Reddit sentiment on TSLA?", ["TSLA"])).toBe(false);
+  });
+
   it("treats vs compare as deterministic without spurious VS ticker", () => {
     expect(isDeterministicPriceQuery("AAPL vs MSFT price", ["AAPL", "MSFT"])).toBe(true);
     expect(isDeterministicPriceQuery("Amazon vs Meta price", ["AMZN", "META"])).toBe(true);
@@ -59,6 +66,40 @@ describe("formatVerifiedPriceReply", () => {
     expect(reply).toContain("**AAPL** is trading at **$325.21**");
     expect(reply).toContain("Yahoo Finance (verified market data)");
     expect(reply).not.toContain("$225");
+  });
+
+  it("formats only requested symbols when filter provided", () => {
+    const bundle: IntelligenceBundle = {
+      query: "What is Apple trading at?",
+      symbols: ["AAPL", "GOOGL"],
+      layers_routed: ["prices"],
+      fetched_at: "2026-09-01T17:01:12.000Z",
+      layers: [
+        {
+          layer: "prices",
+          ticker: "AAPL",
+          timestamp: "2026-09-01T17:01:12.000Z",
+          source: "Yahoo Finance",
+          available: true,
+          stale: false,
+          payload: { price: 325.21, previous_close: 316.85, market_session: "REGULAR", freshness: "FRESH" },
+        },
+        {
+          layer: "prices",
+          ticker: "GOOGL",
+          timestamp: "2026-09-01T17:01:12.000Z",
+          source: "Yahoo Finance",
+          available: true,
+          stale: false,
+          payload: { price: 337.42, previous_close: 335, market_session: "REGULAR", freshness: "FRESH" },
+        },
+      ],
+    };
+
+    const reply = formatVerifiedPriceReply(bundle, ["AAPL"]);
+    expect(reply).toContain("AAPL");
+    expect(reply).toContain("$325.21");
+    expect(reply).not.toContain("GOOGL");
   });
 });
 

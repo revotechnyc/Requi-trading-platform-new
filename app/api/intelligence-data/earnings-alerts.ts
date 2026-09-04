@@ -35,6 +35,7 @@ export async function runEarningsAlertsForUser(userId: string): Promise<number> 
     const ep = earnings.payload;
     const lines: string[] = [
       `**${symbol} earnings report today**`,
+      ep?.reportTime && ep.reportTime !== "unknown" ? `**Timing:** ${ep.reportTime}` : "",
       "",
       ep
         ? `1. **How did earnings do?** EPS actual: ${ep.epsActual ?? "n/a"} · Revenue actual: ${ep.revenueActual ?? "n/a"}`
@@ -42,7 +43,8 @@ export async function runEarningsAlertsForUser(userId: string): Promise<number> 
       ep
         ? `2. **Surprise:** ${ep.surprise.toUpperCase()}${ep.epsEstimate !== null ? ` (estimate ${ep.epsEstimate})` : ""}`
         : "2. **Surprise:** Unknown — consensus data missing.",
-      ep?.note ? `3. **Note:** ${ep.note}` : "",
+      ep?.dateType ? `3. **Date type:** ${ep.dateType}` : "",
+      ep?.note ? `4. **Note:** ${ep.note}` : "",
       filings.available ? `Recent filing: ${filings.payload?.[0]?.form ?? ""} (${filings.payload?.[0]?.filedAt ?? ""})` : "",
       news.available ? `Headline: ${news.payload?.headlines?.[0]?.title ?? ""}` : "",
     ].filter(Boolean);

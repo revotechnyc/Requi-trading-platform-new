@@ -46,6 +46,10 @@ export interface EarningsPayload {
   revenueEstimate: number | null;
   revenueActual: number | null;
   surprise: "beat" | "met" | "miss" | "unknown";
+  /** confirmed = Finnhub/calendar with consensus; estimated = Yahoo interim */
+  dateType?: "confirmed" | "estimated";
+  /** Before market open / after market close when known */
+  reportTime?: "BMO" | "AMC" | "unknown";
   note?: string;
 }
 

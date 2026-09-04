@@ -38,8 +38,9 @@ export function isDeterministicPriceQuery(text: string, symbols: string[]): bool
   const wantsCompare = COMPARE_PRICE_RE.test(text) && symbols.length >= 2;
   const wantsPrice = PRICE_INTENT_RE.test(text);
 
+  // "Compare social sentiment..." must not be treated as a price query.
+  if (NON_PRICE_PRIMARY_RE.test(text) && !wantsPrice) return false;
   if (!wantsPrice && !wantsCompare) return false;
-  if (NON_PRICE_PRIMARY_RE.test(text) && !wantsPrice && !wantsCompare) return false;
   return true;
 }
 
@@ -108,13 +109,18 @@ export function formatPriceLayerReply(layer: LayerEnvelope): string | null {
   return lines.join("\n");
 }
 
-export function formatVerifiedPriceReply(bundle: IntelligenceBundle): string {
+export function formatVerifiedPriceReply(bundle: IntelligenceBundle, onlySymbols?: string[]): string {
+  const allowed = onlySymbols?.length ? new Set(onlySymbols.map((s) => s.toUpperCase())) : null;
   const priceLayers = bundle.layers.filter((l) => l.layer === "prices");
-  const available = priceLayers.filter((l) => l.available && l.payload);
-  const unavailable = priceLayers.filter((l) => !l.available);
+  const available = priceLayers.filter(
+    (l) => l.available && l.payload && (!allowed || (l.ticker && allowed.has(l.ticker))),
+  );
+  const unavailable = priceLayers.filter(
+    (l) => !l.available && (!allowed || (l.ticker && allowed.has(l.ticker))),
+  );
 
   if (available.length === 0) {
-    const symbols = bundle.symbols.length ? bundle.symbols.join(", ") : "that symbol";
+    const symbols = (onlySymbols?.length ? onlySymbols : bundle.symbols).join(", ") || "that symbol";
     const reason = unavailable[0]?.error ?? "No verified quote is available right now.";
     return `I don't have a verified market snapshot for **${symbols}**.\n\n${reason}\n\nI won't estimate or invent a price.`;
   }
@@ -149,14 +155,15 @@ export async function tryDeterministicPriceReply(
   userId: string,
   text: string,
 ): Promise<DeterministicPriceResult | null> {
+  const querySymbols = resolveSymbolsFromText(text);
+  if (!isDeterministicPriceQuery(text, querySymbols)) return null;
+
+  const { bundle } = await buildIntelligenceBundle(userId, text, [], { includeWatchlist: false });
   const symbols = resolveSymbolsFromText(text);
   if (!isDeterministicPriceQuery(text, symbols)) return null;
 
-  const { bundle } = await buildIntelligenceBundle(userId, text);
-  if (!isDeterministicPriceQuery(text, bundle.symbols)) return null;
-
   return {
-    reply: formatVerifiedPriceReply(bundle),
+    reply: formatVerifiedPriceReply(bundle, symbols),
     meta: toMarketMeta(bundle),
   };
 }

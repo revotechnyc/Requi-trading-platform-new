@@ -35,4 +35,38 @@ describe("resolveSymbolsFromText", () => {
   it("resolves side-by-side phrasing", () => {
     expect(resolveSymbolsFromText("Show me AAPL and GOOGL prices side by side").sort()).toEqual(["AAPL", "GOOGL"]);
   });
+
+  it("resolves trading-at phrasing to a single symbol", () => {
+    expect(resolveSymbolsFromText("What is Apple trading at right now?")).toEqual(["AAPL"]);
+    expect(resolveSymbolsFromText("What is Tesla trading at right now?")).toEqual(["TSLA"]);
+    expect(resolveSymbolsFromText("What is XYZFAKE123 trading at right now?")).toEqual(["XYZFAKE123"]);
+  });
+
+  it("does not invent SOCIAL ticker on sentiment queries", () => {
+    expect(resolveSymbolsFromText("What is social sentiment on NVDA?")).toEqual(["NVDA"]);
+    expect(resolveSymbolsFromText("What are traders saying about AAPL?")).toEqual(["AAPL"]);
+    expect(resolveSymbolsFromText("Compare social sentiment for AMD and NVDA.").sort()).toEqual(["AMD", "NVDA"]);
+  });
+
+  it("does not invent SEC/THEIR on cross-feature compare queries", () => {
+    const q =
+      "Compare Apple and Tesla. Give me their current prices, RSI, latest news, social sentiment, next earnings dates and latest SEC filings. Tell me which is showing stronger momentum and add both to my watchlist.";
+    expect(resolveSymbolsFromText(q).sort()).toEqual(["AAPL", "TSLA"]);
+  });
+
+  it("does not invent tickers on GDELT macro queries", () => {
+    expect(resolveSymbolsFromText("What major macro news could affect the market today?")).toEqual([]);
+    expect(resolveSymbolsFromText("What macro events are affecting technology stocks?")).toEqual([]);
+    expect(resolveSymbolsFromText("What global news could affect US equities?")).toEqual([]);
+  });
+
+  it("does not treat next/date/report as tickers on earnings queries", () => {
+    expect(resolveSymbolsFromText("When is Apple's next earnings date?")).toEqual(["AAPL"]);
+    expect(resolveSymbolsFromText("When does AMD report next?")).toEqual(["AMD"]);
+    expect(resolveSymbolsFromText("Compare the next earnings dates for AAPL, MSFT and GOOGL.").sort()).toEqual([
+      "AAPL",
+      "GOOGL",
+      "MSFT",
+    ]);
+  });
 });

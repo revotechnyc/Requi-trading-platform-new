@@ -31,19 +31,22 @@ const STOPWORDS = new Set([
   "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "ON", "OR", "SO", "TO", "UP", "US", "WE", "S",
   "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HAS", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET", "HIM", "HIS", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "SEE", "WAY", "WHO", "DID", "LET", "SAY", "SHE", "TOO", "USE",
   "BUY", "SELL", "LONG", "SHORT", "STOP", "RSI", "VWAP", "MACD", "ATR", "EMA", "SMA", "PAPER", "LIVE", "ORDER", "TRADE", "PRICE", "PRICES", "QUOTE", "CHART", "TODAY", "WHAT", "WHEN", "WITH", "THIS", "THAT", "FROM", "SHOW", "TELL", "ABOUT", "YOUR", "OPEN", "HIGH", "LOW", "LAST", "STOCK", "SHARE", "SHARES", "MARKET", "CURRENT", "RIGHT", "DOES", "DOING", "MOVE", "MOVING", "WHY", "HOW",
-  "VS", "VERSUS", "MUCH", "WORTH", "SHOULD", "LATEST", "NEWS", "SIDE", "COMPARE", "APPLE", "GOOGLE", "NVIDIA", "TESLA", "AMAZON", "MICROSOFT", "NETFLIX", "FACEBOOK", "ALPHABET", "COINBASE", "PALANTIR", "BERKSHIRE", "DISNEY", "WALMART",
+  "VS", "VERSUS", "MUCH", "WORTH", "SHOULD", "LATEST", "NEWS", "SIDE", "COMPARE", "SOCIAL", "REDDIT", "STOCKTWITS", "TRADERS", "SAYING", "SENTIMENT", "APPLE", "GOOGLE", "NVIDIA", "TESLA", "AMAZON", "MICROSOFT", "NETFLIX", "FACEBOOK", "ALPHABET", "COINBASE", "PALANTIR", "BERKSHIRE", "DISNEY", "WALMART",
+  "NEXT", "DATE", "DATES", "REPORT", "EARNINGS", "ESTIMATE", "ESTIMATED", "CONFIRMED", "AVERAGE", "QUARTER", "QUARTERLY", "CALENDAR",
+  "MAJOR", "MACRO", "COULD", "AFFECT", "GLOBAL", "EVENTS", "EVENT", "STOCKS", "EQUITIES", "TODAY", "THEMES", "THEME",
+  "THEIR", "SEC", "FILINGS", "FILING", "BOTH", "THEM", "THESE", "MOMENTUM", "STRONGER", "SHOWING", "WHICH", "GIVE", "ADD", "WATCHLIST",
 ]);
 
 const MARKET_QUESTION_RE =
-  /\b(prices?|quote|stock|ticker|chart|market|trading at|worth|compare|side by side|rsi|macd|vwap|moving average|bollinger|52.?week|volume|analysis|analy[sz]e|technical|momentum|overbought|oversold|support|resistance|earnings|filing|sec|news|headline|sentiment|moving|why is)\b/i;
+  /\b(prices?|quote|stock|ticker|chart|market|trading at|worth|compare|side by side|rsi|macd|vwap|moving average|bollinger|52.?week|volume|analysis|analy[sz]e|technical|momentum|overbought|oversold|support|resistance|earnings|filing|sec|news|headline|sentiment|reddit|stocktwits|traders?|saying|social|moving|why is)\b/i;
 
 const FILING_RE = /\b(filing|10-?k|10-?q|8-?k|sec|edgar|insider)\b/i;
 const NEWS_RE = /\b(news|headline|headlines|article|reported)\b/i;
-const EARNINGS_RE = /\b(earnings|eps|revenue|quarterly report|beat|miss|guidance)\b/i;
+const EARNINGS_RE = /\b(earnings|eps|revenue|quarterly report|beat|miss|guidance|report(?:s|ing)?(?:\s+next|\s+earnings)?|when does .+ report)\b/i;
 const MOVEMENT_RE = /\b(why|moving|move|up today|down today|surge|drop|rally|selloff)\b/i;
-const SENTIMENT_RE = /\b(sentiment|reddit|wsb|wallstreetbets|retail|buzz)\b/i;
-const MACRO_RE = /\b(macro|geopolitical|fed|inflation|war|election|policy|gdp|rates)\b/i;
-const INDICATOR_RE = /\b(rsi|macd|vwap|bollinger|ema|sma|atr|indicator|technical)\b/i;
+const SENTIMENT_RE = /\b(sentiment|reddit|wsb|wallstreetbets|retail|buzz|stocktwits|traders?|social|saying)\b/i;
+const MACRO_RE = /\b(macro|geopolitical|fed|inflation|war|election|policy|gdp|rates|global news|us equities|market today|technology stocks)\b/i;
+const INDICATOR_RE = /\b(rsi|macd|vwap|bollinger|ema|sma|atr|indicator|technical|overbought|oversold)\b/i;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -61,6 +64,19 @@ export function normalizeForSymbolScan(text: string): string {
 export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []): string[] {
   const out = new Set<string>(extraSymbols.map((s) => s.toUpperCase()));
   const lower = text.toLowerCase();
+
+  // "What is AAPL trading at?" / "What is XYZFAKE123 trading at right now?"
+  const tradingAt = text.match(/\bwhat(?:'s| is)\s+([A-Za-z][A-Za-z0-9.-]{0,11})\s+trading\b/i);
+  if (tradingAt) {
+    const token = tradingAt[1];
+    const alias = COMPANY_ALIASES[token.toLowerCase()];
+    if (alias) {
+      out.add(alias);
+      return [...out].slice(0, 4);
+    }
+    out.add(token.toUpperCase());
+    return [...out].slice(0, 4);
+  }
 
   for (const m of text.matchAll(/\$([A-Za-z][A-Za-z0-9.-]{0,9})/g)) {
     out.add(m[1].toUpperCase());

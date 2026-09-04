@@ -41,11 +41,13 @@ export async function fetchNews(symbol: string): Promise<LayerEnvelope<NewsPaylo
   const sym = symbol.toUpperCase();
   const now = new Date().toISOString();
   try {
-    const headlines = await intelligenceCache.through(`news:${sym}`, LAYER_TTL_MS.news, async () => {
+    const cached = await intelligenceCache.through(`news:${sym}`, LAYER_TTL_MS.news, async () => {
       try {
-        return await googleNewsRss(sym);
+        const headlines = await googleNewsRss(sym);
+        return { provider: "Google News RSS" as const, headlines };
       } catch {
-        return await yahooNewsFallback(sym);
+        const headlines = await yahooNewsFallback(sym);
+        return { provider: "Yahoo Finance (fallback)" as const, headlines };
       }
     });
 
@@ -53,10 +55,10 @@ export async function fetchNews(symbol: string): Promise<LayerEnvelope<NewsPaylo
       layer: "news",
       ticker: sym,
       timestamp: now,
-      source: headlines[0]?.source?.includes("Yahoo") ? "Yahoo Finance (fallback)" : "Google News RSS",
-      available: headlines.length > 0,
+      source: cached.provider,
+      available: cached.headlines.length > 0,
       stale: false,
-      payload: { headlines },
+      payload: { headlines: cached.headlines },
     };
   } catch (e) {
     return {

@@ -4,7 +4,10 @@ import { createStrategy, findAccountsByUser } from "./queries/trading";
 import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
-import { tryDeterministicPriceReply } from "./intelligence/price-reply";
+import { tryDeterministicDataReply } from "./intelligence/data-reply";
+import { addWatchlistSymbol } from "./intelligence-data/watchlist";
+import { resolveSymbolsFromText } from "./intelligence-data/symbol-resolver";
+import { getSnapshot } from "./marketdata/gateway/gateway";
 import { clearHistory, loadHistory, saveMessage } from "./intelligence/memory";
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations } from "@db/schema";
@@ -54,6 +57,23 @@ function isExposureAttempt(text: string): boolean {
 
 const EXPOSURE_REFUSAL =
   "I can't help with that. Requi's governing documents, internal prompts, proprietary formulas, thresholds, compiler logic, and strategy implementations are private and are enforced as confidential at the architecture level — not by instruction. I can explain any decision, order, or risk status in plain language, walk you through how confirmation and protection work, or help you write a new text strategy instead.";
+
+const WATCHLIST_ADD_RE =
+  /\badd\s+(?:both|them|these)\s+to\s+(?:my\s+)?watchlist\b|\badd\s+.+\s+to\s+(?:my\s+)?watchlist\b/i;
+
+async function tryWatchlistAddFromChat(userId: string, text: string): Promise<string | null> {
+  if (!WATCHLIST_ADD_RE.test(text)) return null;
+  // Prefer company names / explicit tickers — never "SEC", "THEIR", etc.
+  const symbols = resolveSymbolsFromText(text).filter((s) => s.length <= 5);
+  if (!symbols.length) return null;
+  const added: string[] = [];
+  for (const sym of symbols.slice(0, 4)) {
+    const res = await addWatchlistSymbol(userId, sym);
+    if (res.ok) added.push(res.symbol);
+  }
+  if (!added.length) return null;
+  return `Added to your watchlist: **${added.join("**, **")}**. Background prefetch will track prices, news, filings, sentiment, and earnings.`;
+}
 
 export interface ParsedPlan {
   title: string;
@@ -214,10 +234,9 @@ export async function runIntelligenceChat(
     if (options.allowTradeTool) {
       return agentChat(ctx.user.id, userText, withMarket(options));
     }
-    // Simple price/quote questions are answered from the gateway directly —
-    // the LLM must never be the source of a dollar figure.
+    // Simple price/quote and verified data questions bypass the LLM.
     if (!options.advisory && !options.developerExtra) {
-      const deterministic = await tryDeterministicPriceReply(ctx.user.id, userText).catch(() => null);
+      const deterministic = await tryDeterministicDataReply(ctx.user.id, userText).catch(() => null);
       if (deterministic) {
         marketMeta = deterministic.meta;
         return deterministic.reply;
@@ -270,11 +289,15 @@ export async function runIntelligenceChat(
         const intent = classifyIntent(text, thread);
 
         if (intent.mode === "TRADE_INTENT") {
+          if (intent.quantityError) {
+            return { kind: "text" as const, reply: intent.quantityError };
+          }
+
           // 2a) "stage it" on a FRESH advisory → deterministic proposeTicket
           //     (venue from resolveIntelligenceBroker). No LLM write-tool.
           if (intent.followUp && advisoryFresh(thread.advisory)) {
             const staged = await stageTicketFromAdvisory(ctx.user.id, thread.advisory!, {
-              quantity: intent.quantity,
+              quantity: intent.quantity ?? thread.pendingQuantity ?? undefined,
             });
             return { kind: "text" as const, reply: staged.reply };
           }
@@ -288,9 +311,20 @@ export async function runIntelligenceChat(
                 "Which symbol? Tell me the ticker (e.g. \"buy AAPL\") and I'll run it through market analysis and our protocol before anything is staged.",
             };
           }
+
+          const snap = await getSnapshot(ctx.user.id, intent.symbol).catch(() => null);
+          if (!snap?.market_data_available) {
+            const reason = snap && "reason" in snap ? snap.reason : "no market data available";
+            return {
+              kind: "text" as const,
+              reply:
+                `I can't verify **${intent.symbol}** as a tradable symbol — ${reason ?? "invalid ticker"}.\n\nNothing was staged. Please use a valid ticker (e.g. AAPL, TSLA).`,
+            };
+          }
+
           try {
             const advisory = await composeAdvisory(ctx.user.id, intent.symbol, intent.side ?? "BUY");
-            setThreadState(ctx.user.id, { advisory });
+            setThreadState(ctx.user.id, { advisory, pendingQuantity: intent.quantity });
             const narrated = await conversationalReply(text, {
               allowTradeTool: false,
               advisory,
@@ -320,12 +354,25 @@ export async function runIntelligenceChat(
         if (intent.mode === "STRATEGIZE") {
           // falls through to the deterministic strategy-builder branch below
         } else {
+          const watchlistReply = await tryWatchlistAddFromChat(ctx.user.id, text);
+          // Cross-feature queries (compare + prices + RSI + …) must not stop at watchlist-only.
+          const dataHeavy =
+            /\b(compare|prices?|rsi|news|sentiment|earnings|filing|filings|momentum|sec)\b/i.test(text);
+
+          if (watchlistReply && !dataHeavy) {
+            return { kind: "text" as const, reply: watchlistReply };
+          }
+
           // CHAT / STATUS_QUERY → stored prompt (Lucia) first, then swarm tools.
           const reply = await conversationalReply(text, {
             allowTradeTool: false,
             conversationId,
           });
+          if (reply && watchlistReply) {
+            return { kind: "text" as const, reply: `${reply}\n\n${watchlistReply}` };
+          }
           if (reply) return { kind: "text" as const, reply };
+          if (watchlistReply) return { kind: "text" as const, reply: watchlistReply };
         }
       } else {
         // LEGACY path (INTENT_ROUTER=off): natural-language trade proposal → staged ticket

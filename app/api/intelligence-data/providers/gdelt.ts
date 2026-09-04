@@ -45,17 +45,19 @@ async function fetchGdeltJson(url: string): Promise<{
 export async function fetchGdeltMacro(query = "stock market economy"): Promise<LayerEnvelope<GdeltPayload>> {
   const now = new Date().toISOString();
   try {
-    const events = await intelligenceCache.through(`gdelt:${query}`, LAYER_TTL_MS.gdelt, async () => {
+    const events = await intelligenceCache.through(`gdelt:${query}:v2`, LAYER_TTL_MS.gdelt, async () => {
       const url =
         `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}` +
         "&mode=ArtList&format=json&maxrecords=8&sort=DateDesc";
       const data = await fetchGdeltJson(url);
-      return (data.articles ?? []).slice(0, 8).map((a) => ({
+      const mapped = (data.articles ?? []).slice(0, 8).map((a) => ({
         title: a.title ?? "Event",
         url: a.url ?? "",
         tone: typeof a.tone === "number" ? a.tone : null,
         publishedAt: a.seendate ?? now,
       }));
+      if (!mapped.length) throw new Error("GDELT returned no articles");
+      return mapped;
     });
 
     return {

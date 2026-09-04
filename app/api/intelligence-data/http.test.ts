@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseFeedItems } from "./http";
+import { postMentionsSymbol } from "./providers/sentiment";
 import { normalizeWatchlistSymbol } from "./watchlist";
 
 describe("parseFeedItems", () => {
@@ -17,5 +18,13 @@ describe("parseFeedItems", () => {
 describe("normalizeWatchlistSymbol", () => {
   it("maps GOOGLE to GOOGL", () => {
     expect(normalizeWatchlistSymbol("google")).toBe("GOOGL");
+  });
+});
+
+describe("postMentionsSymbol", () => {
+  it("keeps ticker-relevant titles and drops off-topic posts", () => {
+    expect(postMentionsSymbol("NVDA calls printing", "", "NVDA")).toBe(true);
+    expect(postMentionsSymbol("NVIDIA earnings beat", "", "NVDA")).toBe(true);
+    expect(postMentionsSymbol("What about TSLA today", "", "NVDA")).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { identifyStrategy } from "../engine/scanner";
 import { sizePosition, portfolioHeatPct, returnCorrelation, GLOBAL_RISK } from "../engine/risk";
 import { openRiskDollars, listPositions } from "../engine/portfolio";
 import { publicPackageStatus } from "../governance/runtime";
+import { parseTradeQuantity, resolveTradeSymbol } from "./trade-symbol";
 
 /**
  * INTENT ROUTER — the deterministic switch between the AI reasoning model
@@ -35,12 +36,13 @@ export interface ThreadState {
   advisory: Advisory | null;
   stagedTicketId: string | null;
   stagedExpiresAt: number | null;
+  pendingQuantity: number | null;
 }
 
 const threads = new Map<string, ThreadState>();
 
 export function getThreadState(userId: string): ThreadState {
-  return threads.get(userId) ?? { advisory: null, stagedTicketId: null, stagedExpiresAt: null };
+  return threads.get(userId) ?? { advisory: null, stagedTicketId: null, stagedExpiresAt: null, pendingQuantity: null };
 }
 
 export function setThreadState(userId: string, s: Partial<ThreadState>): ThreadState {
@@ -67,35 +69,26 @@ export interface IntentResult {
   symbol: string | null;
   side: "BUY" | "SELL" | null;
   quantity: number | null;
+  quantityError: string | null;
   followUp: boolean; // imperative follow-up on an existing advisory ("stage it")
   reason: string;
 }
 
 function extractSymbol(text: string, thread: ThreadState): string | null {
-  // "buy 100 AAPL at 190" / "buy apple" / "sell TSLA" — token after the verb/qty
-  const m = text.match(/\b(?:buy|sell|long|short|add to)\s+(?:\d+\s+)?([A-Za-z.]{1,12})\b/i);
-  if (m && !/^(it|that|this|the|my|some|more|shares?)$/i.test(m[1])) {
-    const sym = m[1].toUpperCase();
-    if (/^[A-Z.]{1,12}$/.test(sym)) return sym;
-  }
-  // bare ticker mention ("what about NVDA?")
-  const bare = text.match(/\b([A-Z]{2,5})\b/);
-  if (bare) return bare[1];
-  // "it" / "that" resolves from the thread's advisory
-  if (/\b(it|that|this one)\b/i.test(text) && thread.advisory) return thread.advisory.symbol;
-  return null;
+  return resolveTradeSymbol(text, thread);
 }
 
-function extractQuantity(text: string): number | null {
-  const m = text.match(/\b(?:buy|sell|add)\s+(\d+)\b/i) ?? text.match(/\b(\d+)\s+shares?\b/i);
-  return m ? parseInt(m[1], 10) : null;
+function extractQuantity(text: string): { quantity: number | null; error: string | null } {
+  return parseTradeQuantity(text);
 }
 
 export function classifyIntent(text: string, thread: ThreadState): IntentResult {
+  const qty = extractQuantity(text);
   const base: Omit<IntentResult, "mode" | "reason"> = {
     symbol: extractSymbol(text, thread),
     side: /\b(sell|short|flatten|exit|close)\b/i.test(text) ? "SELL" : /\b(buy|long|add to)\b/i.test(text) ? "BUY" : null,
-    quantity: extractQuantity(text),
+    quantity: qty.quantity,
+    quantityError: qty.error,
     followUp: false,
   };
 
