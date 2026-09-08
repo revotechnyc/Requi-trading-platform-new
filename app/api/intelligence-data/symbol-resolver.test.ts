@@ -69,4 +69,26 @@ describe("resolveSymbolsFromText", () => {
       "MSFT",
     ]);
   });
+
+  it("does not treat PEER READ-THROUGH vocabulary as tickers", () => {
+    expect(
+      resolveSymbolsFromText(
+        "PEER READ-THROUGH\nFor MSFT, identify economically relevant peers that have already reported.",
+      ),
+    ).toEqual(["MSFT"]);
+    expect(
+      resolveSymbolsFromText(
+        "Run peer read-through analysis for ticker MSFT only. Do not treat PEER, READ, PEERS as tickers.",
+      ),
+    ).toEqual(["MSFT"]);
+  });
+
+  it("resolves tickers from small-cap research prompts", () => {
+    const q = `REQUI QUANTITATIVE SMALL-CAP CANDIDATE SELECTION PROTOCOL
+
+Run small-cap candidate research on PLTR and COIN.
+
+Apply cash-runway, dilution, liquidity, and scoring rules.`;
+    expect(resolveSymbolsFromText(q).sort()).toEqual(["COIN", "PLTR"]);
+  });
 });

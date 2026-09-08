@@ -6,6 +6,7 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authenticateRequest } from "./kimi/auth";
+import { acceptPromptLength, MAX_USER_PROMPT_CHARS } from "./intelligence/prompt-overflow";
 import { ensureConversation, runIntelligenceChat } from "./intelligence-router";
 
 type SsePayload = Record<string, unknown>;
@@ -44,8 +45,12 @@ export async function intelligenceStreamHandler(c: Context) {
   }
 
   const text = (body.text ?? "").trim();
-  if (!text || text.length > 8000) {
-    return c.json({ error: "text required (1–8000 chars)" }, 400);
+  const lengthCheck = acceptPromptLength(text);
+  if (!lengthCheck.ok) {
+    return c.json({ error: lengthCheck.error }, 400);
+  }
+  if (!text || text.length > MAX_USER_PROMPT_CHARS) {
+    return c.json({ error: `text required (1–${MAX_USER_PROMPT_CHARS} chars)` }, 400);
   }
 
   return streamSSE(c, async (stream) => {

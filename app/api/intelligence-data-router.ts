@@ -3,6 +3,7 @@ import { authedQuery, createRouter } from "./middleware";
 import { addWatchlistSymbol, listWatchlist, removeWatchlistSymbol } from "./intelligence-data/watchlist";
 import { buildIntelligenceBundle } from "./intelligence-data/gateway";
 import { prefetchSymbolLayers } from "./intelligence-data/gateway";
+import { MAX_USER_PROMPT_CHARS } from "./intelligence/prompt-overflow";
 
 const symbolInput = z.object({ symbol: z.string().min(1).max(12) });
 
@@ -23,6 +24,6 @@ export const intelligenceDataRouter = createRouter({
 
   /** Debug / UI: full normalized bundle for a query (same object the AI sees). */
   bundle: authedQuery
-    .input(z.object({ text: z.string().min(1).max(8000) }))
+    .input(z.object({ text: z.string().min(1).max(MAX_USER_PROMPT_CHARS) }))
     .query(async ({ ctx, input }) => buildIntelligenceBundle(ctx.user.id, input.text)),
 });

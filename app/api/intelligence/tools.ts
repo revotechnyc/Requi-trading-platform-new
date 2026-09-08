@@ -331,6 +331,10 @@ export interface AgentChatOptions {
   conversationId?: string;
   /** Receives gateway market meta (source/staleness) for the response UI chip. */
   onMarketMeta?: (meta: MarketMeta) => void;
+  /** Extra developer/system notes (e.g. long-prompt overflow metadata). */
+  developerExtra?: string;
+  /** Chunked full research protocol when prompt overflow packaging is active. */
+  attachmentBlocks?: string[];
 }
 
 export async function agentChat(userId: string, text: string, opts?: AgentChatOptions): Promise<string | null> {
@@ -346,6 +350,14 @@ export async function agentChat(userId: string, text: string, opts?: AgentChatOp
   let system = `${SWARM_MASTER_PROMPT}\n${RUNTIME_ADDENDUM}\n\n=== LIVE SYSTEM STATE (as of ${new Date().toISOString()}) ===\n${snapshot}`;
   if (opts?.advisory) {
     system += `\n\n=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n${JSON.stringify(opts.advisory)}`;
+  }
+  if (opts?.developerExtra) {
+    system += `\n\n=== PLATFORM DEVELOPER NOTES ===\n${opts.developerExtra}`;
+  }
+  if (opts?.attachmentBlocks?.length) {
+    for (const block of opts.attachmentBlocks) {
+      system += `\n\n${block}`;
+    }
   }
 
   // Deterministic market context: symbols in the user's message are resolved

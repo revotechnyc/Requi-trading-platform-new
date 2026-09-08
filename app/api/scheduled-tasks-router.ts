@@ -6,11 +6,13 @@ import { getDb } from "./queries/connection";
 import { scheduledTaskRuns, scheduledTasks } from "@db/schema";
 import { computeNextRunAt, runTaskNow } from "./scheduler-runner";
 
+import { MAX_USER_PROMPT_CHARS } from "./intelligence/prompt-overflow";
+
 const scheduleTypeEnum = z.enum(["DAILY", "WEEKDAYS", "WEEKLY", "INTERVAL", "MARKET_OPEN"]);
 
 const taskInput = z.object({
   name: z.string().min(1).max(255),
-  prompt: z.string().min(1).max(8000),
+  prompt: z.string().min(1).max(MAX_USER_PROMPT_CHARS),
   scheduleType: scheduleTypeEnum,
   timeOfDay: z.string().regex(/^\d{2}:\d{2}$/).default("09:30"),
   timezone: z.string().max(64).default("America/New_York"),

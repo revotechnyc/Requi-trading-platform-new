@@ -1,0 +1,142 @@
+REQUI TRADING — REVISION 1 FEATURE TEST PROMPTS
+================================================
+Use these in Intelligence chat after restarting the app.
+Copy one prompt at a time unless noted otherwise.
+
+------------------------------------------------------------
+A. REGRESSION — PRICE / SAFETY
+------------------------------------------------------------
+
+PROMPT A1:
+What is Apple trading at right now?
+
+PROMPT A2:
+What is AAPL trading at right now?
+
+PROMPT A3:
+What is XYZFAKE123 trading at right now?
+
+Expected:
+- Real prices for Apple/AAPL
+- No invented price for XYZFAKE123
+
+
+------------------------------------------------------------
+B. EARNINGS — PER TICKER
+------------------------------------------------------------
+
+PROMPT B1:
+When is Apple's next earnings?
+
+PROMPT B2:
+When does Tesla report earnings?
+
+PROMPT B3:
+Compare the next earnings dates for AAPL, MSFT and GOOGL
+
+Expected:
+- Dates from Finnhub/Yahoo
+- confirmed vs estimated labeled when applicable
+
+
+------------------------------------------------------------
+C. EARNINGS CALENDAR — BY DAY (CLIENT PROBE)
+------------------------------------------------------------
+
+PROMPT C1:
+what is Tuesday quaterly earnings
+
+PROMPT C2:
+what is Tuesday quarterly earnings
+
+PROMPT C3:
+earnings calendar today
+
+PROMPT C4:
+who reports earnings on Friday
+
+Expected:
+- Company list for that day (or verified empty calendar)
+- NOT "please give a ticker"
+- Source: Finnhub when available
+
+
+------------------------------------------------------------
+D. RESEARCH RUNNER — MAIN FEATURE
+------------------------------------------------------------
+
+PROMPT D1:
+Run earnings candidate research on AAPL, MSFT, NVDA
+
+PROMPT D2:
+Run earnings candidate research on TSLA and AMD
+
+PROMPT D3:
+REQUI QUARTERLY EARNINGS CANDIDATE SELECTION PROTOCOL
+
+Run research on AAPL and MSFT. Score each company and show the gap register. Do not invent missing data.
+
+Expected:
+- Classification (WAIT / WATCHLIST / REJECT / BLOCKED)
+- Partial score
+- Next earnings + historical beat stats when available
+- Gap register table with owning API for missing fields
+- No invented FCF / options IV / peer scores
+
+
+------------------------------------------------------------
+E. LONG PROMPT — CLIENT SCALE (NO TRUNCATION / NO REJECT)
+------------------------------------------------------------
+
+USE THIS SEPARATE FILE (client-sized, ~110,000+ characters):
+
+  REVISION1_LONG_PROMPT_CLIENT_SCALE.txt
+
+How to test:
+1. Open REVISION1_LONG_PROMPT_CLIENT_SCALE.txt
+2. Select All → Copy
+3. Paste into Intelligence chat → Send
+
+This file includes:
+- Full Quarterly Earnings Candidate Selection Protocol (sections 1–16)
+- Peer Read-Through mandatory engine
+- Small-cap protocol reference
+- Base Reset reference
+- Governing clauses padded to ~110k characters (~27k+ tokens)
+  so it exceeds the old 8k reject AND the ~28k inline overflow threshold
+
+Expected:
+- Prompt accepted (no 8000-char / shorten error)
+- Platform auto-handles overflow (attachment packaging) if needed
+- Research report for AAPL/MSFT/NVDA/TSLA/AMD + gap register
+- Does NOT ask user to shorten the prompt
+
+
+------------------------------------------------------------
+F. CROSS-FEATURE / HALLUCINATION
+------------------------------------------------------------
+
+PROMPT F1:
+Compare Apple and Tesla. Give me their current prices, RSI, latest news, social sentiment, next earnings dates and latest SEC filings.
+
+PROMPT F2:
+Give me the current price, RSI, earnings date, latest SEC filing and social sentiment for XYZFAKE123.
+
+Expected:
+- F1: verified multi-layer data for AAPL/TSLA
+- F2: all unavailable / UNVERIFIED — nothing invented
+
+
+------------------------------------------------------------
+G. QUICK PASS CHECKLIST
+------------------------------------------------------------
+[ ] A — prices + fake ticker safe
+[ ] B — per-ticker earnings
+[ ] C — Tuesday/today calendar list
+[ ] D — research report + gap register
+[ ] E — long prompt accepted
+[ ] F — cross-feature + hallucination
+
+NOTES
+- Restart app before testing so new code and FINNHUB_API_KEY load.
+- Trade tests (if any) stay PAPER only.

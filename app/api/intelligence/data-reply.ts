@@ -2,6 +2,7 @@ import { buildIntelligenceBundle } from "../intelligence-data/gateway";
 import { bundleMeta } from "../intelligence-data/normalizer";
 import type { EarningsPayload, IntelligenceBundle, LayerEnvelope, NewsPayload, SentimentPayload } from "../intelligence-data/types";
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
+import { tryEarningsDayCalendarReply } from "../intelligence-data/earnings-day";
 import type { GatewayIndicators } from "../marketdata/gateway/indicators";
 import type { MarketMeta } from "./tools";
 import {
@@ -430,6 +431,21 @@ export async function tryDeterministicDataReply(
   userId: string,
   text: string,
 ): Promise<DeterministicPriceResult | null> {
+  // Day-board calendar (e.g. "Tuesday quarterly earnings") — no ticker required.
+  const dayCalendar = await tryEarningsDayCalendarReply(text).catch(() => null);
+  if (dayCalendar) {
+    return {
+      reply: dayCalendar.reply,
+      meta: {
+        symbols: dayCalendar.meta.symbols,
+        source: dayCalendar.meta.source,
+        sourceName: dayCalendar.meta.sourceName,
+        stale: dayCalendar.meta.stale,
+        timestamp: dayCalendar.meta.timestamp,
+      },
+    };
+  }
+
   if (
     !SENTIMENT_QUERY_RE.test(text) &&
     !FILING_QUERY_RE.test(text) &&

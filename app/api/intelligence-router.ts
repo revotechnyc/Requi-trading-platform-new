@@ -5,6 +5,12 @@ import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
 import { tryDeterministicDataReply } from "./intelligence/data-reply";
+import { runRevision1Research } from "./intelligence/research/earnings-candidate";
+import {
+  acceptPromptLength,
+  MAX_USER_PROMPT_CHARS,
+  preparePromptForModel,
+} from "./intelligence/prompt-overflow";
 import { addWatchlistSymbol } from "./intelligence-data/watchlist";
 import { resolveSymbolsFromText } from "./intelligence-data/symbol-resolver";
 import { getSnapshot } from "./marketdata/gateway/gateway";
@@ -166,8 +172,12 @@ export const intelligenceRouter = createRouter({
   clearHistory: authedQuery.mutation(async ({ ctx }) => clearHistory(ctx.user.id)),
 
   chat: authedQuery
-    .input(z.object({ text: z.string().min(1).max(8000), conversationId: z.string().max(64).optional() }))
+    .input(z.object({ text: z.string().min(1).max(MAX_USER_PROMPT_CHARS), conversationId: z.string().max(64).optional() }))
     .mutation(async ({ ctx, input }) => {
+      const lengthCheck = acceptPromptLength(input.text);
+      if (!lengthCheck.ok) {
+        return { kind: "text" as const, reply: `⛔ ${lengthCheck.error}`, conversationId: input.conversationId ?? null };
+      }
       const conversationId = await ensureConversation(ctx.user.id, input.conversationId, input.text);
       const result = await runIntelligenceChat(ctx.user, input.text, conversationId);
       return { ...result, conversationId };
@@ -234,23 +244,51 @@ export async function runIntelligenceChat(
     if (options.allowTradeTool) {
       return agentChat(ctx.user.id, userText, withMarket(options));
     }
-    // Simple price/quote and verified data questions bypass the LLM.
+    // Revision 1 research protocols — deterministic retrieve/calc/gap report first.
     if (!options.advisory && !options.developerExtra) {
+      const research = await runRevision1Research(ctx.user.id, userText).catch((e) => {
+        console.error("[intelligence] revision1 research failed", e);
+        return null;
+      });
+      if (research) {
+        marketMeta = {
+          symbols: research.symbols,
+          source: "finnhub",
+          sourceName: "Revision 1 research (Finnhub + gateway)",
+          stale: false,
+          timestamp: new Date().toISOString(),
+        };
+        return research.reply;
+      }
       const deterministic = await tryDeterministicDataReply(ctx.user.id, userText).catch(() => null);
       if (deterministic) {
         marketMeta = deterministic.meta;
         return deterministic.reply;
       }
     }
-    const lucia = await luciaPromptChat(ctx.user.id, userText, {
+
+    // Long-prompt overflow: never truncate — package as attachment blocks for the model.
+    const prepared = preparePromptForModel(userText);
+    const overflowNote = prepared.overflow
+      ? `Prompt overflow active: attachment_id=${prepared.attachmentId}, chars=${prepared.originalText.length}, ~${prepared.estimatedTokens} tokens. Full protocol is in developer attachment blocks.`
+      : undefined;
+    const developerExtra = [options.developerExtra, overflowNote, ...prepared.attachmentBlocks]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const lucia = await luciaPromptChat(ctx.user.id, prepared.modelUserText, {
       conversationId: options.conversationId ?? conversationId,
-      developerExtra: options.developerExtra,
+      developerExtra: developerExtra || undefined,
     });
     if (lucia?.reply) {
       if (lucia.marketMeta) marketMeta = lucia.marketMeta;
       return lucia.reply;
     }
-    return agentChat(ctx.user.id, userText, withMarket(options));
+    return agentChat(ctx.user.id, prepared.modelUserText, withMarket({
+      ...options,
+      developerExtra: developerExtra || options.developerExtra,
+      attachmentBlocks: prepared.attachmentBlocks,
+    }));
   }
 
   const result = await (async (): Promise<{ kind: string; reply?: string; [k: string]: unknown }> => {

@@ -33,8 +33,20 @@ const STOPWORDS = new Set([
   "BUY", "SELL", "LONG", "SHORT", "STOP", "RSI", "VWAP", "MACD", "ATR", "EMA", "SMA", "PAPER", "LIVE", "ORDER", "TRADE", "PRICE", "PRICES", "QUOTE", "CHART", "TODAY", "WHAT", "WHEN", "WITH", "THIS", "THAT", "FROM", "SHOW", "TELL", "ABOUT", "YOUR", "OPEN", "HIGH", "LOW", "LAST", "STOCK", "SHARE", "SHARES", "MARKET", "CURRENT", "RIGHT", "DOES", "DOING", "MOVE", "MOVING", "WHY", "HOW",
   "VS", "VERSUS", "MUCH", "WORTH", "SHOULD", "LATEST", "NEWS", "SIDE", "COMPARE", "SOCIAL", "REDDIT", "STOCKTWITS", "TRADERS", "SAYING", "SENTIMENT", "APPLE", "GOOGLE", "NVIDIA", "TESLA", "AMAZON", "MICROSOFT", "NETFLIX", "FACEBOOK", "ALPHABET", "COINBASE", "PALANTIR", "BERKSHIRE", "DISNEY", "WALMART",
   "NEXT", "DATE", "DATES", "REPORT", "EARNINGS", "ESTIMATE", "ESTIMATED", "CONFIRMED", "AVERAGE", "QUARTER", "QUARTERLY", "CALENDAR",
+  "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY", "TOMORROW", "WEEK",
   "MAJOR", "MACRO", "COULD", "AFFECT", "GLOBAL", "EVENTS", "EVENT", "STOCKS", "EQUITIES", "TODAY", "THEMES", "THEME",
   "THEIR", "SEC", "FILINGS", "FILING", "BOTH", "THEM", "THESE", "MOMENTUM", "STRONGER", "SHOWING", "WHICH", "GIVE", "ADD", "WATCHLIST",
+  // Protocol / research vocabulary — never treat as tickers (e.g. "PEER READ-THROUGH")
+  "PEER", "PEERS", "READ", "THROUGH", "RELEVANCE", "DIVERGENCE", "SENSITIVITY", "RESET", "BASE", "TIER",
+  "ENGINE", "MANDATORY", "OBJECTIVE", "ANALYSIS", "RANKING", "PROTOCOL", "CANDIDATE", "SELECTION",
+  "STRONG", "POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED", "MODERATE", "CLASSIFICATION", "CONVICTION",
+  "UNAVAILABLE", "VERIFIED", "BLOCKED", "REJECT", "WATCH", "QUALIFIED", "WAITING", "WAIT",
+  "HAVE", "HAD", "HAS", "SEASON", "SCORE", "SCORES", "ONLY", "MARK", "DATA", "EACH", "MOST",
+  "INTO", "ALREADY", "REPORTED", "PROVIDE", "IDENTIFY", "RELEVANT", "ECONOMIC", "MISSING",
+  "INVENT", "TREAT", "WORDS", "TICKER", "TICKERS", "FINAL", "ANSWER", "LIST", "USING",
+  // Protocol headers / instructions (e.g. REQUI … SMALL-CAP …)
+  "REQUI", "SMALL", "CAP", "APPLY", "RULES", "FIGURES", "NUMBERS", "CLASSIFY", "GATES",
+  "LIQUIDITY", "DILUTION", "RUNWAY", "CASH", "DO", "NOT", "IF", "CRITICAL",
 ]);
 
 const MARKET_QUESTION_RE =
@@ -88,8 +100,25 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
     }
   }
 
+  // Prefer explicit "on/for TICKER, TICKER" lists in research prompts.
+  for (const m of text.matchAll(
+    /\b(?:on|for)\s+([A-Z][A-Z0-9.]{0,4}(?:\s*,\s*|\s+and\s+|\s+)[A-Z][A-Z0-9.]{0,4}(?:(?:\s*,\s*|\s+and\s+|\s+)[A-Z][A-Z0-9.]{0,4})*)/g,
+  )) {
+    for (const part of m[1].split(/\s*,\s*|\s+and\s+|\s+/i)) {
+      const upper = part.trim().replace(/\.+$/, "").toUpperCase();
+      if (upper.length >= 1 && upper.length <= 6 && !STOPWORDS.has(upper)) out.add(upper);
+    }
+  }
+
+  const researchIntent =
+    /\b(research|protocol|candidate\s+selection|earnings\s+screen|small-?cap)\b/i.test(text);
+
   const shouldScan =
-    MARKET_QUESTION_RE.test(text) || out.size > 0 || FILING_RE.test(text) || NEWS_RE.test(text);
+    MARKET_QUESTION_RE.test(text) ||
+    out.size > 0 ||
+    FILING_RE.test(text) ||
+    NEWS_RE.test(text) ||
+    researchIntent;
 
   if (!shouldScan) return [...out].slice(0, 4);
 
@@ -101,13 +130,20 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
     if (upper.length >= 2 && !STOPWORDS.has(upper)) out.add(upper);
   }
 
-  // Lowercase tickers (aapl, nvda) — not company names already mapped above.
-  for (const m of scan.matchAll(/\b[a-z][a-z0-9.]{0,5}\b/g)) {
-    const raw = m[0];
-    if (COMPANY_ALIAS_KEYS.has(raw)) continue;
-    const upper = raw.toUpperCase();
-    if (STOPWORDS.has(upper)) continue;
-    if (raw.length >= 2 && raw.length <= 6) out.add(upper);
+  // Lowercase tickers (aapl, nvda) — skip on long research-protocol prose so English
+  // words like "have" / "season" / "scores" are not mistaken for tickers.
+  const researchProse =
+    /\bPEER\s*READ|\bCANDIDATE\s+SELECTION\b|\bBASE\s+RESET\b|\bScore each company\b|\bread-through\b|\bSMALL-?CAP\s+CANDIDATE\b/i.test(
+      text,
+    );
+  if (!researchProse) {
+    for (const m of scan.matchAll(/\b[a-z][a-z0-9.]{0,5}\b/g)) {
+      const raw = m[0];
+      if (COMPANY_ALIAS_KEYS.has(raw)) continue;
+      const upper = raw.toUpperCase();
+      if (STOPWORDS.has(upper)) continue;
+      if (raw.length >= 2 && raw.length <= 6) out.add(upper);
+    }
   }
 
   return [...out].slice(0, 4);

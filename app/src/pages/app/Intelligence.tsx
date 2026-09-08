@@ -435,8 +435,8 @@ export default function Intelligence() {
                   }
                 }}
                 rows={3}
-                placeholder={'Paste a text strategy here (ENTRY / EXIT / SIZING…) or ask a question…\nCtrl+V works — then press Enter to send.'}
-                className="font-mono-num max-h-40 flex-1 resize-none rounded-xl border border-slate-900/10 bg-slate-900/[0.03] px-4 py-3 text-xs leading-relaxed text-slate-700 placeholder:text-slate-600 outline-none focus:border-sky-600/50"
+                placeholder={'Paste a research protocol or ask a question…\nLong prompts are accepted automatically — Enter to send (Shift+Enter for newline).'}
+                className="font-mono-num max-h-96 min-h-[4.5rem] flex-1 resize-y rounded-xl border border-slate-900/10 bg-slate-900/[0.03] px-4 py-3 text-xs leading-relaxed text-slate-700 placeholder:text-slate-600 outline-none focus:border-sky-600/50"
               />
               {thinking ? (
                 <button
