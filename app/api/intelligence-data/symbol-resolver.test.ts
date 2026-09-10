@@ -91,4 +91,18 @@ Run small-cap candidate research on PLTR and COIN.
 Apply cash-runway, dilution, liquidity, and scoring rules.`;
     expect(resolveSymbolsFromText(q).sort()).toEqual(["COIN", "PLTR"]);
   });
+
+  it("does not treat Use as ticker U on Base Reset prompts", () => {
+    const q = `BASE RESET
+
+Run Base Reset classification on AAPL.
+Use verified data only. If guidance or event-study is incomplete, classify WAIT — do not invent.`;
+    expect(resolveSymbolsFromText(q)).toEqual(["AAPL"]);
+    expect(resolveSymbolsFromText(q)).not.toContain("U");
+  });
+
+  it("still resolves Unity / $U when explicitly requested", () => {
+    expect(resolveSymbolsFromText("Run earnings candidate research on Unity")).toEqual(["U"]);
+    expect(resolveSymbolsFromText("What is $U trading at right now?")).toEqual(["U"]);
+  });
 });

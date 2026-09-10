@@ -18,6 +18,7 @@ export interface GatewayIndicators {
   sma_200: number | null;
   ema_9: number | null;
   ema_12: number | null;
+  ema_20: number | null;
   ema_21: number | null;
   ema_26: number | null;
   ema_50: number | null;
@@ -46,8 +47,9 @@ const round = (n: number | null, dp = 4) => (n === null || !Number.isFinite(n) ?
 const BUNDLE: { key: keyof GatewayIndicators; dp: number }[] = [
   { key: "sma_5", dp: 4 }, { key: "sma_10", dp: 4 }, { key: "sma_20", dp: 4 },
   { key: "sma_50", dp: 4 }, { key: "sma_100", dp: 4 }, { key: "sma_200", dp: 4 },
-  { key: "ema_9", dp: 4 }, { key: "ema_12", dp: 4 }, { key: "ema_21", dp: 4 },
-  { key: "ema_26", dp: 4 }, { key: "ema_50", dp: 4 }, { key: "ema_200", dp: 4 },
+  { key: "ema_9", dp: 4 }, { key: "ema_12", dp: 4 }, { key: "ema_20", dp: 4 },
+  { key: "ema_21", dp: 4 }, { key: "ema_26", dp: 4 }, { key: "ema_50", dp: 4 },
+  { key: "ema_200", dp: 4 },
   { key: "rsi_14", dp: 2 }, { key: "macd", dp: 4 }, { key: "macd_signal", dp: 4 }, { key: "macd_histogram", dp: 4 },
   { key: "vwap", dp: 4 },
   { key: "bollinger_upper", dp: 4 }, { key: "bollinger_middle", dp: 4 }, { key: "bollinger_lower", dp: 4 },

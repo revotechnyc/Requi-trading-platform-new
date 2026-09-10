@@ -88,6 +88,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   ma("sma_200", "Simple Moving Average", "sma", 200),
   ma("ema_9", "Exponential Moving Average", "ema", 9),
   ma("ema_12", "Exponential Moving Average", "ema", 12),
+  ma("ema_20", "Exponential Moving Average", "ema", 20),
   ma("ema_21", "Exponential Moving Average", "ema", 21),
   ma("ema_26", "Exponential Moving Average", "ema", 26),
   ma("ema_50", "Exponential Moving Average", "ema", 50),

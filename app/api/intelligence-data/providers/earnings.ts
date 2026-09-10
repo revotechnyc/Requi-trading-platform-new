@@ -51,6 +51,7 @@ async function finnhubEarnings(symbol: string): Promise<EarningsPayload | null> 
       epsEstimate?: number | null;
       revenueActual?: number | null;
       revenueEstimate?: number | null;
+      hour?: string | null;
       symbol?: string;
     }>;
   };
@@ -64,6 +65,11 @@ async function finnhubEarnings(symbol: string): Promise<EarningsPayload | null> 
     else if (epsA < epsE) surprise = "miss";
     else surprise = "met";
   }
+  const hour = (row.hour ?? "").toLowerCase();
+  const reportTime: EarningsPayload["reportTime"] =
+    hour === "bmo" || hour === "amc" || hour === "dmh"
+      ? (hour.toUpperCase() as "BMO" | "AMC" | "DMH")
+      : "unknown";
   return {
     symbol,
     reportDate: row.date ?? null,
@@ -73,7 +79,7 @@ async function finnhubEarnings(symbol: string): Promise<EarningsPayload | null> 
     revenueActual: row.revenueActual ?? null,
     surprise,
     dateType: "confirmed",
-    reportTime: "unknown",
+    reportTime,
   };
 }
 

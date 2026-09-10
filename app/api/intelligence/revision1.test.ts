@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   INLINE_SAFE_CHARS,
   acceptPromptLength,
@@ -6,12 +8,17 @@ import {
   preparePromptForModel,
 } from "./prompt-overflow";
 import { epsSurprisePercent, summarizeBeatHistory } from "../intelligence-data/providers/earnings-history";
+import { sanitizeProviderError } from "../intelligence-data/providers/alpha-vantage";
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
 import {
+  buildCrossDayScreenPool,
   isEarningsResearchProtocol,
   isPeerReadThroughRequest,
+  isPlausibleMarginRatio,
   isResearchProtocolText,
+  rankScreenCandidates,
   runRevision1Research,
+  type ScreenCandidate,
 } from "./research/earnings-candidate";
 
 describe("prompt overflow", () => {
@@ -56,6 +63,72 @@ describe("earnings surprise calc", () => {
   });
 });
 
+describe("provider error sanitization", () => {
+  it("redacts keys and collapses Alpha Vantage rate-limit blurbs", () => {
+    expect(sanitizeProviderError("Alpha Vantage: rate limit 25 requests SNTQE5B3S4DETSVF premium plans")).toBe(
+      "Alpha Vantage rate-limited or daily quota exceeded",
+    );
+    expect(sanitizeProviderError("ALPHA_VANTAGE_API_KEY not configured")).toContain("not configured");
+    expect(sanitizeProviderError(null)).toBe("provider unavailable");
+  });
+});
+
+describe("XBRL margin sanity", () => {
+  it("rejects implausible margin ratios", () => {
+    expect(isPlausibleMarginRatio(0.382)).toBe(true);
+    expect(isPlausibleMarginRatio(1.934)).toBe(false);
+    expect(isPlausibleMarginRatio(-0.2)).toBe(true);
+    expect(isPlausibleMarginRatio(-0.9)).toBe(false);
+  });
+});
+
+describe("upcoming candidate screen ranking", () => {
+  it("ranks by beat rate then surprise (not calendar order)", () => {
+    const rows: ScreenCandidate[] = [
+      {
+        symbol: "CMCM",
+        reportDate: "2026-09-09",
+        reportTime: "BMO",
+        beatRate: 0,
+        avgSurprisePct: -300,
+        quarters: 1,
+        screenScore: 0,
+      },
+      {
+        symbol: "AEO",
+        reportDate: "2026-09-09",
+        reportTime: "AMC",
+        beatRate: 100,
+        avgSurprisePct: 40,
+        quarters: 4,
+        screenScore: 100,
+      },
+      {
+        symbol: "ASO",
+        reportDate: "2026-09-09",
+        reportTime: "BMO",
+        beatRate: 75,
+        avgSurprisePct: 3,
+        quarters: 4,
+        screenScore: 75,
+      },
+    ];
+    const ranked = rankScreenCandidates(rows);
+    expect(ranked.map((r) => r.symbol)).toEqual(["AEO", "ASO", "CMCM"]);
+  });
+
+  it("round-robins the screen pool across days (day-0 cannot monopolize)", () => {
+    const day0 = Array.from({ length: 30 }, (_, i) => `D0_${i}`);
+    const day1 = ["D1_A", "D1_B"];
+    const day2 = ["D2_A"];
+    const pool = buildCrossDayScreenPool([day0, day1, day2], 10);
+    expect(pool).toHaveLength(10);
+    expect(pool.filter((s) => s.startsWith("D0_")).length).toBeLessThan(10);
+    expect(pool).toContain("D1_A");
+    expect(pool).toContain("D2_A");
+  });
+});
+
 describe("research protocol detect", () => {
   it("detects quarterly protocol header", () => {
     expect(isResearchProtocolText("REQUI QUARTERLY EARNINGS CANDIDATE SELECTION PROTOCOL\n...")).toBe(true);
@@ -84,7 +157,8 @@ Provide Peer Relevance scores.`;
 });
 
 describe("peer read-through routing", () => {
-  it("returns unavailable instead of researching fake PEER/READ tickers", async () => {
+  it("runs peer engine for MSFT without inventing PEER/READ tickers", async () => {
+    process.env.DATA_PROVIDER_MODE = "mock";
     const peerPrompt = `PEER READ-THROUGH
 
 For MSFT, identify economically relevant peers that have already reported this earnings season.
@@ -93,8 +167,32 @@ Use verified data only. If missing, mark unavailable — do not invent.`;
     const result = await runRevision1Research("test-user", peerPrompt);
     expect(result).not.toBeNull();
     expect(result!.symbols).toEqual(["MSFT"]);
-    expect(result!.reply).toContain("PEER_READ_THROUGH_UNAVAILABLE");
+    expect(result!.reply).toContain("Peer Read-Through — **MSFT**");
     expect(result!.reply).not.toContain("Earnings candidate research — **PEER**");
     expect(result!.reply).not.toContain("Earnings candidate research — **READ**");
   });
+});
+
+describe("benchmark acceptance runs (client prompts)", () => {
+  it("runs the client-scale long prompt through Revision 1 runner (honest gaps)", async () => {
+    if (!process.env.FINNHUB_API_KEY?.trim()) {
+      // Local CI / dev environments may not have keys. In that case, we skip
+      // rather than failing acceptance tests for missing connectivity.
+      return;
+    }
+
+    const promptPath = join(__dirname, "../../../REVISION1_LONG_PROMPT_CLIENT_SCALE.txt");
+    const prompt = readFileSync(promptPath, "utf8");
+
+    const result = await runRevision1Research("test-user", prompt);
+    expect(result).not.toBeNull();
+    expect(result!.reply).toContain("Revision 1 — Earnings candidate research report");
+    expect(result!.reply).toContain("Protocol detected. Analyzed");
+    // Peer Read-Through engine is intentionally not implemented in Revision 1.
+    expect(result!.reply).toContain("Peer Read-Through engine pending");
+    // The client prompt instructs execution on these tickers; ensure they appear.
+    expect(result!.reply).toContain("— **AAPL**");
+    expect(result!.reply).toContain("— **MSFT**");
+    expect(result!.reply).toContain("— **NVDA**");
+  }, 120_000);
 });

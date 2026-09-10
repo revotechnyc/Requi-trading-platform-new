@@ -284,7 +284,7 @@ describe("indicator engine (internal, deterministic)", () => {
   ]);
 
   it("computes the full moving-average stack", () => {
-    for (const k of ["sma_5", "sma_10", "sma_20", "sma_50", "sma_100", "sma_200", "ema_9", "ema_12", "ema_21", "ema_26", "ema_50", "ema_200"] as const) {
+    for (const k of ["sma_5", "sma_10", "sma_20", "sma_50", "sma_100", "sma_200", "ema_9", "ema_12", "ema_20", "ema_21", "ema_26", "ema_50", "ema_200"] as const) {
       expect(ind[k], k).not.toBeNull();
       expect(ind[k]!).toBeGreaterThan(0);
     }

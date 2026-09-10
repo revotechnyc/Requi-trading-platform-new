@@ -54,11 +54,19 @@ export function streamIntelligenceChat(
       };
       try {
         const { getAccessToken } = await import('@/lib/supabase');
-        const token = await getAccessToken();
+        const token = await Promise.race([
+          getAccessToken(),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3000)),
+        ]);
         if (token) headers.Authorization = `Bearer ${token}`;
       } catch {
         /* cookie session may still work */
       }
+
+      // Fail fast if the server never starts the SSE body (stuck auth/DB).
+      const connectTimeout = window.setTimeout(() => {
+        if (!controller.signal.aborted) controller.abort('connect-timeout');
+      }, 45_000);
 
       const res = await fetch('/api/intelligence/stream', {
         method: 'POST',
@@ -70,6 +78,7 @@ export function streamIntelligenceChat(
         }),
         signal: controller.signal,
       });
+      window.clearTimeout(connectTimeout);
 
       if (!res.ok) {
         const msg =
@@ -184,6 +193,10 @@ export function streamIntelligenceChat(
         const reason = (controller.signal as AbortSignal & { reason?: unknown }).reason;
         if (reason === 'timeout') {
           callbacks.onError('Request timed out — try a shorter question, or try again.');
+        } else if (reason === 'connect-timeout') {
+          callbacks.onError(
+            'Lucia could not start the reply in time (server busy or session issue). Please refresh and try again.',
+          );
         } else {
           callbacks.onAborted?.();
         }

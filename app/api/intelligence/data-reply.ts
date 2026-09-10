@@ -432,7 +432,11 @@ export async function tryDeterministicDataReply(
   text: string,
 ): Promise<DeterministicPriceResult | null> {
   // Day-board calendar (e.g. "Tuesday quarterly earnings") — no ticker required.
-  const dayCalendar = await tryEarningsDayCalendarReply(text).catch(() => null);
+  // Bound wait so a slow Finnhub fan-out cannot freeze the whole Intelligence stream.
+  const dayCalendar = await Promise.race([
+    tryEarningsDayCalendarReply(text).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 55_000)),
+  ]);
   if (dayCalendar) {
     return {
       reply: dayCalendar.reply,

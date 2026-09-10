@@ -23,6 +23,7 @@ const COMPANY_ALIASES: Record<string, string> = {
   coinbase: "COIN",
   palantir: "PLTR",
   berkshire: "BRK.B",
+  unity: "U",
 };
 
 const COMPANY_ALIAS_KEYS = new Set(Object.keys(COMPANY_ALIASES));
@@ -101,12 +102,14 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
   }
 
   // Prefer explicit "on/for TICKER, TICKER" lists in research prompts.
+  // Require length >= 2 so "on AAPL. Use verified…" does not treat "U" from "Use" as Unity (U).
+  // Single-letter tickers (e.g. $U) still resolve via $TICKER or company alias.
   for (const m of text.matchAll(
     /\b(?:on|for)\s+([A-Z][A-Z0-9.]{0,4}(?:\s*,\s*|\s+and\s+|\s+)[A-Z][A-Z0-9.]{0,4}(?:(?:\s*,\s*|\s+and\s+|\s+)[A-Z][A-Z0-9.]{0,4})*)/g,
   )) {
     for (const part of m[1].split(/\s*,\s*|\s+and\s+|\s+/i)) {
       const upper = part.trim().replace(/\.+$/, "").toUpperCase();
-      if (upper.length >= 1 && upper.length <= 6 && !STOPWORDS.has(upper)) out.add(upper);
+      if (upper.length >= 2 && upper.length <= 6 && !STOPWORDS.has(upper)) out.add(upper);
     }
   }
 

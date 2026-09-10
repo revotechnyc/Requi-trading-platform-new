@@ -1,8 +1,10 @@
 /**
- * Historical EPS surprises via Finnhub /stock/earnings (free tier ~4 quarters).
+ * Historical EPS surprises via Finnhub /stock/earnings (free tier ~4 quarters),
+ * with Alpha Vantage EARNINGS as secondary backfill when history is incomplete.
  */
 import { fetchWithRetry } from "../http";
 import { intelligenceCache, LAYER_TTL_MS } from "../cache";
+import { fetchAlphaVantageEarnings } from "./alpha-vantage";
 
 const UA = "Mozilla/5.0 (compatible; RequiTrading/1.0)";
 
@@ -24,6 +26,7 @@ export type HistoricalEarningsResult = {
   error?: string;
   /** Free Finnhub typically returns ≤4 quarters — flag incompleteness vs 6–8 requirement. */
   incompleteForProtocol: boolean;
+  conflict?: boolean;
 };
 
 function num(v: unknown): number | null {
@@ -108,30 +111,105 @@ async function finnhubHistorical(symbol: string, limit = 8): Promise<HistoricalE
   }));
 }
 
-export async function fetchHistoricalEarnings(symbol: string): Promise<HistoricalEarningsResult> {
+function periodKey(r: HistoricalEarningsRow): string {
+  if (r.period) return r.period.slice(0, 10);
+  if (r.year && r.quarter) return `${r.year}-Q${r.quarter}`;
+  return `${r.year ?? ""}-${r.quarter ?? ""}`;
+}
+
+function mergeHistorical(
+  primary: HistoricalEarningsRow[],
+  secondary: HistoricalEarningsRow[],
+): { rows: HistoricalEarningsRow[]; conflict: boolean } {
+  const byKey = new Map<string, HistoricalEarningsRow>();
+  let conflict = false;
+  for (const row of primary) {
+    byKey.set(periodKey(row), row);
+  }
+  for (const row of secondary) {
+    const key = periodKey(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+    // Material EPS conflict between sources — do not silently overwrite Finnhub.
+    if (
+      existing.actual !== null &&
+      row.actual !== null &&
+      Math.abs(existing.actual - row.actual) > 0.02
+    ) {
+      conflict = true;
+    }
+  }
+  const rows = [...byKey.values()].sort((a, b) => (b.period ?? "").localeCompare(a.period ?? ""));
+  return { rows, conflict };
+}
+
+export async function fetchHistoricalEarnings(
+  symbol: string,
+  opts?: { allowAlphaVantageBackfill?: boolean },
+): Promise<HistoricalEarningsResult> {
   const sym = symbol.toUpperCase();
+  const allowAv = opts?.allowAlphaVantageBackfill !== false;
+  let finnhubRows: HistoricalEarningsRow[] = [];
+  let finnhubError: string | undefined;
+
   try {
-    const rows = await intelligenceCache.through(
-      `earnings-hist:${sym}:v1`,
+    finnhubRows = await intelligenceCache.through(
+      `earnings-hist:${sym}:v2`,
       LAYER_TTL_MS.earnings,
       () => finnhubHistorical(sym, 8),
     );
-    return {
-      available: rows.length > 0,
-      source: "Finnhub /stock/earnings",
-      symbol: sym,
-      rows,
-      incompleteForProtocol: rows.length < 6,
-      error: rows.length ? undefined : "No historical earnings rows returned",
-    };
   } catch (e) {
-    return {
-      available: false,
-      source: "Finnhub /stock/earnings",
-      symbol: sym,
-      rows: [],
-      incompleteForProtocol: true,
-      error: (e as Error).message,
-    };
+    finnhubError = (e as Error).message;
   }
+
+  let source = "Finnhub /stock/earnings";
+  let rows = finnhubRows;
+  let conflict = false;
+
+  // Secondary backfill when primary is empty or short of protocol 6–8 quarters.
+  // Calendar day-boards disable AV — free-tier rate limits stall Promise.all enrichment.
+  if (allowAv && rows.length < 6) {
+    const av = await fetchAlphaVantageEarnings(sym);
+    if (av.available && av.quarterly.length) {
+      const avRows: HistoricalEarningsRow[] = av.quarterly.slice(0, 12).map((r) => {
+        const d = r.fiscalDateEnding;
+        const year = d ? Number(d.slice(0, 4)) : null;
+        const month = d ? Number(d.slice(5, 7)) : null;
+        const quarter =
+          month === null || !Number.isFinite(month)
+            ? null
+            : Math.ceil(month / 3);
+        return {
+          period: d || null,
+          year: Number.isFinite(year as number) ? year : null,
+          quarter,
+          actual: r.reportedEPS,
+          estimate: r.estimatedEPS,
+          surprise: r.surprise,
+          surprisePercent: r.surprisePercent ?? epsSurprisePercent(r.reportedEPS, r.estimatedEPS),
+        };
+      });
+      const merged = mergeHistorical(rows, avRows);
+      rows = merged.rows;
+      conflict = merged.conflict;
+      source = finnhubRows.length
+        ? "Finnhub /stock/earnings + Alpha Vantage EARNINGS (backfill)"
+        : "Alpha Vantage EARNINGS";
+    } else if (!finnhubRows.length && av.error) {
+      finnhubError = finnhubError ?? av.error;
+    }
+  }
+
+  return {
+    available: rows.length > 0,
+    source,
+    symbol: sym,
+    rows,
+    incompleteForProtocol: rows.length < 6,
+    conflict: conflict || undefined,
+    error: rows.length ? undefined : finnhubError ?? "No historical earnings rows returned",
+  };
 }

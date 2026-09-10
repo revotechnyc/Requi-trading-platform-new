@@ -62,6 +62,18 @@ export function getExistingSupabase(): SupabaseClient | null {
 export async function getAccessToken(): Promise<string | null> {
   if (!client) initFromViteEnv();
   if (!client) return null;
-  const { data } = await client.auth.getSession();
-  return data.session?.access_token ?? null;
+  try {
+    const sessionPromise = client.auth.getSession();
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 2500);
+    });
+    const raced = await Promise.race([
+      sessionPromise.then((r) => r),
+      timeoutPromise.then(() => null),
+    ]);
+    if (!raced) return null;
+    return raced.data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
 }

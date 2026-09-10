@@ -61,11 +61,12 @@ export async function intelligenceStreamHandler(c: Context) {
     try {
       await write({ type: "phase", phase: "initializing" });
 
-      const conversationId = await ensureConversation(
-        user.id,
-        body.conversationId ?? undefined,
-        text,
-      );
+      const conversationId = await Promise.race([
+        ensureConversation(user.id, body.conversationId ?? undefined, text),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error("Conversation setup timed out")), 15_000),
+        ),
+      ]);
       await write({ type: "conversation", conversationId });
       await write({ type: "phase", phase: "processing" });
 

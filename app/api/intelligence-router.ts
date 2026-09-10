@@ -6,6 +6,7 @@ import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligenc
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
 import { tryDeterministicDataReply } from "./intelligence/data-reply";
 import { runRevision1Research } from "./intelligence/research/earnings-candidate";
+import { runLivePriceConfirmationGate } from "./intelligence/research/live-price-gate";
 import {
   acceptPromptLength,
   MAX_USER_PROMPT_CHARS,
@@ -246,6 +247,20 @@ export async function runIntelligenceChat(
     }
     // Revision 1 research protocols — deterministic retrieve/calc/gap report first.
     if (!options.advisory && !options.developerExtra) {
+      const liveGate = await runLivePriceConfirmationGate(ctx.user.id, userText).catch((e) => {
+        console.error("[intelligence] live price gate failed", e);
+        return null;
+      });
+      if (liveGate) {
+        marketMeta = {
+          symbols: liveGate.symbols,
+          source: liveGate.meta.source,
+          sourceName: liveGate.meta.sourceName,
+          stale: liveGate.meta.stale,
+          timestamp: liveGate.meta.timestamp,
+        };
+        return liveGate.reply;
+      }
       const research = await runRevision1Research(ctx.user.id, userText).catch((e) => {
         console.error("[intelligence] revision1 research failed", e);
         return null;

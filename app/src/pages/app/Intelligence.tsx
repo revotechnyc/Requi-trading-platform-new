@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import ConversationsPanel from './intelligence/ConversationsPanel';
 import ScheduledTasksPanel from './intelligence/ScheduledTasksPanel';
 import WatchlistPanel from './intelligence/WatchlistPanel';
+import EarningsCalendarPanel from './intelligence/EarningsCalendarPanel';
 import { AssistantMessageContent } from '@/components/AssistantMessageContent';
 import ReasoningIndicator, {
   inferThinkingHint,
@@ -122,7 +123,7 @@ export default function Intelligence() {
   const [streamPhase, setStreamPhase] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'library' | 'conversations' | 'scheduled' | 'watchlist'>('library');
+  const [panel, setPanel] = useState<'library' | 'conversations' | 'scheduled' | 'watchlist' | 'calendar'>('library');
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamMsgIdRef = useRef<number | null>(null);
@@ -465,6 +466,7 @@ export default function Intelligence() {
             {(
               [
                 ['library', 'Library'],
+                ['calendar', 'Calendar'],
                 ['watchlist', 'Watchlist'],
                 ['conversations', 'Conversations'],
                 ['scheduled', 'Scheduled'],
@@ -488,6 +490,13 @@ export default function Intelligence() {
             <ConversationsPanel activeConversationId={conversationId} onOpen={openConversation} onNew={newChat} />
           )}
           {panel === 'watchlist' && <WatchlistPanel />}
+          {panel === 'calendar' && (
+            <EarningsCalendarPanel
+              onAskResearch={(symbol) => {
+                send(`Run earnings candidate research on ${symbol}`);
+              }}
+            />
+          )}
           {panel === 'scheduled' && <ScheduledTasksPanel />}
           {panel === 'library' && (
           <>

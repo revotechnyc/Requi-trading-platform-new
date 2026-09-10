@@ -103,6 +103,11 @@ function tradingDayInfo(day: string): { isTradingDay: boolean; holidayName: stri
   return { isTradingDay: true, holidayName: null, early: EARLY_CLOSES.has(day), source: CALENDAR_SOURCE };
 }
 
+/** True when NYSE is scheduled open (skips weekends + full closures in NYSE_CALENDAR_V1). */
+export function isNyseTradingDay(day: string): boolean {
+  return tradingDayInfo(day).isTradingDay;
+}
+
 /** Convert an ET wall-clock (day + minutes) to a UTC ms timestamp (DST-aware, two-pass). */
 export function etWallToUtcMs(day: string, minutes: number): number {
   let guess = Date.parse(`${day}T00:00:00Z`) + minutes * 60_000;

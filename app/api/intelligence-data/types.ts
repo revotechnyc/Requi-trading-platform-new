@@ -49,7 +49,7 @@ export interface EarningsPayload {
   /** confirmed = Finnhub/calendar with consensus; estimated = Yahoo interim */
   dateType?: "confirmed" | "estimated";
   /** Before market open / after market close when known */
-  reportTime?: "BMO" | "AMC" | "unknown";
+  reportTime?: "BMO" | "AMC" | "DMH" | "unknown";
   note?: string;
 }
 
