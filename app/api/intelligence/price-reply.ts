@@ -3,6 +3,9 @@ import { bundleMeta } from "../intelligence-data/normalizer";
 import type { IntelligenceBundle, LayerEnvelope } from "../intelligence-data/types";
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
 import type { MarketMeta } from "./tools";
+import { isHistoricalPriceQuery } from "./gap-intents";
+
+export { isHistoricalPriceQuery } from "./gap-intents";
 
 interface PricePayload {
   price: number;
@@ -30,8 +33,28 @@ const INDICATOR_ONLY_RE =
 const MOVEMENT_NARRATIVE_RE =
   /\b(why is|why are|why did|what caused|what's driving|what is driving|moving today|up today|down today)\b/i;
 
+export function formatHistoricalPriceUnavailableReply(symbols: string[], text: string): string {
+  const sym = symbols[0] ?? "that symbol";
+  const dateMatch =
+    text.match(/\b(?:19|20)\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])\b/)?.[0] ??
+    text.match(
+      /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+(?:19|20)\d{2}\b/i,
+    )?.[0] ??
+    "the requested date";
+  return [
+    `**Historical price: UNAVAILABLE** for **${sym}** on **${dateMatch}**.`,
+    "",
+    "I only have a verified *live/session* quote path right now — not a point-in-time historical close database for arbitrary dates.",
+    "",
+    "I will **not** substitute today's price for a past close.",
+    "",
+    "Status: **WAIT** — historical daily bars / adjusted close API required before answering.",
+  ].join("\n");
+}
+
 export function isDeterministicPriceQuery(text: string, symbols: string[]): boolean {
   if (symbols.length === 0) return false;
+  if (isHistoricalPriceQuery(text)) return false;
   if (MOVEMENT_NARRATIVE_RE.test(text)) return false;
   if (INDICATOR_ONLY_RE.test(text) && !PRICE_INTENT_RE.test(text)) return false;
 
@@ -156,6 +179,21 @@ export async function tryDeterministicPriceReply(
   text: string,
 ): Promise<DeterministicPriceResult | null> {
   const querySymbols = resolveSymbolsFromText(text);
+
+  // Dated / historical closes must never return the live session quote.
+  if (isHistoricalPriceQuery(text) && querySymbols.length > 0) {
+    return {
+      reply: formatHistoricalPriceUnavailableReply(querySymbols, text),
+      meta: {
+        symbols: querySymbols,
+        source: null,
+        sourceName: "historical-price-gate",
+        stale: true,
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   if (!isDeterministicPriceQuery(text, querySymbols)) return null;
 
   const { bundle } = await buildIntelligenceBundle(userId, text, [], { includeWatchlist: false });

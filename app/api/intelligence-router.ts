@@ -13,7 +13,7 @@ import {
   preparePromptForModel,
 } from "./intelligence/prompt-overflow";
 import { addWatchlistSymbol } from "./intelligence-data/watchlist";
-import { resolveSymbolsFromText } from "./intelligence-data/symbol-resolver";
+import { resolveSymbolsFromText, filterLikelyFalsePositiveTickers } from "./intelligence-data/symbol-resolver";
 import { getSnapshot } from "./marketdata/gateway/gateway";
 import { clearHistory, loadHistory, saveMessage } from "./intelligence/memory";
 import { and, eq, isNull } from "drizzle-orm";
@@ -28,6 +28,17 @@ import {
 } from "./intelligence/intent";
 import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
 import { resolveIntelligenceBroker } from "./queries/autonomous-exec-policy";
+import {
+  applyPlanScopeUpdate,
+  formatSelectAfterRankReply,
+  getWorkingSet,
+  planFromConversationContext,
+  recordResearchResults,
+  setActiveEntities,
+  withContextNote,
+  type ContextPlan,
+} from "./intelligence/conversation-context";
+import { tryEarningsDayCalendarReply } from "./intelligence-data/earnings-day";
 
 const KNOWN_LABELS = ["ENTRY", "EXIT", "SIZING", "FILTER", "STRUCTURE", "GRID"];
 
@@ -217,11 +228,40 @@ export async function runIntelligenceChat(
 ): Promise<{ kind: string; reply?: string; [k: string]: unknown }> {
   const ctx = { user };
   const text = rawText.trim();
+  const contextEnabled =
+    process.env.CONVERSATION_CONTEXT !== "off" && Boolean(conversationId?.trim());
+  const workingSet = contextEnabled ? getWorkingSet(user.id, conversationId) : getWorkingSet(user.id, undefined);
+  let contextNote: string | undefined;
+  let pendingScope: ContextPlan | null = null;
 
   // Persist every turn to the conversation (deterministic paths bypass
   // agentChat, which no longer saves — persistence is centralized here so
   // Recent Conversations always has the full thread).
   if (conversationId) await saveMessage(user.id, "user", text, conversationId);
+
+  // Referential follow-ups → intent → entity resolution → scope → action.
+  const contextPlan = contextEnabled
+    ? planFromConversationContext(text, workingSet)
+    : ({ kind: "passthrough", text } as ContextPlan);
+
+  if (contextPlan.kind === "clarify") {
+    if (conversationId) await saveMessage(user.id, "assistant", contextPlan.question, conversationId);
+    return { kind: "text" as const, reply: contextPlan.question };
+  }
+
+  if (contextPlan.kind === "reply") {
+    applyPlanScopeUpdate(workingSet, contextPlan);
+    const reply = withContextNote(contextPlan.reply, contextPlan.note);
+    if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+    return { kind: "text" as const, reply };
+  }
+
+  let effectiveText = text;
+  if (contextPlan.kind === "rewrite") {
+    effectiveText = contextPlan.text;
+    contextNote = contextPlan.note;
+    pendingScope = contextPlan;
+  }
 
   // Gateway market meta (source/staleness) rides back to the UI chip whenever
   // a model turn resolved symbols through the Market Data Gateway.
@@ -232,6 +272,68 @@ export async function runIntelligenceChat(
       marketMeta = m;
     },
   });
+
+  const rememberFromMeta = (
+    handler: "earnings_day" | "research" | "data_reply" | "live_gate" | "other",
+    symbols: string[],
+    groupLabel?: string,
+    researchResults?: Array<{ symbol: string; rawScore?: number | null; classification?: string }>,
+  ) => {
+    // Never let English nouns from trader NL (RISK, BUYING, ABOVE, …) poison the working set.
+    const cleaned = filterLikelyFalsePositiveTickers(
+      symbols.map((s) => s.toUpperCase()),
+      effectiveText,
+    );
+    if (!cleaned.length || !contextEnabled) return;
+    const label =
+      groupLabel ??
+      (effectiveText.match(
+        /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b/i,
+      )?.[1]?.toLowerCase() ||
+        workingSet.lastUniverseLabel);
+
+    if (handler === "research" && researchResults?.length) {
+      const safeResearch = researchResults.filter(
+        (r) => filterLikelyFalsePositiveTickers([r.symbol], effectiveText).length > 0,
+      );
+      if (safeResearch.length) {
+        recordResearchResults(workingSet, safeResearch);
+      } else {
+        setActiveEntities(workingSet, cleaned, {
+          handler,
+          groupLabel: label,
+          asRanked: true,
+        });
+      }
+    } else {
+      setActiveEntities(workingSet, cleaned, {
+        handler,
+        groupLabel: label,
+        asRanked: handler === "research",
+      });
+    }
+
+    if (pendingScope?.kind === "rewrite") {
+      if (pendingScope.nextActive?.length) {
+        if (pendingScope.action === "rank" && handler === "research" && researchResults?.length) {
+          const n = pendingScope.nextActive.length;
+          const top = researchResults.slice(0, n).map((r) => ({
+            symbol: r.symbol,
+            score: r.rawScore ?? null,
+            classification: r.classification ?? null,
+          }));
+          applyPlanScopeUpdate(workingSet, {
+            kind: "reply",
+            reply: "",
+            intent: "select",
+            applyActive: top,
+          });
+        } else {
+          applyPlanScopeUpdate(workingSet, pendingScope);
+        }
+      }
+    }
+  };
 
   /**
    * Prefer stored OpenAI prompt (Responses + OPENAI_PROMPT_ID) like the live
@@ -245,6 +347,39 @@ export async function runIntelligenceChat(
     if (options.allowTradeTool) {
       return agentChat(ctx.user.id, userText, withMarket(options));
     }
+
+    // Calendar → then research (methodology carry-forward: "same for Tuesday")
+    if (pendingScope?.kind === "rewrite" && pendingScope.action === "calendar_then_research") {
+      const cal = await tryEarningsDayCalendarReply(userText).catch(() => null);
+      if (cal?.meta.symbols?.length) {
+        rememberFromMeta("earnings_day", cal.meta.symbols);
+        const line = cal.meta.symbols.slice(0, 12).join(", ");
+        const research = await runRevision1Research(
+          ctx.user.id,
+          `Run earnings candidate research on ${line}`,
+        ).catch((e) => {
+          console.error("[intelligence] revision1 research failed", e);
+          return null;
+        });
+        if (research) {
+          marketMeta = {
+            symbols: research.symbols,
+            source: "finnhub",
+            sourceName: "Revision 1 research (Finnhub + gateway)",
+            stale: false,
+            timestamp: new Date().toISOString(),
+          };
+          rememberFromMeta("research", research.symbols, undefined, research.rankedResults);
+          return withContextNote(`${cal.reply}\n\n---\n\n${research.reply}`, contextNote);
+        }
+        marketMeta = cal.meta;
+        return withContextNote(
+          `${cal.reply}\n\n_Calendar loaded into active set (${line}). Research could not complete — retry with "Analyze those tickers."_`,
+          contextNote,
+        );
+      }
+    }
+
     // Revision 1 research protocols — deterministic retrieve/calc/gap report first.
     if (!options.advisory && !options.developerExtra) {
       const liveGate = await runLivePriceConfirmationGate(ctx.user.id, userText).catch((e) => {
@@ -259,26 +394,56 @@ export async function runIntelligenceChat(
           stale: liveGate.meta.stale,
           timestamp: liveGate.meta.timestamp,
         };
-        return liveGate.reply;
+        rememberFromMeta("live_gate", liveGate.symbols);
+        return withContextNote(liveGate.reply, contextNote);
       }
       const research = await runRevision1Research(ctx.user.id, userText).catch((e) => {
         console.error("[intelligence] revision1 research failed", e);
         return null;
       });
       if (research) {
+        const selectAfterRank =
+          pendingScope?.kind === "rewrite" &&
+          pendingScope.action === "rank" &&
+          pendingScope.intent === "select" &&
+          (pendingScope.nextActive?.length ?? 0) > 0 &&
+          (research.rankedResults?.length ?? 0) > 0;
+
+        const selectCount = selectAfterRank ? pendingScope.nextActive!.length : 0;
+        const selectSymbols = selectAfterRank
+          ? research.rankedResults!.slice(0, selectCount).map((r) => r.symbol)
+          : research.symbols;
+
         marketMeta = {
-          symbols: research.symbols,
+          symbols: selectSymbols,
           source: "finnhub",
-          sourceName: "Revision 1 research (Finnhub + gateway)",
+          sourceName: selectAfterRank
+            ? "Selection after rank (Revision 1 partial scores)"
+            : "Revision 1 research (Finnhub + gateway)",
           stale: false,
           timestamp: new Date().toISOString(),
         };
-        return research.reply;
+        rememberFromMeta("research", research.symbols, undefined, research.rankedResults);
+
+        if (selectAfterRank) {
+          // Phase 3 MT-001: narrow UX — selection table only; full cards on "Go deeper".
+          return withContextNote(
+            formatSelectAfterRankReply(research.rankedResults!, selectCount),
+            contextNote,
+          );
+        }
+        return withContextNote(research.reply, contextNote);
       }
       const deterministic = await tryDeterministicDataReply(ctx.user.id, userText).catch(() => null);
       if (deterministic) {
         marketMeta = deterministic.meta;
-        return deterministic.reply;
+        const isCalendar = /finnhub/i.test(deterministic.meta.sourceName ?? "") ||
+          /quarterly earnings/i.test(deterministic.reply);
+        rememberFromMeta(
+          isCalendar ? "earnings_day" : "data_reply",
+          deterministic.meta.symbols ?? [],
+        );
+        return withContextNote(deterministic.reply, contextNote);
       }
     }
 
@@ -287,7 +452,11 @@ export async function runIntelligenceChat(
     const overflowNote = prepared.overflow
       ? `Prompt overflow active: attachment_id=${prepared.attachmentId}, chars=${prepared.originalText.length}, ~${prepared.estimatedTokens} tokens. Full protocol is in developer attachment blocks.`
       : undefined;
-    const developerExtra = [options.developerExtra, overflowNote, ...prepared.attachmentBlocks]
+    const activeHint =
+      workingSet.active.length > 0
+        ? `=== CONVERSATION WORKING SET (deterministic context — resolve "those/them" to these tickers when the user is referential) ===\nActive: ${workingSet.active.map((e) => e.symbol).join(", ")}\nRanked: ${workingSet.ranked.map((e) => e.symbol).join(", ") || "(same)"}\nGroups: ${Object.keys(workingSet.groups).join(", ") || "(none)"}`
+        : undefined;
+    const developerExtra = [options.developerExtra, overflowNote, activeHint, ...prepared.attachmentBlocks]
       .filter(Boolean)
       .join("\n\n");
 
@@ -297,7 +466,7 @@ export async function runIntelligenceChat(
     });
     if (lucia?.reply) {
       if (lucia.marketMeta) marketMeta = lucia.marketMeta;
-      return lucia.reply;
+      return withContextNote(lucia.reply, contextNote);
     }
     return agentChat(ctx.user.id, prepared.modelUserText, withMarket({
       ...options,
@@ -417,7 +586,8 @@ export async function runIntelligenceChat(
           }
 
           // CHAT / STATUS_QUERY → stored prompt (Lucia) first, then swarm tools.
-          const reply = await conversationalReply(text, {
+          // Use effectiveText so referential follow-ups ("analyze those") hit deterministic handlers.
+          const reply = await conversationalReply(effectiveText, {
             allowTradeTool: false,
             conversationId,
           });
@@ -483,7 +653,7 @@ export async function runIntelligenceChat(
       // 3) Lucia (OPENAI_PROMPT_ID) first; swarm agentChat as fallback.
       //    With the intent router on, this tail only serves STRATEGIZE requests the
       //    parser couldn't handle — the write tool stays removed.
-      const swarmReply = await conversationalReply(text, {
+      const swarmReply = await conversationalReply(effectiveText, {
         allowTradeTool: routerOn ? false : undefined,
         conversationId,
       });

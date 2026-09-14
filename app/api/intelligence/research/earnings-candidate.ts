@@ -18,7 +18,11 @@ import { fetchNasdaqHaltStatus } from "../../intelligence-data/providers/nasdaq-
 import { fetchEstimateRevisions, formatRevisionBrief } from "../../intelligence-data/providers/estimates";
 import { fetchImpliedMove } from "../../intelligence-data/providers/massive-options";
 import { fetchEdgarGuidance } from "../../intelligence-data/providers/edgar-guidance";
-import { resolveSymbolsFromText } from "../../intelligence-data/symbol-resolver";
+import {
+  filterLikelyFalsePositiveTickers,
+  resolveSymbolsFromText,
+} from "../../intelligence-data/symbol-resolver";
+import { isDeskCompareQuery } from "../gap-intents";
 import { fetchEarningsCalendarForDate, resolveEarningsCalendarDate } from "../../intelligence-data/earnings-day";
 import { runEventStudy } from "./event-study";
 import { runPeerReadThrough } from "./peer-read-through";
@@ -26,6 +30,8 @@ import { classifyBaseReset } from "./base-reset";
 import { getDataProviderMode } from "../../intelligence-data/providers/mode";
 
 const RESEARCH_TOP_N = 5;
+/** When the user (or conversation context) supplies an explicit ticker list, allow a larger batch. */
+const RESEARCH_EXPLICIT_MAX = 12;
 const SCREEN_HORIZON_DAYS = 7;
 /** Cap history fetches to stay within free-tier rate limits. */
 const SCREEN_POOL_MAX = 20;
@@ -215,10 +221,24 @@ export function isBaseResetProtocol(text: string): boolean {
   return /\bBASE\s+RESET\b/i.test(text);
 }
 
+function resolvedResearchSymbols(text: string): string[] {
+  return filterLikelyFalsePositiveTickers(resolveSymbolsFromText(text), text);
+}
+
 /** True for earnings / small-cap / base-reset style research (not peer-only). */
 export function isEarningsResearchProtocol(text: string): boolean {
+  // Multi-factor desk compares must never enter the earnings swarm.
+  if (isDeskCompareQuery(text)) return false;
   if (EARNINGS_PROTOCOL_MARKERS.test(text)) return true;
-  if (RUN_RESEARCH_RE.test(text) && resolveSymbolsFromText(text).length > 0) return true;
+  if (RUN_RESEARCH_RE.test(text) && resolvedResearchSymbols(text).length > 0) return true;
+  if (
+    /\b(analy[sz]e|screen|identify)\b/i.test(text) &&
+    /\b(universe|earnings|candidate)\b/i.test(text) &&
+    resolvedResearchSymbols(text).length >= 2
+  ) {
+    return true;
+  }
+  if (/Run earnings candidate research on /i.test(text)) return true;
   if (text.length > 4000 && /\bScore each company from 0 to 100\b/i.test(text)) return true;
   return false;
 }
@@ -955,13 +975,19 @@ function formatCandidateReport(r: CandidateResearchResult): string {
   return lines.join("\n");
 }
 
+export type ResearchRunSummary = {
+  symbol: string;
+  rawScore: number | null;
+  classification: string;
+};
+
 export async function runRevision1Research(
   userId: string,
   text: string,
-): Promise<{ reply: string; symbols: string[] } | null> {
+): Promise<{ reply: string; symbols: string[]; rankedResults?: ResearchRunSummary[] } | null> {
   if (!isResearchProtocolText(text)) return null;
 
-  let symbols = resolveSymbolsFromText(text);
+  let symbols = resolvedResearchSymbols(text);
   let screenNote = "";
 
   // Peer-only prompts: run peer engine when possible; else honest unavailable.
@@ -1019,7 +1045,13 @@ export async function runRevision1Research(
     }
   }
 
-  symbols = symbols.slice(0, RESEARCH_TOP_N);
+  // Calendar auto-screen stays small; explicit / context-expanded lists may go higher.
+  const explicitList =
+    /\b(?:on|for)\s+[A-Z]{1,5}\b/.test(text) ||
+    /\$[A-Za-z]/.test(text) ||
+    /Run earnings candidate research on /i.test(text);
+  const cap = explicitList ? RESEARCH_EXPLICIT_MAX : RESEARCH_TOP_N;
+  symbols = symbols.slice(0, cap);
   const results: CandidateResearchResult[] = [];
   for (const sym of symbols) {
     results.push(await researchEarningsCandidate(userId, sym));
@@ -1081,5 +1113,13 @@ export async function runRevision1Research(
     "_Now wired on free keys when configured: Alpha Vantage OVERVIEW/EARNINGS backfill, SEC companyfacts XBRL, FRED macro backdrop, Nasdaq halt RSS, Live Gate honesty report._",
   ];
 
-  return { reply: header.join("\n") + body + summary.join("\n"), symbols: results.map((r) => r.symbol) };
+  return {
+    reply: header.join("\n") + body + summary.join("\n"),
+    symbols: results.map((r) => r.symbol),
+    rankedResults: results.map((r) => ({
+      symbol: r.symbol,
+      rawScore: r.rawScore ?? null,
+      classification: r.classification,
+    })),
+  };
 }

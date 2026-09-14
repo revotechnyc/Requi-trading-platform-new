@@ -1561,7 +1561,8 @@ export async function tryEarningsDayCalendarReply(
     return {
       reply: formatEarningsDayCalendarReply(result),
       meta: {
-        symbols: Array.from(new Set(result.rows.map((r) => r.symbol))).slice(0, 8),
+        // Keep full board for conversation working-set follow-ups ("analyze those").
+        symbols: Array.from(new Set(result.rows.map((r) => r.symbol))).slice(0, 40),
         source: result.available ? "finnhub" : null,
         sourceName: result.available ? "Finnhub" : "Finnhub (unavailable)",
         stale: false,
@@ -1577,7 +1578,8 @@ export async function tryEarningsDayCalendarReply(
   return {
     reply: formatEarningsDayCalendarReply(result),
     meta: {
-      symbols: result.rows.slice(0, 8).map((r) => r.symbol),
+      // Keep full board for conversation working-set follow-ups ("analyze those").
+      symbols: Array.from(new Set(result.rows.map((r) => r.symbol))).slice(0, 40),
       source: result.available ? "finnhub" : null,
       sourceName: result.available ? "Finnhub" : "Finnhub (unavailable)",
       stale: false,

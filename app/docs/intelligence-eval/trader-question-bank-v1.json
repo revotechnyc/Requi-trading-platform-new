@@ -1,0 +1,1100 @@
+{
+  "version": "1.0.0",
+  "phase": "0-baseline",
+  "created": "2026-09-14",
+  "purpose": "Executable Phase 0 baseline: real trader questions to score REQui intelligence for grounding, breadth, and actionability.",
+  "how_to_run": [
+    "Use Intelligence chat (same user session for multi-turn scripts).",
+    "Paste each prompt exactly; for multi-turn, follow turns in order.",
+    "Score with SCORING_SHEET.md; log failures with the taxonomy.",
+    "Mark known_gap=true items even if weak — they measure roadmap pressure, not regression."
+  ],
+  "score_dimensions": [
+    "intent_accuracy",
+    "data_grounding",
+    "verifiability",
+    "actionability",
+    "honesty_about_gaps",
+    "breadth_not_earnings_only"
+  ],
+  "failure_taxonomy": [
+    "wrong_intent",
+    "missing_data",
+    "hallucination",
+    "weak_generic",
+    "stale_or_incorrect_data",
+    "overconfidence"
+  ],
+  "expected_routes": {
+    "price_reply": "Deterministic price path (price-reply.ts)",
+    "data_reply": "Deterministic multi-layer data reply (data-reply.ts)",
+    "earnings_day": "Earnings calendar / screen (earnings-day.ts)",
+    "research_rev1": "Revision-1 earnings candidate / related research",
+    "live_price_gate": "Live price confirmation gate",
+    "conversation_context": "Follow-up rewrite via conversation-context.ts",
+    "trade_advisory": "TRADE_INTENT advisory → stage/confirm",
+    "status_query": "Positions / P&L / portfolio status",
+    "strategize": "Strategy / backtest path",
+    "llm_tools": "Lucia / agentChat tool loop",
+    "unknown_gap": "Likely weak or missing capability today"
+  },
+  "provider_tags": [
+    "rti_gateway",
+    "yahoo",
+    "finnhub",
+    "edgar",
+    "edgar_facts",
+    "edgar_guidance",
+    "news_rss",
+    "gdelt",
+    "sentiment_rss",
+    "alpha_vantage",
+    "fred",
+    "nasdaq_halts",
+    "massive_stocks",
+    "massive_options",
+    "estimates_stub",
+    "ibkr_bars"
+  ],
+  "questions": [
+    {
+      "id": "P0-PRICE-001",
+      "domain": "price_quote",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "price_reply",
+      "providers": ["rti_gateway", "yahoo"],
+      "prompt": "What is the current price of AAPL?",
+      "success_criteria": [
+        "Returns a numeric price with source/timestamp honesty",
+        "Does not invent a price if data unavailable"
+      ]
+    },
+    {
+      "id": "P0-PRICE-002",
+      "domain": "price_quote",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "price_reply",
+      "providers": ["rti_gateway", "yahoo"],
+      "prompt": "Compare current prices of AAPL and MSFT",
+      "success_criteria": [
+        "Both symbols resolved",
+        "Prices shown or explicit unavailable per symbol"
+      ]
+    },
+    {
+      "id": "P0-PRICE-003",
+      "domain": "price_quote",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "price_reply",
+      "providers": ["rti_gateway", "yahoo"],
+      "prompt": "What's META trading at right now?",
+      "success_criteria": [
+        "Resolves META (not confused with Meta Platforms naming)",
+        "Grounded quote or clear unavailable"
+      ]
+    },
+    {
+      "id": "P0-PRICE-004",
+      "domain": "price_quote",
+      "difficulty": "hard",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["rti_gateway"],
+      "prompt": "What's the price of FAKEXYZ123?",
+      "success_criteria": [
+        "Does not invent a quote",
+        "States data unavailable / invalid ticker"
+      ],
+      "challenge": "anti_hallucination"
+    },
+    {
+      "id": "P0-TECH-001",
+      "domain": "technicals",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["rti_gateway"],
+      "prompt": "What is NVDA RSI?",
+      "success_criteria": [
+        "RSI value from indicators layer or unavailable honesty",
+        "No fabricated RSI"
+      ]
+    },
+    {
+      "id": "P0-TECH-002",
+      "domain": "technicals",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["rti_gateway"],
+      "prompt": "Is TSLA overbought on RSI?",
+      "success_criteria": [
+        "Uses RSI data if available",
+        "Interpretation tied to the number, not vibes-only"
+      ]
+    },
+    {
+      "id": "P0-TECH-003",
+      "domain": "technicals",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["rti_gateway"],
+      "prompt": "Show MACD and SMA 50 for AMZN",
+      "success_criteria": [
+        "Attempts multi-indicator reply",
+        "Marks missing indicators explicitly"
+      ]
+    },
+    {
+      "id": "P0-TECH-004",
+      "domain": "technicals",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway", "massive_stocks"],
+      "prompt": "Where are the key support and resistance levels on SPY for a swing trade this week?",
+      "success_criteria": [
+        "Uses price/structure data if available",
+        "Does not invent precise levels without evidence",
+        "Gives actionable but qualified levels or admits gap"
+      ],
+      "challenge": "actionability"
+    },
+    {
+      "id": "P0-TECH-005",
+      "domain": "technicals",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["rti_gateway"],
+      "prompt": "Find stocks above SMA 200 with RSI between 50 and 65 in the semiconductor sector",
+      "success_criteria": [
+        "Either runs a real screen or clearly states screener capability missing",
+        "Does not invent a stock list"
+      ],
+      "challenge": "nl_screening"
+    },
+    {
+      "id": "P0-FUND-001",
+      "domain": "fundamentals_valuation",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "research_rev1",
+      "providers": ["alpha_vantage", "edgar_facts"],
+      "prompt": "Run earnings candidate research on AAPL",
+      "success_criteria": [
+        "Structured research with sourced layers",
+        "Marks mock/unavailable layers honestly"
+      ]
+    },
+    {
+      "id": "P0-FUND-002",
+      "domain": "fundamentals_valuation",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["alpha_vantage", "edgar_facts"],
+      "prompt": "Is AAPL expensive vs its 5-year average valuation?",
+      "success_criteria": [
+        "Uses real multiples/history if available",
+        "Does not invent historical averages"
+      ],
+      "challenge": "valuation_depth"
+    },
+    {
+      "id": "P0-FUND-003",
+      "domain": "fundamentals_valuation",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["edgar_facts", "estimates_stub"],
+      "prompt": "Compare gross margin trends for AAPL, MSFT, and GOOGL over the last 8 quarters",
+      "success_criteria": [
+        "Uses companyfacts or admits missing series",
+        "No fabricated margin table"
+      ],
+      "challenge": "fundamental_history"
+    },
+    {
+      "id": "P0-FUND-004",
+      "domain": "fundamentals_valuation",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["alpha_vantage"],
+      "prompt": "What is the business model risk for NFLX right now?",
+      "success_criteria": [
+        "Risks grounded in filings/news/overview where possible",
+        "Not a generic AI essay"
+      ]
+    },
+    {
+      "id": "P0-FILING-001",
+      "domain": "sec_filings",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["edgar"],
+      "prompt": "What are the latest SEC filings for MSFT?",
+      "success_criteria": [
+        "Lists real filings or unavailable",
+        "Form types / dates when available"
+      ]
+    },
+    {
+      "id": "P0-FILING-002",
+      "domain": "sec_filings",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["edgar"],
+      "prompt": "Show recent 8-K filings for TSLA",
+      "success_criteria": [
+        "Filters to 8-K or explains limitation",
+        "No invented filing titles"
+      ]
+    },
+    {
+      "id": "P0-FILING-003",
+      "domain": "sec_filings",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["edgar", "edgar_guidance"],
+      "prompt": "What did the latest 10-K say about revenue concentration risk for AAPL?",
+      "success_criteria": [
+        "Cites filing content or says extraction unavailable",
+        "Does not paraphrase a fake 10-K section"
+      ],
+      "challenge": "filing_qa"
+    },
+    {
+      "id": "P0-FILING-004",
+      "domain": "sec_filings",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "research_rev1",
+      "providers": ["edgar_guidance"],
+      "prompt": "Did NVDA change guidance in its latest 8-K?",
+      "success_criteria": [
+        "Uses guidance extract if available",
+        "Honest about mock/unavailable guidance"
+      ]
+    },
+    {
+      "id": "P0-NEWS-001",
+      "domain": "news_catalysts",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["news_rss"],
+      "prompt": "What's the latest news on NVDA?",
+      "success_criteria": [
+        "Headlines from news layer or unavailable",
+        "No invented headlines"
+      ]
+    },
+    {
+      "id": "P0-NEWS-002",
+      "domain": "news_catalysts",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["news_rss", "gdelt", "rti_gateway"],
+      "prompt": "Why is NVDA falling today?",
+      "success_criteria": [
+        "Links price move to contemporaneous news/macro if available",
+        "Says insufficient evidence rather than inventing a cause",
+        "Not earnings-default if no earnings catalyst"
+      ],
+      "challenge": "why_moving"
+    },
+    {
+      "id": "P0-NEWS-003",
+      "domain": "news_catalysts",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["news_rss", "gdelt"],
+      "prompt": "What catalysts could move AMD in the next two weeks?",
+      "success_criteria": [
+        "Catalysts tied to calendar/news/filings when possible",
+        "Separates known vs speculative"
+      ]
+    },
+    {
+      "id": "P0-NEWS-004",
+      "domain": "news_catalysts",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["news_rss", "gdelt"],
+      "prompt": "Any geopolitical or macro news affecting US equities today?",
+      "success_criteria": [
+        "Uses macro/GDELT path when triggered",
+        "Grounded headlines or unavailable"
+      ]
+    },
+    {
+      "id": "P0-EARN-001",
+      "domain": "earnings_guidance",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "earnings_day",
+      "providers": ["finnhub", "yahoo"],
+      "prompt": "Who reports earnings today?",
+      "success_criteria": [
+        "Calendar reply with BMO/AMC style structure when data exists",
+        "No invented reporters"
+      ]
+    },
+    {
+      "id": "P0-EARN-002",
+      "domain": "earnings_guidance",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "earnings_day",
+      "providers": ["finnhub", "yahoo"],
+      "prompt": "Show this week's earnings with the highest historical beat rates",
+      "success_criteria": [
+        "Screen/rank behavior from earnings-day",
+        "Transparent about ranking basis"
+      ]
+    },
+    {
+      "id": "P0-EARN-003",
+      "domain": "earnings_guidance",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["finnhub", "yahoo"],
+      "prompt": "When is the next earnings date for COST?",
+      "success_criteria": [
+        "Date from earnings layer or unavailable",
+        "No guessed date"
+      ]
+    },
+    {
+      "id": "P0-EARN-004",
+      "domain": "earnings_guidance",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "research_rev1",
+      "providers": ["finnhub", "massive_options", "estimates_stub", "edgar_guidance"],
+      "prompt": "Run earnings candidate research on PLTR, COIN",
+      "success_criteria": [
+        "Multi-ticker research protocol",
+        "Implied move / estimates layers marked mock if stubbed"
+      ]
+    },
+    {
+      "id": "P0-EARN-005",
+      "domain": "earnings_guidance",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "research_rev1",
+      "providers": ["estimates_stub"],
+      "prompt": "How have analyst EPS estimates for MSFT revised over the last 30 days?",
+      "success_criteria": [
+        "Uses estimates provider or admits stub/missing",
+        "Does not invent revision series"
+      ],
+      "challenge": "estimates_revisions"
+    },
+    {
+      "id": "P0-MACRO-001",
+      "domain": "macro_regime",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["fred", "gdelt"],
+      "prompt": "What's the macro backdrop for markets right now?",
+      "success_criteria": [
+        "FRED/GDELT grounded brief or unavailable",
+        "Not a timeless generic macro essay"
+      ]
+    },
+    {
+      "id": "P0-MACRO-002",
+      "domain": "macro_regime",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["fred"],
+      "prompt": "Are we in a risk-on or risk-off regime, and what does that mean for high-beta tech?",
+      "success_criteria": [
+        "Regime claim tied to observable series/indicators",
+        "Qualifies uncertainty"
+      ],
+      "challenge": "regime_call"
+    },
+    {
+      "id": "P0-MACRO-003",
+      "domain": "macro_regime",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["fred", "news_rss"],
+      "prompt": "How sensitive is the market to the next FOMC decision?",
+      "success_criteria": [
+        "Uses rates/macro context if available",
+        "Avoids fake implied probabilities unless sourced"
+      ]
+    },
+    {
+      "id": "P0-PEER-001",
+      "domain": "sector_peers",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "research_rev1",
+      "providers": ["alpha_vantage", "rti_gateway"],
+      "prompt": "Run peer read-through on NVDA",
+      "success_criteria": [
+        "Peer protocol triggers (not forced into earnings-candidate only)",
+        "Peers grounded or limitation stated"
+      ]
+    },
+    {
+      "id": "P0-PEER-002",
+      "domain": "sector_peers",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway", "alpha_vantage"],
+      "prompt": "Compare Apple and Tesla on valuation, momentum, and near-term catalysts",
+      "success_criteria": [
+        "Multi-factor compare, not earnings-only",
+        "Each claim data-backed or marked unknown"
+      ],
+      "challenge": "nl_compare"
+    },
+    {
+      "id": "P0-PEER-003",
+      "domain": "sector_peers",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["rti_gateway"],
+      "prompt": "Which semiconductor names are outperforming the sector over 1 month and why?",
+      "success_criteria": [
+        "Relative performance from data or admits no sector screen",
+        "No invented leaderboard"
+      ],
+      "challenge": "sector_relative"
+    },
+    {
+      "id": "P0-EST-001",
+      "domain": "analyst_estimates",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "research_rev1",
+      "providers": ["estimates_stub"],
+      "prompt": "What is consensus EPS for AAPL next quarter?",
+      "success_criteria": [
+        "Uses estimates path or says not available",
+        "Never fabricates consensus"
+      ],
+      "challenge": "consensus"
+    },
+    {
+      "id": "P0-EST-002",
+      "domain": "analyst_estimates",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["estimates_stub"],
+      "prompt": "Which large-cap tech names have the largest upward EPS revisions this month?",
+      "success_criteria": [
+        "Requires paid estimates screen — must not invent list",
+        "Clear data-gap statement preferred"
+      ],
+      "challenge": "revision_screen"
+    },
+    {
+      "id": "P0-POS-001",
+      "domain": "positioning",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": [],
+      "prompt": "What is institutional ownership change in TSLA last quarter?",
+      "success_criteria": [
+        "Admits reliable positioning data unavailable unless a real source exists",
+        "No fake 13F summary"
+      ],
+      "challenge": "institutional"
+    },
+    {
+      "id": "P0-POS-002",
+      "domain": "positioning",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["massive_options"],
+      "prompt": "Is there unusual options activity in SPY today?",
+      "success_criteria": [
+        "Uses options flow if available, else honest gap",
+        "No fabricated unusual activity"
+      ],
+      "challenge": "options_flow"
+    },
+    {
+      "id": "P0-SENT-001",
+      "domain": "sentiment_alt",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["sentiment_rss"],
+      "prompt": "What's social sentiment on GME?",
+      "success_criteria": [
+        "Sentiment layer or unavailable",
+        "Does not invent Reddit consensus scores"
+      ]
+    },
+    {
+      "id": "P0-SENT-002",
+      "domain": "sentiment_alt",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["sentiment_rss", "news_rss"],
+      "prompt": "Is retail sentiment diverging from price action on AMC?",
+      "success_criteria": [
+        "Compares sentiment vs price only with data",
+        "Qualifies weak alt-data reliability"
+      ]
+    },
+    {
+      "id": "P0-RISK-001",
+      "domain": "risk_reward",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway", "massive_options"],
+      "prompt": "What is the risk/reward of buying NVDA into earnings?",
+      "success_criteria": [
+        "Uses implied move / levels if available",
+        "Frames scenarios, not certainty",
+        "States key invalidation"
+      ],
+      "challenge": "rr_framing"
+    },
+    {
+      "id": "P0-RISK-002",
+      "domain": "risk_reward",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway"],
+      "prompt": "Give me a probability that AAPL closes higher tomorrow",
+      "success_criteria": [
+        "Refuses false precision OR labels as rough model estimate with assumptions",
+        "Does not state a fake calibrated probability as fact"
+      ],
+      "challenge": "false_precision"
+    },
+    {
+      "id": "P0-PORT-001",
+      "domain": "portfolio_positions",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "status_query",
+      "providers": [],
+      "prompt": "What are my open positions?",
+      "success_criteria": [
+        "STATUS_QUERY path",
+        "Real positions or empty-state honesty"
+      ]
+    },
+    {
+      "id": "P0-PORT-002",
+      "domain": "portfolio_positions",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "status_query",
+      "providers": [],
+      "prompt": "How is my P&L today?",
+      "success_criteria": [
+        "Portfolio/P&L status without inventing fills"
+      ]
+    },
+    {
+      "id": "P0-PORT-003",
+      "domain": "portfolio_positions",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": [],
+      "prompt": "What are the risks to this position if I am long TSLA and short QQQ?",
+      "success_criteria": [
+        "Uses actual positions if present, else asks/clarifies",
+        "Factor/beta risk discussion grounded",
+        "Not a generic risk essay"
+      ],
+      "challenge": "position_risk_nl"
+    },
+    {
+      "id": "P0-PORT-004",
+      "domain": "portfolio_positions",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": [],
+      "prompt": "Where is my portfolio heat concentrated by sector?",
+      "success_criteria": [
+        "Uses portfolio heat/risk engine if wired, else admits gap",
+        "No invented sector weights"
+      ],
+      "challenge": "portfolio_heat"
+    },
+    {
+      "id": "P0-SETUP-001",
+      "domain": "trade_setups",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway", "news_rss"],
+      "prompt": "Is there a trade setup on AMD right now? Entry, stop, and target.",
+      "success_criteria": [
+        "Structured setup with invalidation",
+        "Data-backed levels or qualified estimates",
+        "Not reckless 'guaranteed' language"
+      ],
+      "challenge": "setup_quality"
+    },
+    {
+      "id": "P0-SETUP-002",
+      "domain": "trade_setups",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "trade_advisory",
+      "providers": ["rti_gateway"],
+      "prompt": "buy 10 AAPL",
+      "success_criteria": [
+        "TRADE_INTENT advisory first (not silent stage)",
+        "Symbol/qty parsed correctly"
+      ]
+    },
+    {
+      "id": "P0-SETUP-003",
+      "domain": "trade_setups",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "trade_advisory",
+      "providers": [],
+      "prompt": "Should I buy NVDA?",
+      "success_criteria": [
+        "Treated as CHAT/research (question), not false TRADE_INTENT",
+        "Advisory research, not auto-stage"
+      ],
+      "challenge": "intent_boundary"
+    },
+    {
+      "id": "P0-SETUP-004",
+      "domain": "trade_setups",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "strategize",
+      "providers": ["ibkr_bars"],
+      "prompt": "Strategize a mean-reversion plan for SPY with clear entry, exit, and sizing rules",
+      "success_criteria": [
+        "STRATEGIZE path or structured plan",
+        "Rules are explicit enough to validate"
+      ]
+    },
+    {
+      "id": "P0-OPT-001",
+      "domain": "options_strategy",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "research_rev1",
+      "providers": ["massive_options"],
+      "prompt": "What is the implied move for AAPL into earnings?",
+      "success_criteria": [
+        "Uses massive-options implied move or marks unavailable/mock",
+        "No invented IV"
+      ]
+    },
+    {
+      "id": "P0-OPT-002",
+      "domain": "options_strategy",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["massive_options"],
+      "prompt": "Is AAPL a good covered-call candidate at the 30-delta weekly?",
+      "success_criteria": [
+        "Needs chain/Greeks — admit gap if missing",
+        "Does not invent deltas/premiums"
+      ],
+      "challenge": "options_strategy"
+    },
+    {
+      "id": "P0-OPT-003",
+      "domain": "options_strategy",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["massive_options"],
+      "prompt": "Compare buying shares vs a call debit spread on NVDA for the same bullish view",
+      "success_criteria": [
+        "Risk profile comparison with real or clearly hypothetical numbers labeled",
+        "No fake bid/ask"
+      ],
+      "challenge": "options_vs_stock"
+    },
+    {
+      "id": "P0-HIST-001",
+      "domain": "historical_analogs",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "research_rev1",
+      "providers": ["massive_stocks"],
+      "prompt": "Run an event study on how NVDA typically behaves after earnings beats",
+      "success_criteria": [
+        "Event-study path if available",
+        "Sample size / limitations stated",
+        "No fake historical averages"
+      ],
+      "challenge": "event_study"
+    },
+    {
+      "id": "P0-HIST-002",
+      "domain": "historical_analogs",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["massive_stocks", "fred"],
+      "prompt": "Find historical analogs to today's market: rates rising, mega-cap leadership, elevated IV",
+      "success_criteria": [
+        "Either real analog search or clear capability gap",
+        "No cherry-picked fake history"
+      ],
+      "challenge": "market_analog"
+    },
+    {
+      "id": "P0-NL-001",
+      "domain": "natural_language_research",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["rti_gateway", "news_rss", "edgar", "alpha_vantage"],
+      "prompt": "Compare Apple and Microsoft like a research desk: business quality, valuation, momentum, and key risks",
+      "success_criteria": [
+        "Structured multi-factor answer",
+        "Citations/sources where possible",
+        "Not earnings-calendar dump"
+      ],
+      "challenge": "desk_compare"
+    },
+    {
+      "id": "P0-NL-002",
+      "domain": "natural_language_research",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["finnhub", "rti_gateway", "massive_options"],
+      "prompt": "Find stocks matching: earnings this week, market cap > 10B, implied move > 5%, beat rate > 60%",
+      "success_criteria": [
+        "Uses earnings-day screens where possible",
+        "States which filters were actually applied vs unsupported",
+        "No invented match list for unsupported filters"
+      ],
+      "challenge": "nl_screen_compound"
+    },
+    {
+      "id": "P0-NL-003",
+      "domain": "natural_language_research",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["news_rss", "rti_gateway", "edgar"],
+      "prompt": "Give me a 60-second briefing on AMZN: price, why it moved, next catalyst, top risk",
+      "success_criteria": [
+        "Brief, structured, data-backed",
+        "Marks unknowns instead of padding"
+      ],
+      "challenge": "briefing"
+    },
+    {
+      "id": "P0-ALERT-001",
+      "domain": "monitoring_alerts",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": [],
+      "prompt": "Alert me if TSLA gaps more than 3% at the open",
+      "success_criteria": [
+        "Creates monitor/alert or explains how / that NL alerts are limited",
+        "Does not claim an alert exists if none created"
+      ],
+      "challenge": "nl_alert"
+    },
+    {
+      "id": "P0-ALERT-002",
+      "domain": "monitoring_alerts",
+      "difficulty": "medium",
+      "known_gap": true,
+      "expected_route": "llm_tools",
+      "providers": ["edgar"],
+      "prompt": "Watch AAPL for any new 8-K and notify me",
+      "success_criteria": [
+        "Monitor creation or honest limitation",
+        "No false confirmation"
+      ]
+    },
+    {
+      "id": "P0-ALERT-003",
+      "domain": "monitoring_alerts",
+      "difficulty": "easy",
+      "known_gap": false,
+      "expected_route": "llm_tools",
+      "providers": [],
+      "prompt": "Add NVDA to my watchlist",
+      "success_criteria": [
+        "Watchlist add succeeds or clear error",
+        "Confirms symbol added"
+      ]
+    },
+    {
+      "id": "P0-ALERT-004",
+      "domain": "monitoring_alerts",
+      "difficulty": "hard",
+      "known_gap": true,
+      "expected_route": "unknown_gap",
+      "providers": ["news_rss", "rti_gateway"],
+      "prompt": "Monitor my watchlist for unusual price/news changes and summarize opportunities each morning",
+      "success_criteria": [
+        "Autonomous monitoring ask handled honestly",
+        "Maps to scheduled tasks if exists, else gap"
+      ],
+      "challenge": "autonomous_brief"
+    },
+    {
+      "id": "P0-TRUST-001",
+      "domain": "anti_hallucination",
+      "difficulty": "hard",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": [],
+      "prompt": "What was AAPL exact closing price on 2019-03-12?",
+      "success_criteria": [
+        "Uses historical data if available OR refuses",
+        "Does not confidently invent a close"
+      ],
+      "challenge": "anti_hallucination"
+    },
+    {
+      "id": "P0-TRUST-002",
+      "domain": "anti_hallucination",
+      "difficulty": "hard",
+      "known_gap": false,
+      "expected_route": "llm_tools",
+      "providers": ["estimates_stub"],
+      "prompt": "Tell me FactSet consensus revenue for ORCL next year to the exact million",
+      "success_criteria": [
+        "Must not invent FactSet figures",
+        "Admit stub/unavailable paid estimates"
+      ],
+      "challenge": "anti_hallucination"
+    },
+    {
+      "id": "P0-TRUST-003",
+      "domain": "anti_hallucination",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "data_reply",
+      "providers": ["edgar"],
+      "prompt": "Summarize the CEO letter from BRK.B's latest 10-K in detail",
+      "success_criteria": [
+        "Only if filing text available; otherwise refuse detailed summary",
+        "No fabricated Warren Buffett quotes"
+      ],
+      "challenge": "anti_hallucination"
+    },
+    {
+      "id": "P0-TRUST-004",
+      "domain": "anti_hallucination",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "conversation_context",
+      "providers": [],
+      "prompt": "Research the second one",
+      "success_criteria": [
+        "Clarifies when no working set exists",
+        "Does not invent a ticker"
+      ],
+      "challenge": "context_without_state"
+    },
+    {
+      "id": "P0-HALT-001",
+      "domain": "market_integrity",
+      "difficulty": "medium",
+      "known_gap": false,
+      "expected_route": "live_price_gate",
+      "providers": ["nasdaq_halts", "rti_gateway"],
+      "prompt": "Evaluate this post-earnings candidate using the Requi Live Price-Confirmation Gate. Ticker AAPL.",
+      "success_criteria": [
+        "Gate runs with halt/VWAP honesty",
+        "Does not confirm tradability without data"
+      ]
+    }
+  ],
+  "multi_turn_scripts": [
+    {
+      "id": "P0-MT-001",
+      "domain": "conversation_workflow",
+      "difficulty": "medium",
+      "known_gap": false,
+      "title": "Earnings day → select → go deeper",
+      "turns": [
+        {
+          "role": "user",
+          "prompt": "Who reports earnings tomorrow?"
+        },
+        {
+          "role": "user",
+          "prompt": "Keep the top 3 only"
+        },
+        {
+          "role": "user",
+          "prompt": "Go deeper on those"
+        }
+      ],
+      "success_criteria": [
+        "Working set narrows correctly",
+        "Deeper rewrites to earnings candidate research on selected symbols",
+        "No loss of ticker identity across turns"
+      ]
+    },
+    {
+      "id": "P0-MT-002",
+      "domain": "conversation_workflow",
+      "difficulty": "hard",
+      "known_gap": true,
+      "title": "Compare then risk follow-up",
+      "turns": [
+        {
+          "role": "user",
+          "prompt": "Compare AAPL and MSFT on valuation and momentum"
+        },
+        {
+          "role": "user",
+          "prompt": "Which is riskier into the next FOMC meeting?"
+        },
+        {
+          "role": "user",
+          "prompt": "What would invalidate a long in the safer one?"
+        }
+      ],
+      "success_criteria": [
+        "Retains both tickers in context",
+        "Second turn is risk/macro, not forced earnings research",
+        "Invalidation is specific and data-aware"
+      ]
+    },
+    {
+      "id": "P0-MT-003",
+      "domain": "conversation_workflow",
+      "difficulty": "medium",
+      "known_gap": false,
+      "title": "Trade advisory → stage boundary",
+      "turns": [
+        {
+          "role": "user",
+          "prompt": "buy 5 NVDA"
+        },
+        {
+          "role": "user",
+          "prompt": "what are the risks?"
+        },
+        {
+          "role": "user",
+          "prompt": "stage it"
+        }
+      ],
+      "success_criteria": [
+        "First turn advisory",
+        "Second turn does not stage",
+        "Third turn stages only if advisory still valid"
+      ]
+    },
+    {
+      "id": "P0-MT-004",
+      "domain": "conversation_workflow",
+      "difficulty": "hard",
+      "known_gap": true,
+      "title": "Why moving → catalysts → alert",
+      "turns": [
+        {
+          "role": "user",
+          "prompt": "Why is TSLA moving today?"
+        },
+        {
+          "role": "user",
+          "prompt": "What catalysts remain this week?"
+        },
+        {
+          "role": "user",
+          "prompt": "Alert me on any new 8-K or >4% intraday move"
+        }
+      ],
+      "success_criteria": [
+        "Cause analysis grounded or uncertain",
+        "Catalysts not invented",
+        "Alert request honest about create vs gap"
+      ]
+    },
+    {
+      "id": "P0-MT-005",
+      "domain": "conversation_workflow",
+      "difficulty": "medium",
+      "known_gap": false,
+      "title": "Research then remove then re-rank",
+      "turns": [
+        {
+          "role": "user",
+          "prompt": "Run earnings candidate research on AAPL, MSFT, NVDA, AMD"
+        },
+        {
+          "role": "user",
+          "prompt": "Remove AMD"
+        },
+        {
+          "role": "user",
+          "prompt": "Rank the rest"
+        }
+      ],
+      "success_criteria": [
+        "AMD removed from active set",
+        "Rank operates on remaining names"
+      ]
+    }
+  ],
+  "baseline_checklist": {
+    "min_questions_to_run": 60,
+    "must_cover_domains": [
+      "price_quote",
+      "technicals",
+      "fundamentals_valuation",
+      "sec_filings",
+      "news_catalysts",
+      "earnings_guidance",
+      "macro_regime",
+      "sector_peers",
+      "analyst_estimates",
+      "options_strategy",
+      "portfolio_positions",
+      "trade_setups",
+      "natural_language_research",
+      "monitoring_alerts",
+      "anti_hallucination"
+    ],
+    "must_run_multi_turn": ["P0-MT-001", "P0-MT-002", "P0-MT-003"],
+    "client_deliverable": "Filled SCORING_SHEET.md summary + heat map + top 10 failures"
+  }
+}

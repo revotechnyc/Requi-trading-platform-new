@@ -36,7 +36,13 @@ const STOPWORDS = new Set([
   "NEXT", "DATE", "DATES", "REPORT", "EARNINGS", "ESTIMATE", "ESTIMATED", "CONFIRMED", "AVERAGE", "QUARTER", "QUARTERLY", "CALENDAR",
   "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY", "TOMORROW", "WEEK",
   "MAJOR", "MACRO", "COULD", "AFFECT", "GLOBAL", "EVENTS", "EVENT", "STOCKS", "EQUITIES", "TODAY", "THEMES", "THEME",
-  "THEIR", "SEC", "FILINGS", "FILING", "BOTH", "THEM", "THESE", "MOMENTUM", "STRONGER", "SHOWING", "WHICH", "GIVE", "ADD", "WATCHLIST",
+  "THEIR", "SEC", "FILINGS", "FILING", "BOTH", "THEM", "THESE", "THOSE", "MOMENTUM", "STRONGER", "SHOWING", "WHICH", "GIVE", "ADD", "WATCHLIST",
+  // Cardinal / quantity words — never tickers in "five strongest", "top three", etc.
+  "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "COUPLE", "FEW",
+  // Common English in earnings-selection prompts — "based on", "available evidence", etc.
+  "BASED", "AVAILABLE", "EVIDENCE", "CANDIDATES", "UNIVERSE", "FULL", "ISOLATE", "REMAINING",
+  "HISTORICAL", "REACTIONS", "FAVORABLE", "ORIGINAL", "COMPANIES", "NAMES", "GROUP", "AUDIT",
+  "RETAINED", "REMOVED", "STATUS", "EXECUTIVE", "DECISION", "BLOCKED", "QUALIFIED",
   // Protocol / research vocabulary — never treat as tickers (e.g. "PEER READ-THROUGH")
   "PEER", "PEERS", "READ", "THROUGH", "RELEVANCE", "DIVERGENCE", "SENSITIVITY", "RESET", "BASE", "TIER",
   "ENGINE", "MANDATORY", "OBJECTIVE", "ANALYSIS", "RANKING", "PROTOCOL", "CANDIDATE", "SELECTION",
@@ -45,10 +51,35 @@ const STOPWORDS = new Set([
   "HAVE", "HAD", "HAS", "SEASON", "SCORE", "SCORES", "ONLY", "MARK", "DATA", "EACH", "MOST",
   "INTO", "ALREADY", "REPORTED", "PROVIDE", "IDENTIFY", "RELEVANT", "ECONOMIC", "MISSING",
   "INVENT", "TREAT", "WORDS", "TICKER", "TICKERS", "FINAL", "ANSWER", "LIST", "USING",
+  // Follow-up / context verbs that appear in rewritten research prompts
+  "RUN", "ANALYZE", "ANALYSE", "COMPARE", "RANK", "FOCUS", "DEEPER", "REMAINING", "STRONGEST",
+  "WEAKEST", "RISKIEST", "RESEARCH", "FRAMEWORK", "METHODOLOGY",
   // Protocol headers / instructions (e.g. REQUI … SMALL-CAP …)
   "REQUI", "SMALL", "CAP", "APPLY", "RULES", "FIGURES", "NUMBERS", "CLASSIFY", "GATES",
   "LIQUIDITY", "DILUTION", "RUNWAY", "CASH", "DO", "NOT", "IF", "CRITICAL",
+  // Trader-NL nouns that poisoned working sets in Phase 0 baseline
+  // ("risk/reward of buying", "stocks above SMA … sector", "best between them")
+  "RISK", "REWARD", "REWARDS", "BUYING", "SELLING", "ABOVE", "BELOW", "SECTOR", "INDUSTRY",
+  "BETWEEN", "BEST", "WORST", "FIND", "MATCHING", "CONDITIONS", "CONDITION", "SCREEN",
+  "SCREENER", "LEVELS", "LEVEL", "SUPPORT", "RESISTANCE", "SWING", "TREND", "TRENDS",
+  "MARGIN", "MARGINS", "GROSS", "VALUATION", "EXPENSIVE", "CHEAP", "PROBABILITY", "CLOSES",
+  "HIGHER", "LOWER", "TOMORROW", "YESTERDAY", "ANALOG", "ANALOGS", "RATES", "RISING",
+  "FALLING", "ELEVATED", "LEADERSHIP", "MONITOR", "ALERT", "ALERTS", "GAPS", "GAP",
+  "UNUSUAL", "OPPORTUNITIES", "OPPORTUNITY", "MORNING", "SUMMARY", "SUMMARIZE", "COVERED",
+  "CALL", "DELTA", "WEEKLY", "POSITION", "POSITIONS", "PORTFOLIO", "LEDGER", "BUSINESS",
+  "MODEL", "CONCENTRATION", "GUIDANCE", "CHANGED", "CHANGE", "EXACT", "CLOSING", "CLOSE",
+  "HISTORY", "OVER", "THEM", "THAN", "AMONG", "ACROSS", "QUARTERS", "YEARS", "YEAR",
+  "ENTRY", "EXIT", "TARGET", "TARGETS", "STOPS", "INVALIDATION", "SETUP", "SETUPS",
+  "CANDIDATE", "CANDIDATES", "IMPLIED", "MOVE", "MOVES", "OPTIONS", "OPTION", "CHAIN",
+  "GREEKS", "PREMIUM", "PREMIUMS", "CONTRACT", "CONTRACTS", "SHARES", "SHARE",
+  // Phase 2 desk-compare prose — "like a research desk", "key risks", "this month", "ping me"
+  "LIKE", "DESK", "RISKS", "MONTH", "PING", "QUALITY", "GROWTH", "STORY", "CLEANER",
+  "FACTOR", "FACTORS", "RELATIVE", "NARRATIVE", "BINARY", "DRIVERS", "DRIVER", "ASSUMPTIONS",
+  "MEASURABLE", "OPERATING", "DIVERSIFIED", "VISIBILITY", "SPECULATIVE", "CONVEXITY",
 ]);
+
+/** Real tickers that are also common English — keep only when explicitly ticker-like. */
+const AMBIGUOUS_TICKERS = new Set(["KEY"]);
 
 const MARKET_QUESTION_RE =
   /\b(prices?|quote|stock|ticker|chart|market|trading at|worth|compare|side by side|rsi|macd|vwap|moving average|bollinger|52.?week|volume|analysis|analy[sz]e|technical|momentum|overbought|oversold|support|resistance|earnings|filing|sec|news|headline|sentiment|reddit|stocktwits|traders?|saying|social|moving|why is)\b/i;
@@ -65,6 +96,40 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** True when KEY (etc.) appears as English, not as an explicit ticker. */
+export function isAmbiguousTickerEnglishContext(sym: string, text: string): boolean {
+  const upper = sym.toUpperCase();
+  if (!AMBIGUOUS_TICKERS.has(upper)) return false;
+  // Explicit ticker forms always win.
+  if (new RegExp(`\\$${upper}\\b`, "i").test(text)) return false;
+  if (new RegExp(`\\b(?:ticker|symbol)\\s+${upper}\\b`, "i").test(text)) return false;
+  if (new RegExp(`\\b(?:on|for)\\s+${upper}\\b`).test(text)) return false;
+  if (/Run earnings candidate research on /i.test(text) && new RegExp(`\\b${upper}\\b`).test(text)) {
+    return false;
+  }
+  if (upper === "KEY") {
+    // "key risks", "key levels", "and key risks", lowercase-only "key"
+    if (/\bkey\s+(risks?|points?|levels?|drivers?|factors?|takeaways?|question|questions|metrics?)\b/i.test(text)) {
+      return true;
+    }
+    if (/\band\s+key\b/i.test(text)) return true;
+    // Lowercase prose "key" without an uppercase KEY token.
+    if (/\bkey\b/i.test(text) && !/\bKEY\b/.test(text)) return true;
+  }
+  return false;
+}
+
+/** Desk / multi-factor compare prose — do not harvest English words as tickers. */
+function isDeskOrCompareProse(text: string): boolean {
+  return (
+    /\blike a research desk\b/i.test(text) ||
+    /\bresearch desk\b/i.test(text) ||
+    (/\bcompare\b/i.test(text) &&
+      /\b(valuation|momentum|business quality|key risks|fundamentals|growth story)\b/i.test(text)) ||
+    /\b(cleaner growth|growth story into)\b/i.test(text)
+  );
+}
+
 /** Strip compare connectors and possessives so token scans do not invent tickers (vs → VS, Tesla's → S). */
 export function normalizeForSymbolScan(text: string): string {
   return text
@@ -77,6 +142,11 @@ export function normalizeForSymbolScan(text: string): string {
 export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []): string[] {
   const out = new Set<string>(extraSymbols.map((s) => s.toUpperCase()));
   const lower = text.toLowerCase();
+  // Allow larger batches for research / conversation-context follow-ups (was hard-capped at 4).
+  const maxSymbols =
+    /\b(research|candidate|protocol|analy[sz]e|earnings\s+screen)\b/i.test(text) || extraSymbols.length > 4
+      ? 12
+      : 6;
 
   // "What is AAPL trading at?" / "What is XYZFAKE123 trading at right now?"
   const tradingAt = text.match(/\bwhat(?:'s| is)\s+([A-Za-z][A-Za-z0-9.-]{0,11})\s+trading\b/i);
@@ -85,19 +155,21 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
     const alias = COMPANY_ALIASES[token.toLowerCase()];
     if (alias) {
       out.add(alias);
-      return [...out].slice(0, 4);
+      return filterLikelyFalsePositiveTickers([...out], text).slice(0, maxSymbols);
     }
     out.add(token.toUpperCase());
-    return [...out].slice(0, 4);
+    return filterLikelyFalsePositiveTickers([...out], text).slice(0, maxSymbols);
   }
 
   for (const m of text.matchAll(/\$([A-Za-z][A-Za-z0-9.-]{0,9})/g)) {
     out.add(m[1].toUpperCase());
   }
 
+  let aliasHits = 0;
   for (const [name, sym] of Object.entries(COMPANY_ALIASES)) {
     if (new RegExp(`\\b${escapeRegex(name)}\\b`, "i").test(lower)) {
       out.add(sym);
+      aliasHits++;
     }
   }
 
@@ -123,7 +195,9 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
     NEWS_RE.test(text) ||
     researchIntent;
 
-  if (!shouldScan) return [...out].slice(0, 4);
+  if (!shouldScan) {
+    return filterLikelyFalsePositiveTickers([...out], text).slice(0, maxSymbols);
+  }
 
   const scan = normalizeForSymbolScan(text);
 
@@ -135,11 +209,16 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
 
   // Lowercase tickers (aapl, nvda) — skip on long research-protocol prose so English
   // words like "have" / "season" / "scores" are not mistaken for tickers.
+  // Also skip when company aliases already anchored a desk/compare sentence
+  // ("Compare Apple and Microsoft like a research desk…") — prevents LIKE/DESK/KEY.
   const researchProse =
     /\bPEER\s*READ|\bCANDIDATE\s+SELECTION\b|\bBASE\s+RESET\b|\bScore each company\b|\bread-through\b|\bSMALL-?CAP\s+CANDIDATE\b/i.test(
       text,
     );
-  if (!researchProse) {
+  const skipLowercaseProse =
+    researchProse || (aliasHits >= 1 && isDeskOrCompareProse(text)) || (aliasHits >= 2 && /\bcompare\b/i.test(text));
+
+  if (!skipLowercaseProse) {
     for (const m of scan.matchAll(/\b[a-z][a-z0-9.]{0,5}\b/g)) {
       const raw = m[0];
       if (COMPANY_ALIAS_KEYS.has(raw)) continue;
@@ -149,7 +228,42 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
     }
   }
 
-  return [...out].slice(0, 4);
+  return filterLikelyFalsePositiveTickers([...out], text).slice(0, maxSymbols);
+}
+
+const WORD_NUMBER_TO_SYM = new Set([
+  "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+]);
+
+/** Strip quantity/context false positives before conversation follow-up routing. */
+export function filterLikelyFalsePositiveTickers(symbols: string[], text: string): string[] {
+  if (!symbols.length) return symbols;
+  const lower = text.toLowerCase();
+  const colonList = text.match(/:\s*([A-Z][A-Z0-9.,\s-]+)/i)?.[1]?.toUpperCase() ?? "";
+
+  return symbols.filter((sym) => {
+    const upper = sym.toUpperCase();
+    if (colonList.includes(upper)) return true;
+    if (new RegExp(`\\$${upper}\\b`, "i").test(text)) return true;
+    // Always drop lexicon stopwords unless explicitly $-tagged or in a colon universe list.
+    if (STOPWORDS.has(upper)) return false;
+    // Ambiguous real tickers (KEY) in English phrases — not KeyCorp unless explicit.
+    if (isAmbiguousTickerEnglishContext(upper, text)) return false;
+    if (/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/i.test(lower)) {
+      const qtyWord = upper.toLowerCase();
+      if (WORD_NUMBER_TO_SYM.has(upper) && new RegExp(`\\b${qtyWord}\\b`).test(lower)) return false;
+    }
+    if (upper === "BASED" && /\bbased\s+on\b/i.test(lower)) return false;
+    if (upper === "AVAILABLE" && /\bavailable\b/i.test(lower)) return false;
+    if (upper === "EVIDENCE" && /\bevidence\b/i.test(lower)) return false;
+    if (upper === "CANDIDATES" && /\bcandidates?\b/i.test(lower)) return false;
+    return true;
+  });
+}
+
+/** Conversation-context resolver — same as resolveSymbolsFromText but drops NL false positives. */
+export function resolveContextSymbolsFromText(text: string): string[] {
+  return filterLikelyFalsePositiveTickers(resolveSymbolsFromText(text), text);
 }
 
 export type LayerRoute = {
@@ -168,7 +282,20 @@ export function routeLayers(text: string, symbols: string[]): LayerRoute {
   if (EARNINGS_RE.test(text)) layers.add("earnings");
   if (SENTIMENT_RE.test(text) || MOVEMENT_RE.test(text)) layers.add("sentiment");
   if (MACRO_RE.test(text) || MOVEMENT_RE.test(text)) layers.add("gdelt");
-  if (INDICATOR_RE.test(text) || /\b(price|chart|technical)\b/i.test(text)) layers.add("indicators");
+  if (INDICATOR_RE.test(text) || /\b(price|chart|technical|momentum)\b/i.test(text)) layers.add("indicators");
+
+  // Desk / multi-factor compare needs more than a live quote.
+  if (
+    /\blike a research desk\b/i.test(text) ||
+    (/\bcompare\b/i.test(text) &&
+      /\b(valuation|momentum|business quality|key risks|fundamentals)\b/i.test(text))
+  ) {
+    layers.add("prices");
+    layers.add("indicators");
+    layers.add("earnings");
+    layers.add("edgar");
+    layers.add("news");
+  }
 
   if (layers.size === 0 && hasSymbols) {
     layers.add("indicators");

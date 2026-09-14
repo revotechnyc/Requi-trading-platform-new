@@ -144,6 +144,14 @@ describe("research protocol detect", () => {
     expect(isResearchProtocolText("What is AAPL trading at right now?")).toBe(false);
   });
 
+  it("ignores desk-compare NL (Phase 2) — not earnings research", () => {
+    const q =
+      "Compare Apple and Microsoft like a research desk: business quality, valuation, momentum, and key risks.";
+    expect(isEarningsResearchProtocol(q)).toBe(false);
+    expect(isResearchProtocolText(q)).toBe(false);
+    expect(resolveSymbolsFromText(q).sort()).toEqual(["AAPL", "MSFT"]);
+  });
+
   it("detects peer read-through without treating it as earnings research", () => {
     const peerPrompt = `PEER READ-THROUGH
 

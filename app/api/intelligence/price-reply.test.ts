@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { bundleToAiBlock } from "../intelligence-data/normalizer";
 import type { IntelligenceBundle } from "../intelligence-data/types";
 import {
+  formatHistoricalPriceUnavailableReply,
   formatVerifiedPriceReply,
   isDeterministicPriceQuery,
+  isHistoricalPriceQuery,
 } from "./price-reply";
 
 describe("isDeterministicPriceQuery", () => {
@@ -34,6 +36,15 @@ describe("isDeterministicPriceQuery", () => {
   it("treats vs compare as deterministic without spurious VS ticker", () => {
     expect(isDeterministicPriceQuery("AAPL vs MSFT price", ["AAPL", "MSFT"])).toBe(true);
     expect(isDeterministicPriceQuery("Amazon vs Meta price", ["AMZN", "META"])).toBe(true);
+  });
+
+  it("does not treat dated historical closes as live price queries (Phase 0 P0-TRUST-001)", () => {
+    const q = "What was AAPL exact closing price on 2019-03-12?";
+    expect(isHistoricalPriceQuery(q)).toBe(true);
+    expect(isDeterministicPriceQuery(q, ["AAPL"])).toBe(false);
+    expect(formatHistoricalPriceUnavailableReply(["AAPL"], q)).toMatch(/UNAVAILABLE/i);
+    expect(formatHistoricalPriceUnavailableReply(["AAPL"], q)).toMatch(/2019-03-12/);
+    expect(formatHistoricalPriceUnavailableReply(["AAPL"], q)).not.toMatch(/trading at/i);
   });
 });
 

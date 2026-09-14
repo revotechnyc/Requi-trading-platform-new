@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeForSymbolScan, resolveSymbolsFromText } from "./symbol-resolver";
+import {
+  filterLikelyFalsePositiveTickers,
+  normalizeForSymbolScan,
+  resolveContextSymbolsFromText,
+  resolveSymbolsFromText,
+} from "./symbol-resolver";
 
 describe("normalizeForSymbolScan", () => {
   it("removes vs/versus and possessive s", () => {
@@ -104,5 +109,60 @@ Use verified data only. If guidance or event-study is incomplete, classify WAIT 
   it("still resolves Unity / $U when explicitly requested", () => {
     expect(resolveSymbolsFromText("Run earnings candidate research on Unity")).toEqual(["U"]);
     expect(resolveSymbolsFromText("What is $U trading at right now?")).toEqual(["U"]);
+  });
+
+  it("does not treat five/based as tickers in selection prompts", () => {
+    const q = "Identify the five strongest candidates based on the available earnings evidence.";
+    expect(resolveSymbolsFromText(q)).not.toContain("FIVE");
+    expect(resolveSymbolsFromText(q)).not.toContain("BASED");
+    expect(resolveContextSymbolsFromText(q)).toEqual([]);
+    expect(filterLikelyFalsePositiveTickers(["FIVE", "BASED"], q)).toEqual([]);
+  });
+
+  it("does not treat risk/reward/buying as tickers (Phase 0 working-set poison)", () => {
+    const q = "What is the risk/reward of buying NVDA into earnings?";
+    expect(resolveSymbolsFromText(q)).toEqual(["NVDA"]);
+    expect(resolveSymbolsFromText(q)).not.toContain("RISK");
+    expect(resolveSymbolsFromText(q)).not.toContain("REWARD");
+    expect(resolveSymbolsFromText(q)).not.toContain("BUYING");
+    expect(filterLikelyFalsePositiveTickers(["NVDA", "RISK", "REWARD", "BUYING"], q)).toEqual(["NVDA"]);
+  });
+
+  it("does not treat ABOVE/SECTOR as tickers in NL screener asks", () => {
+    const q = "Find stocks above SMA 200 with RSI between 50 and 65 in the semiconductor sector";
+    expect(resolveSymbolsFromText(q)).not.toContain("ABOVE");
+    expect(resolveSymbolsFromText(q)).not.toContain("SECTOR");
+    expect(resolveSymbolsFromText(q)).not.toContain("FIND");
+    expect(resolveSymbolsFromText(q)).not.toContain("SMA");
+  });
+
+  it("desk-compare prose resolves only real companies — not LIKE/DESK/KEY/RISKS (Phase 2)", () => {
+    const q =
+      "Compare Apple and Microsoft like a research desk: business quality, valuation, momentum, and key risks.";
+    expect(resolveSymbolsFromText(q).sort()).toEqual(["AAPL", "MSFT"]);
+    expect(resolveContextSymbolsFromText(q).sort()).toEqual(["AAPL", "MSFT"]);
+  });
+
+  it("still resolves KEY when explicitly a ticker (KeyCorp)", () => {
+    expect(resolveSymbolsFromText("What is KEY trading at right now?")).toEqual(["KEY"]);
+    expect(resolveSymbolsFromText("Run earnings candidate research on KEY")).toEqual(["KEY"]);
+    expect(resolveSymbolsFromText("What is $KEY trading at?")).toEqual(["KEY"]);
+  });
+
+  it("does not treat MONTH/PING as tickers in NL", () => {
+    expect(resolveSymbolsFromText("Rank NVDA, AMD, and AVGO for the next month").sort()).toEqual([
+      "AMD",
+      "AVGO",
+      "NVDA",
+    ]);
+    expect(resolveSymbolsFromText("Watch AAPL for a new 8-K and ping me")).toEqual(["AAPL"]);
+  });
+
+  it("keeps real tickers in colon lists while dropping quantity words", () => {
+    const q =
+      "Analyze the full universe of: CODA, CBRL, IVDN, KAVL, KARX, HAIN, GFAI, EBZT, HYSR, HYFT, CLSD, BRRE.";
+    expect(resolveContextSymbolsFromText(q).sort()).toEqual(
+      ["BRRE", "CBRL", "CLSD", "CODA", "EBZT", "GFAI", "HAIN", "HYFT", "HYSR", "IVDN", "KARX", "KAVL"].sort(),
+    );
   });
 });
