@@ -1,4 +1,5 @@
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
+import { classifyMarketIntelligenceIntent } from "./market-intent";
 import type { ThreadState } from "./intent";
 
 const TRADE_SKIP = new Set([
@@ -17,10 +18,15 @@ const TRADE_SKIP = new Set([
   "MY",
   "SOME",
   "MORE",
+  "TODAY",
+  "TOMORROW",
+  "NOW",
 ]);
 
 /** Resolve a tradable symbol from imperative trade text (buy Apple, buy 1 share of AAPL). */
 export function resolveTradeSymbol(text: string, thread: ThreadState): string | null {
+  if (classifyMarketIntelligenceIntent(text)) return null;
+
   const shareOf = text.match(
     /\b(?:buy|sell|long|short|add to)\s+(?:\d+|one)\s+shares?\s+of\s+([A-Za-z.]{1,12})\b/i,
   );
@@ -29,7 +35,7 @@ export function resolveTradeSymbol(text: string, thread: ThreadState): string | 
     if (resolved[0]) return resolved[0];
   }
 
-  const fromText = resolveSymbolsFromText(text);
+  const fromText = resolveSymbolsFromText(text).filter((sym) => !TRADE_SKIP.has(sym.toUpperCase()));
   if (fromText.length === 1) return fromText[0];
 
   const verbMatch = text.match(/\b(?:buy|sell|long|short|add to)\s+(?:\d+\s+)?([A-Za-z.]{1,12})\b/i);

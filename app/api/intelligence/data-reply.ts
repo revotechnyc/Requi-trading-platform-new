@@ -33,6 +33,7 @@ export {
 } from "./gap-intents";
 import { fetchImpliedMove } from "../intelligence-data/providers/massive-options";
 import { fetchFredMacroBackdrop, formatFredMacroBrief } from "../intelligence-data/providers/fred";
+import { tryMarketIntelligenceReply } from "./general-market";
 
 const DATA_QUERY_RE =
   /\b(price|prices?|quote|trading|rsi|macd|sma|ema|earnings|filing|filings|sec|edgar|sentiment|news|indicator|overbought|oversold|compare|current|latest|worth|momentum|macro)\b/i;
@@ -41,7 +42,7 @@ const RSI_QUERY_RE = /\brsi\b/i;
 const OVERBOUGHT_RE = /\boverbought\b/i;
 const OVERSOLD_RE = /\boversold\b/i;
 const EARNINGS_QUERY_RE = /\b(earnings|report(?:s|ing)?(?:\s+earnings)?|next earnings|earnings date|report next)\b/i;
-const MACRO_QUERY_RE = /\b(macro|geopolitical|global news|market today|technology stocks|us equities)\b/i;
+const MACRO_QUERY_RE = /\b(macro|geopolitical|global news|technology stocks)\b/i;
 const MULTI_INDICATOR_RE = /\b(macd|sma\s*20|sma\s*50|sma\s*200)\b/i;
 const FILING_QUERY_RE = /\b(filing|filings|10-?k|10-?q|8-?k|sec\b|edgar|insider)\b/i;
 const SPECIFIC_FORM_RE = /\b(10-?K|10-?Q|8-?K)\b/i;
@@ -820,6 +821,10 @@ export async function tryDeterministicDataReply(
       meta: gapMeta(symbols, "fundamental-series-gate"),
     };
   }
+
+  // Client Rev 9/14 — US general market / discovery / movers (before LLM or GDELT-only macro).
+  const marketReply = await tryMarketIntelligenceReply(userId, text).catch(() => null);
+  if (marketReply) return marketReply;
 
   // Implied move — before earnings-day calendar so "into earnings" cannot steal (Phase 2 Pack E).
   if (isImpliedMoveQuery(text)) {

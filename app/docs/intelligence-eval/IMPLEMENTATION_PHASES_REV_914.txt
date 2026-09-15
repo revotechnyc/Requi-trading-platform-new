@@ -1,0 +1,729 @@
+================================================================================
+REQUI TRADING — CLIENT REVISION 9/14
+DETAILED IMPLEMENTATION PHASES
+================================================================================
+Source: Requi 9_14 revision .pdf (41 pages)
+Companion: CLIENT_REV_914_TESTING.md
+How to build safely: IMPLEMENTATION_APPROACH_REV_914.txt  ← read this first
+Last updated: 2026-09-16
+Status baseline: Scripts 1 & 3 live PASS; 404 automated tests green
+
+Architecture mandate (PDF):
+  User → Intent → Live Data (+ fallback) → Calculations → Classification
+       → Structured JSON → LLM explains → UI
+
+  NOT: LLM → guess market / invent tickers
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+PDF defines 4 build phases. Current completion estimate:
+
+  Phase 1 (Market snapshot core)     ~75%  — demo-ready, depth gaps remain
+  Phase 2 (Stock discovery)            ~55%  — core rank works, desk card incomplete
+  Phase 3 (Earnings calendar + UI)     ~65%  — backend + conversation OK, UI hook missing
+  Phase 4 (Observability + versioning) ~25%  — confidence wording only
+
+This document lists WHAT to build, WHERE in code, HOW to test, and EXIT criteria
+per sub-phase. Build order matches PDF §32.
+
+================================================================================
+PHASE 0 — BASELINE & REGRESSION GUARDRAILS (DO FIRST, ALWAYS ON)
+================================================================================
+
+Goal: Never break existing features while extending Rev 9/14 work.
+
+Scope:
+  - Run full vitest before/after every sprint: npm test (404+ tests)
+  - Run intelligence subset after router/context changes:
+      npx vitest run api/intelligence api/intelligence-data
+  - One fresh Intelligence chat per golden script (no working-set bleed)
+  - Log Pass/Partial/Fail in SCORING_SHEET.md
+
+Exit criteria:
+  [ ] Full test suite green after each merge
+  [ ] No regression on: buy NVDA advisory, Rev-1 research, earnings select/go-deeper
+  [ ] No regression on: trade CONFIRM/REJECT, Phase 3 MT-001 conversation scripts
+
+Key files (do not break):
+  app/api/intelligence-router.ts
+  app/api/intelligence/intent.ts
+  app/api/intelligence/conversation-context.ts
+  app/api/intelligence/research/earnings-candidate.ts
+  app/api/intelligence-data/earnings-day.ts
+
+================================================================================
+PHASE 1 — US DEFAULT + GENERAL MARKET INTELLIGENCE (PDF §§1–10, 13–17, 27)
+================================================================================
+PDF priority: "PHASE 1" in §32
+Test packs: A, B, C, E
+Golden demos: "How's the market?" / "What's moving?"
+
+Overall status: MOSTLY IMPLEMENTED — finish depth + labs below.
+
+--------------------------------------------------------------------------------
+1.1  DEFAULT US MARKET CONFIGURATION (PDF §1)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  - US_MARKET_DEFAULT in market-intent.ts (US, NYSE/NASDAQ, USD, America/New_York)
+  - No country/exchange prompt on generic market asks
+  - Market intelligence runs BEFORE trade intent (TODAY ticker bug fixed)
+
+TO IMPLEMENT:
+  [ ] 1.1.a  International override handler
+       When: isInternationalMarketQuery() returns true
+       Do:    Return deterministic WAIT card (not LLM fallback)
+       File:  app/api/intelligence/general-market.ts (new formatInternationalWaitReply)
+              app/api/intelligence-router.ts (early route before LLM)
+       Test:  Pack A2 — "How is Japan doing?"
+       Pass:  Honest "international not wired" OR dedicated route — never fake US data
+
+Exit criteria:
+  [ ] Pack A1 all prompts assume US without asking country
+  [ ] Pack A2 international probe scored Pass or documented WAIT
+
+--------------------------------------------------------------------------------
+1.2  MARKET INTENT ROUTER — FULL TAXONOMY (PDF §§2–3)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED (3 core intents in market-intent.ts):
+  - GENERAL_MARKET
+  - STOCK_DISCOVERY
+  - MARKET_MOVERS
+  Plus sub-routes: isSectorLeadingQuery, isRiskTodayQuery, discovery follow-ups
+
+IMPLEMENTED elsewhere (not unified enum):
+  - EARNINGS_CALENDAR → earnings-day.ts + data-reply.ts
+  - TRADE_REQUEST → intent.ts TRADE_INTENT
+  - TICKER_ANALYSIS / TECHNICAL → price-reply.ts, data-reply.ts
+  - NEWS / SENTIMENT → data-reply.ts bundle layers
+
+TO IMPLEMENT:
+  [ ] 1.2.a  Optional: extend MarketIntelligenceIntent enum for documentation parity
+       (EARNINGS_CALENDAR, SECTOR_ANALYSIS) — routing can delegate to existing handlers
+  [ ] 1.2.b  GENERAL_EDUCATION deterministic stub or explicit "LLM explain only" gate
+       Test:  Pack A3 — "What is a PE ratio?" must not invent market data
+  [ ] 1.2.c  Semantic classification supplement (PDF §3) — optional LLM-free fuzzy matcher
+       Only if regex gaps found in live scoring
+
+Exit criteria:
+  [ ] Pack A3 intent table ≥90% correct pipeline (live scoring sheet)
+  [ ] No wrong pipeline: discovery question → trade intent; trade → discovery
+
+Key files:
+  app/api/intelligence/market-intent.ts
+  app/api/intelligence/intent.ts
+  app/api/intelligence-router.ts
+
+--------------------------------------------------------------------------------
+1.3  GENERAL MARKET ANALYSIS PIPELINE (PDF §4)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED — runGeneralMarketAnalysis() in general-market.ts:
+  [x] Major index performance (SPY, QQQ, DIA, IWM)
+  [x] Sector performance (11 sector ETFs, leading/lagging)
+  [x] Volatility proxy (VIXY — labeled not spot VIX)
+  [x] Market momentum component in health score
+  [x] Volume participation component
+  [x] Macro backdrop (FRED)
+  [x] Market regime (8 states)
+  [x] Market Health Score 0–100 (V1 weights match PDF §9)
+  [x] Analysis confidence (coverage/freshness — not win-probability)
+  [x] Partial failure: missingFields list, continues when one feed down
+  [x] formatGeneralMarketReply, formatSectorLeadingReply, formatRiskTodayReply
+
+NOT IMPLEMENTED:
+  [ ] Important market news in snapshot (PDF §4 item 8) — major_news block empty
+  [ ] Macro events calendar in snapshot (PDF §4 item 7) — FRED only, not event calendar
+
+TO IMPLEMENT:
+  [ ] 1.3.a  Wire headline/news summary into snapshot (top 3 market headlines, sourced)
+       File: general-market.ts + intelligence-data providers
+       Test: Snapshot mentions news OR honest WAIT per field
+
+Exit criteria:
+  [ ] Pack B1 checklist all 6 items Pass on live "How's the market today?"
+  [ ] Script 1 step 1 Pass (DONE in latest live run)
+
+--------------------------------------------------------------------------------
+1.4  MAJOR INDEX DEPTH (PDF §5)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] current price, daily return, source, timestamp, stale flag per index
+  [x] Gateway loads indicators (RSI, RVOL) for indexes internally
+
+TO IMPLEMENT:
+  [ ] 1.4.a  Per-index reply formatter for drill-down asks
+       Fields: SMA20, SMA50, SMA200, price vs SMAs, 5d/20d return, RVOL
+       Trigger: "Break down SPY, QQQ, DIA, and IWM" / Pack B2
+       File: general-market.ts — formatIndexDepthReply()
+       Gate:  Label WAIT per missing field — never invent
+
+Exit criteria:
+  [ ] Pack B2 Pass — per-index SMA/RVOL or explicit WAIT lines
+
+--------------------------------------------------------------------------------
+1.5  MARKET BREADTH ENGINE (PDF §6)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED (proxy only):
+  [x] breadthScoreFromReturns — % of index ETFs with positive daily change
+  [x] Contributes to health score (shows as component; live runs show Breadth: 0)
+
+NOT IMPLEMENTED (PDF full spec):
+  [ ] advancing_stocks / declining_stocks (NYSE or universe-wide)
+  [ ] advance_decline_ratio
+  [ ] percent_above_SMA20 / SMA50 / SMA200
+  [ ] new_52_week_highs / lows
+  [ ] Classification: STRONG / POSITIVE / MIXED / WEAK / VERY_WEAK
+
+TO IMPLEMENT:
+  [ ] 1.5.a  Breadth data source selection (free stack):
+       Option A: Scan liquid universe (~55 names) for advance/decline counts
+       Option B: Paid A/D line API when available
+       File: app/api/intelligence/general-market.ts
+              app/api/intelligence/stock-discovery.ts (reuse universe scan)
+  [ ] 1.5.b  formatBreadthSection() in market snapshot reply
+  [ ] 1.5.c  Unit tests for breadth classification thresholds (PDF §6)
+
+Exit criteria:
+  [ ] Pack B3 Pass — advance/decline or % advancing shown (not always 0)
+  [ ] Health breadth component reflects real breadth, not index-only proxy
+
+--------------------------------------------------------------------------------
+1.6  SECTOR LEADERSHIP DEPTH (PDF §7)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] 11 sector ETFs tracked, daily % change, leading/lagging rank
+  [x] formatSectorLeadingReply for "What's leading?"
+
+TO IMPLEMENT:
+  [ ] 1.6.a  Extended sector metrics: 5d/20d return, RS vs SPY, volume ratio
+  [ ] 1.6.b  PDF taxonomy labels: LEADING | STRONG | NEUTRAL | WEAK | LAGGING
+       File: general-market.ts — classifySectorStrength()
+  [ ] 1.6.c  Optional SECTOR_ANALYSIS intent for "how are tech stocks doing?"
+
+Exit criteria:
+  [ ] Sector section shows classification labels, not just raw %
+  [ ] Script 1 step 2 Pass (DONE)
+
+--------------------------------------------------------------------------------
+1.7  VOLATILITY ENGINE (PDF §8)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] VIXY ETF daily change as proxy
+  [x] Volatility component in health score
+  [x] Explicit "not spot VIX" honesty label
+
+TO IMPLEMENT:
+  [ ] 1.7.a  Spot VIX quote when available (Yahoo ^VIX or broker)
+  [ ] 1.7.b  VIX level classification bands:
+       <15 LOW | 15–20 NORMAL | 20–25 ELEVATED | 25–30 HIGH | 30+ EXTREME
+  [ ] 1.7.c  SPY/QQQ realized vol + intraday range (optional V1.1)
+       File: general-market.ts, marketdata gateway indicators
+
+Exit criteria:
+  [ ] Pack B3 Pass — VIX class shown; regime NOT driven by VIX alone (PDF rule)
+
+--------------------------------------------------------------------------------
+1.8  MARKET HEALTH + REGIME (PDF §§9–10)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] calculateMarketHealthV1 — weights match PDF exactly
+  [x] classifyMarketRegimeV1 — all 8 regime states
+  [x] Unit tests in general-market.test.ts
+  [x] Health components drill-down in snapshot reply
+
+TO IMPLEMENT:
+  [ ] 1.8.a  Regime threshold calibration/backtest harness (PDF §10 note)
+       File: app/docs or app/api/intelligence/eval/ (Phase 4 overlap)
+  [ ] 1.8.b  Optional conversational summary mode (PDF §27) — shorter default reply
+       with "show details" follow-up
+
+Exit criteria:
+  [ ] Pack B4 unit tests Pass (DONE)
+  [ ] Live regime label matches health/breadth/trend sanity
+
+--------------------------------------------------------------------------------
+1.9  DATA GATEWAY + PROVIDER FALLBACK (PDF §§13–16)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] MarketDataGateway — getSnapshot, getIndicators
+  [x] Broker → Yahoo quote failover (gateway/router.ts)
+  [x] Source + timestamp on index quotes
+  [x] Short TTL cache (5s quotes, 30s indicators)
+  [x] Stale flag on quotes
+
+TO IMPLEMENT:
+  [ ] 1.9.a  Tertiary secondaryProvider in quote chain (PDF §14)
+  [ ] 1.9.b  Normalized quote object everywhere (PDF §15 full schema)
+  [ ] 1.9.c  Session-aware freshness gates (PDF §16):
+       REGULAR 60s | PREMARKET 300s | AFTER HOURS 300s | CLOSED = last session label
+  [ ] 1.9.d  Unified "latest completed session" banner when market closed (Pack B6)
+       File: marketdata/gateway/gateway.ts, general-market.ts
+
+Exit criteria:
+  [ ] Pack C1 Pass — quotes cite source
+  [ ] Pack C2 lab Pass — broker off, Yahoo still answers
+  [ ] Pack C3 lab Pass — all providers down → explicit UNAVAILABLE, no invented price
+  [ ] Pack B6 Pass — after-hours ask labels delayed/completed session
+
+--------------------------------------------------------------------------------
+1.10 MARKET SNAPSHOT CACHE / SERVICE (PDF §17)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] runGeneralMarketAnalysis() per request (deterministic, not LLM)
+  [x] Gateway in-process TTL cache
+
+TO IMPLEMENT:
+  [ ] 1.10.a  MarketSnapshotService — shared snapshot object refreshed by session
+       Fields: timestamp, session, market_health, regime, indexes, breadth, sectors,
+               volatility, macro_events, major_news
+       File: NEW app/api/intelligence/market-snapshot-service.ts
+       Benefit: Consistent numbers across "How's market" + "What's leading" + discovery
+  [ ] 1.10.b  Optional UI market snapshot panel (health/regime/index cards)
+
+Exit criteria:
+  [ ] Two market asks in same minute return consistent health/regime (same asOf)
+  [ ] Reduced duplicate Yahoo calls (measure via provider trace)
+
+--------------------------------------------------------------------------------
+1.11 MARKET MOVERS (PDF §3, §32 Phase 1/2)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] MARKET_MOVERS intent patterns
+  [x] runMarketMoversScan — 36 liquid names, gainers/losers, RVOL, Yahoo source
+  [x] formatMarketMoversReply
+  [x] formatMoversTopExplain for "why is top one ranked first?" after movers
+  [x] Working-set group market_movers
+
+TO IMPLEMENT:
+  [ ] 1.11.a  Catalyst line per mover when news available (PDF: movers + volume + catalyst)
+  [ ] 1.11.b  Ensure re-ask "What's moving?" always re-runs scan (never LLM stale recap)
+       File: intelligence-router.ts — block LLM for MARKET_MOVERS intent
+
+Exit criteria:
+  [ ] Pack E1 all phrasings Pass
+  [ ] Second "What's moving?" in same chat returns fresh scan (fixed — verify live)
+
+================================================================================
+PHASE 2 — STOCK DISCOVERY ENGINE (PDF §§11–12, 28)
+================================================================================
+PDF priority: "PHASE 2" in §32
+Test packs: D
+Golden demo: "What should I buy today?"
+
+Overall status: CORE IMPLEMENTED — PDF full pipeline depth missing.
+
+--------------------------------------------------------------------------------
+2.1  DISCOVERY PIPELINE STEPS (PDF §11)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] Market regime input
+  [x] Sector ranking → focus sectors (leading + defensive tilt in bear)
+  [x] Liquid stock universe (~55 code-versioned names)
+  [x] Relative strength vs SPY
+  [x] Momentum (RSI band scoring)
+  [x] Volume (RVOL)
+  [x] Risk filter (LOW / MODERATE / HIGH)
+  [x] Ranked top 5 candidates with engine score
+  [x] Anti-hallucination: no LLM-invented tickers
+  [x] RESEARCH ONLY / NO TRADE footer
+
+NOT IMPLEMENTED:
+  [ ] Industry ranking (within sector)
+  [ ] Catalyst filter
+  [ ] News integration in rank
+  [ ] Fundamental quality filter
+  [ ] Full PDF scoring weights (§12):
+       20% RS + 15% sector + 15% industry + 15% momentum + 10% RVOL
+       + 10% catalyst + 10% fundamental + 5% sentiment
+
+TO IMPLEMENT:
+  [ ] 2.1.a  Industry map: sector ETF → industry sub-universe or GICS subset
+       File: stock-discovery.ts
+  [ ] 2.1.b  Catalyst hook: next earnings within N days, recent news flag
+       File: stock-discovery.ts + earnings-day.ts + news provider
+  [ ] 2.1.c  Fundamental quality gate: basic SEC/XBRL or AV OVERVIEW when available
+  [ ] 2.1.d  Align STOCK_SCORE formula to PDF §12 weights (STOCK_RANKING_V1)
+  [ ] 2.1.e  Expand universe scan cap beyond 22/36 when performance allows
+
+Exit criteria:
+  [ ] Pack D1 all anti-hallucination prompts Pass
+  [ ] Pack D3 regime-aware ask mentions regime before names
+  [ ] Reply no longer says PARTIAL/WAIT on catalyst/fundamentals when data wired
+
+Key files:
+  app/api/intelligence/stock-discovery.ts
+  app/api/intelligence/general-market.ts (tryMarketIntelligenceReply)
+
+--------------------------------------------------------------------------------
+2.2  DISCOVERY FOLLOW-UPS (PDF §12, Pack D2)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] "Why is the top one ranked first?" — formatDiscoveryRankExplain
+  [x] "Which of those is riskiest?" — pickRiskiestCandidate (separate from rank score)
+  [x] Movers vs discovery referential resolution
+  [x] Early router handler + conversation-context passthrough
+
+TO IMPLEMENT:
+  [ ] 2.2.a  Script 2 phrasing variants:
+       "Why those?" / "What's the risk on the top one?" — pattern aliases
+       File: market-intent.ts
+  [ ] 2.2.b  Compare two discovery names ("compare top two from that list")
+
+Exit criteria:
+  [ ] Script 2 all 3 steps Pass in fresh chat
+  [ ] Pack D2 Pass — no invented tickers on follow-ups
+
+--------------------------------------------------------------------------------
+2.3  LLM ROLE IN DISCOVERY (PDF §§21–22, 28)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] Deterministic markdown reply — LLM not required for discovery list
+  [x] Trade intent blocked for discovery phrasing
+
+TO IMPLEMENT:
+  [ ] 2.3.a  Optional LLM narrative layer ON TOP of structured candidate JSON
+       (only explains supplied candidates — system prompt PDF §22)
+  [ ] 2.3.b  Consolidated Requi system instruction block in lucia-prompt / developerExtra
+
+Exit criteria:
+  [ ] Pack G1 Pass — jailbreak probe does not invent buys from memory
+
+================================================================================
+PHASE 3 — EARNINGS CALENDAR + CONVERSATION + UI (PDF §§18–19, 29)
+================================================================================
+PDF priority: "PHASE 3" in §32
+Test packs: F + Phase 3 MT-001
+Golden demo: "Who reports tomorrow?" + calendar UI + select + go deeper
+
+Overall status: BACKEND + MULTI-TURN DONE — UI orchestration + edge cases remain.
+
+--------------------------------------------------------------------------------
+3.1  DETERMINISTIC EARNINGS ENGINE (PDF §18)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] isEarningsDayCalendarQuery / parseEarningsCalendarIntent
+  [x] ET date resolution: today, tomorrow, weekdays, ranges
+  [x] fetchEarningsCalendarForDate → Finnhub
+  [x] AMC / BMO / DMH / unknown timing
+  [x] Consensus EPS + revenue estimate in table
+  [x] tryEarningsDayCalendarReply — markdown table + meta symbols
+  [x] Surprise enrichment, beat-rate ranking, screen filters
+  [x] Extensive unit tests (earnings-day.test.ts)
+
+TO IMPLEMENT:
+  [ ] 3.1.a  Tomorrow = next TRADING session day (not calendar +1 on Fri/holiday)
+       File: earnings-day.ts — use addEtTradingDays for bare "tomorrow"
+  [ ] 3.1.b  Provider fallback before empty calendar (PDF §29 step 5)
+       Chain: Finnhub → secondary (define provider) → honest UNAVAILABLE
+  [ ] 3.1.c  Full normalized object (PDF §18 schema):
+       company name, market_cap, sector, industry, date_status CONFIRMED|ESTIMATED
+  [ ] 3.1.d  Align Rev-1 next_earnings_date with calendar row (ALMU/ABAT mismatch ticket)
+       File: research/earnings-candidate.ts + earnings-day.ts
+
+Exit criteria:
+  [ ] Pack F1 all phrasings Pass
+  [ ] Calendar date matches Rev-1 card for same symbol on same day
+  [ ] Empty calendar only after all providers fail
+
+--------------------------------------------------------------------------------
+3.2  CALENDAR UI RENDERING (PDF §19)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] EarningsCalendarPanel.tsx — sidebar manual calendar tab
+  [x] Chat returns markdown table with Copy CSV
+  [x] marketMeta chip (source, timestamp, stale)
+
+NOT IMPLEMENTED (PDF requirement):
+  [ ] Auto-render calendar UI when chat intent = EARNINGS_CALENDAR && earnings.length > 0
+  [ ] App controls UI — LLM does not decide whether calendar appears
+
+TO IMPLEMENT:
+  [ ] 3.2.a  Return structured earnings payload in API response meta (not markdown only)
+       File: intelligence-router.ts, Intelligence.tsx
+  [ ] 3.2.b  When earnings calendar reply fires → open/focus Calendar panel + populate rows
+  [ ] 3.2.c  Optional inline chat component (earnings table card) driven by backend state
+
+Exit criteria:
+  [ ] PDF §19: calendar visible without user manually opening sidebar
+  [ ] LLM provides summary only; table is app-rendered
+
+--------------------------------------------------------------------------------
+3.3  MULTI-TURN EARNINGS CONVERSATION (Phase 3 / Pack F2)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] "Keep the top 3 only" → selection table from earnings group (not SPY/QQQ/DIA)
+  [x] "Go deeper on those" → Rev-1 on subset only
+  [x] recordResearchResults with earnings_day lastHandler
+  [x] Bottom/top N selection via conversation-context.ts
+
+TO IMPLEMENT:
+  [ ] 3.3.a  "i want info about bottom 3" — verify bottom slice ≠ top slice (Pack F2)
+  [ ] 3.3.b  Selection table shows calendar fields (timing, EPS est) not just partial score
+  [ ] 3.3.c  Phase 3 MT-001, MT-002, MT-003 live scoring in SCORING_SHEET.md
+
+Exit criteria:
+  [ ] Script 3 all 4 steps Pass (DONE in latest live run)
+  [ ] Pack F2 Pass — top ≠ bottom
+  [ ] P0-MT-001 scored Pass in scoring sheet
+
+Key files:
+  app/api/intelligence/conversation-context.ts
+  app/api/intelligence-router.ts
+
+--------------------------------------------------------------------------------
+3.4  GENERAL CALENDAR ENGINE (PDF §20) — FUTURE
+--------------------------------------------------------------------------------
+
+NOT IMPLEMENTED:
+  [ ] Unified calendar for: CPI, PPI, FOMC, Jobs, GDP, OPEX, splits, dividends
+  [ ] event_type, importance, affected_symbols, affected_sectors schema
+
+TO IMPLEMENT (post Phase 3 core):
+  [ ] 3.4.a  Economic calendar provider + ECONOMIC_CALENDAR intent
+  [ ] 3.4.b  Shared calendar architecture with earnings-day.ts patterns
+
+Exit criteria:
+  [ ] "What's on the economic calendar this week?" — deterministic reply or WAIT
+
+================================================================================
+PHASE 4 — CONFIDENCE, OBSERVABILITY, VERSIONING, CALIBRATION (PDF §§23–26, 31)
+================================================================================
+PDF priority: "PHASE 4" in §32
+Test packs: G
+
+Overall status: CONFIDENCE WORDING DONE — trace and versioning not built.
+
+--------------------------------------------------------------------------------
+4.1  PARTIAL DATA FAILURE (PDF §23)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] missingFields array in GeneralMarketAnalysis
+  [x] Snapshot continues when FRED or one index component fails
+  [x] Hard fail only when ALL index quotes unavailable
+
+TO IMPLEMENT:
+  [ ] 4.1.a  Pack B5 lab: force one feed down, verify partial answer + missing_fields list
+  [ ] 4.1.b  Explicit missing_fields section in user-facing reply (not just internal)
+
+Exit criteria:
+  [ ] Pack B5 Pass
+  [ ] Never "no verified market data" when any index succeeded (anti-pattern checklist)
+
+--------------------------------------------------------------------------------
+4.2  ANALYSIS CONFIDENCE SCORE (PDF §24)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED:
+  [x] analysisConfidence from data coverage/freshness
+  [x] Wording: not a directional forecast / not win-probability
+  [x] Live: 94% on full snapshot runs
+
+TO IMPLEMENT:
+  [ ] 4.2.a  Full PDF formula:
+       DATA_COMPLETENESS × 0.50 + FRESHNESS × 0.30 + SOURCE_CONFIDENCE × 0.20
+  [ ] 4.2.b  Confidence bands: HIGH 90–100 | GOOD 75–89 | MODERATE 60–74 | LIMITED <60
+  [ ] 4.2.c  Apply confidence model to discovery and earnings replies consistently
+
+Exit criteria:
+  [ ] Pack G2 Pass on all GENERAL_MARKET, STOCK_DISCOVERY, EARNINGS replies
+
+--------------------------------------------------------------------------------
+4.3  OBSERVABILITY / DEBUG TRACE (PDF §25)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED (partial):
+  [x] Gateway DB: marketDataEvents, marketDataErrors, providerHealth
+  [x] marketMeta chip to UI (source, timestamp, stale)
+
+NOT IMPLEMENTED:
+  [ ] Per intelligence chat turn trace object
+
+TO IMPLEMENT:
+  [ ] 4.3.a  IntelligenceTrace type emitted from intelligence-router.ts every turn:
+       request_id, user_query, detected_intent, market, market_session,
+       functions_called, providers_called, provider_failures, cache_hit,
+       calculation_version, market_health_score, market_regime,
+       analysis_confidence, response_latency, llm_model
+  [ ] 4.3.b  Debug mode: attach trace to response meta or log channel
+  [ ] 4.3.c  Failure attribution tags: Intent | Data | Calc | LLM | UI
+
+Exit criteria:
+  [ ] Pack G3 Pass — one trace captured per GENERAL_MARKET, STOCK_DISCOVERY, EARNINGS ask
+  [ ] Bad answer debuggable to layer within 5 minutes
+
+Key file: app/api/intelligence-router.ts (new intelligence-trace.ts)
+
+--------------------------------------------------------------------------------
+4.4  CALCULATION VERSIONING (PDF §26)
+--------------------------------------------------------------------------------
+
+IMPLEMENTED (in code only):
+  [x] MARKET_HEALTH_V1, REGIME_MODEL_V1 in general-market.ts
+  [x] stock-discovery scoring version implicit
+
+TO IMPLEMENT:
+  [ ] 4.4.a  Explicit version constants: STOCK_RANKING_V1, SECTOR_MODEL_V1, BREADTH_MODEL_V1
+  [ ] 4.4.b  Persist calc audit records: model_version, calculation_timestamp, inputs, output
+  [ ] 4.4.c  Backtest/calibration harness for regime thresholds (PDF §10 note)
+
+Exit criteria:
+  [ ] Formula change can be A/B tested without prompt edits
+  [ ] Version string visible in trace (Phase 4.3)
+
+--------------------------------------------------------------------------------
+4.5  LLM SYSTEM INSTRUCTION CONSOLIDATION (PDF §22)
+--------------------------------------------------------------------------------
+
+TO IMPLEMENT:
+  [ ] 4.5.a  Single canonical Requi market intelligence system block in lucia-prompt.ts
+  [ ] 4.5.b  Enforce: never invent prices, tickers, earnings dates from memory
+  [ ] 4.5.c  Pack G1 jailbreak regression test (automated if possible)
+
+Exit criteria:
+  [ ] Pack G1 Pass live
+  [ ] G1 added to CI smoke tests
+
+================================================================================
+PHASE 5 — TICKER & DESK INTELLIGENCE (PDF FINAL REQUIREMENT — parallel track)
+================================================================================
+Not a separate PDF phase number but required for full product ("IF TICKER QUESTION → RUN TICKER INTELLIGENCE").
+
+Status: LARGELY IMPLEMENTED outside Rev 9/14 sprint — maintain, do not break.
+
+Scope:
+  [x] Price quotes, RSI, compare, news, filings, implied move
+  [x] Rev-1 earnings candidate research
+  [x] Live price confirmation gate
+  [x] Phase 0 honesty gates (fake ticker, false precision, filing hallucination)
+
+Ongoing:
+  [ ] Phase 2 breadth live scoring (PHASE2_BREADTH.md domain packs)
+  [ ] Phase 3 conversation scripts MT-002, MT-003
+  [ ] NL screener — NOT WIRED (explicit WAIT)
+  [ ] Fundamental time-series compare — WAIT gate only
+
+================================================================================
+RECOMMENDED SPRINT ORDER (BUILD + TEST PAIRS)
+================================================================================
+
+Sprint 1 (1 week) — CLOSE CLIENT DEMO GAPS
+  Build:  1.1.a international WAIT, 3.1.a trading-day tomorrow
+  Test:   Script 2 fresh chat, Pack A2, Pack G1, log SCORING_SHEET + weekly report
+  Exit:   Golden scripts 1–3 all Pass logged
+
+Sprint 2 (1–2 weeks) — PHASE 1 DEPTH (PDF §5–8)
+  Build:  1.4.a index SMA drill-down, 1.5.a true breadth, 1.7.b VIX classification
+  Test:   Pack B2, B3, B5, B6, Pack C2 lab
+  Exit:   Phase B exit criteria checked off
+
+Sprint 3 (1–2 weeks) — PHASE 3 UI (PDF §19)
+  Build:  3.2.a–c chat-driven calendar UI, 3.1.b earnings fallback
+  Test:   Pack F1 full, verify calendar panel auto-opens
+  Exit:   Phase F exit criteria checked off
+
+Sprint 4 (2 weeks) — PHASE 2 DEPTH (PDF §11–12)
+  Build:  2.1.a–d industry/catalyst/fundamentals, STOCK_RANKING_V1 weights
+  Test:   Pack D1, D3, discovery PARTIAL/WAIT lines removed
+  Exit:   Phase D exit criteria checked off
+
+Sprint 5 (2 weeks) — PHASE 4 (PDF §25–26)
+  Build:  4.3 intelligence trace, 4.4 versioning storage, 4.2 full confidence formula
+  Test:   Pack G2, G3, fallback lab C3
+  Exit:   PDF "revision done" checklist complete
+
+Sprint 6+ — PHASE 3.4 / §20 economic calendar, snapshot UI panel, secondary provider
+
+================================================================================
+DEFINITION OF DONE — CLIENT REV 9/14 REVISION
+================================================================================
+
+From PDF + CLIENT_REV_914_TESTING.md:
+
+  [ ] Golden scripts 1, 2, 3 demo clean on live (fresh chat each)
+  [ ] Phase A–F exit criteria all checked in testing doc
+  [ ] Unit tests: Health V1, Regime V1, Ranking V1, intent patterns (404+ green)
+  [ ] Fallback lab: broker miss → Yahoo still answers (Pack C2)
+  [ ] Weekly report sent with before/after + zero discovery hallucinations
+  [ ] Anti-pattern checklist: zero instant-fail behaviors in scored runs
+
+Current scorecard (2026-09-16):
+  Script 1  — PASS (live)
+  Script 2  — PASS (prior session; re-log recommended)
+  Script 3  — PASS (live)
+  Phase A   — mostly Pass; A2 open
+  Phase B   — core Pass; B2/B3/B5/B6 open
+  Phase C   — partial; C2/C3 lab open
+  Phase D   — core Pass; full pipeline depth open
+  Phase E   — Pass
+  Phase F   — core Pass; UI auto-render open
+  Phase G   — G2 partial; G1/G3 open
+
+================================================================================
+FILE REFERENCE INDEX
+================================================================================
+
+Intent & routing:
+  app/api/intelligence/market-intent.ts
+  app/api/intelligence/intent.ts
+  app/api/intelligence-router.ts
+
+Market snapshot & health:
+  app/api/intelligence/general-market.ts
+  app/api/intelligence/general-market.test.ts
+
+Discovery & movers:
+  app/api/intelligence/stock-discovery.ts
+  app/api/intelligence/stock-discovery.test.ts
+
+Earnings calendar:
+  app/api/intelligence-data/earnings-day.ts
+  app/api/intelligence/earnings-day.test.ts
+
+Multi-turn context:
+  app/api/intelligence/conversation-context.ts
+  app/api/intelligence/conversation-context.test.ts
+
+Ticker / desk data:
+  app/api/intelligence/data-reply.ts
+  app/api/intelligence/price-reply.ts
+
+Rev-1 research:
+  app/api/intelligence/research/earnings-candidate.ts
+  app/api/intelligence/revision1.test.ts
+
+Market data gateway:
+  app/api/marketdata/gateway/gateway.ts
+  app/api/marketdata/gateway/router.ts
+
+UI:
+  app/src/pages/app/intelligence/Intelligence.tsx
+  app/src/pages/app/intelligence/EarningsCalendarPanel.tsx
+
+Testing & client docs:
+  app/docs/intelligence-eval/CLIENT_REV_914_TESTING.md
+  app/docs/intelligence-eval/SCORING_SHEET.md
+  app/docs/intelligence-eval/WEEKLY_INTELLIGENCE_REPORT_TEMPLATE.md
+  app/docs/intelligence-eval/PHASE3_CONVERSATION.md
+
+================================================================================
+END OF DOCUMENT
+================================================================================

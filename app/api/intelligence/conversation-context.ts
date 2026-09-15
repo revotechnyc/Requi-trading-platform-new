@@ -12,6 +12,11 @@ import {
   resolveSymbolsFromText,
 } from "../intelligence-data/symbol-resolver";
 import { shouldPassthroughGapGateAsk, isDeskCompareQuery } from "./gap-intents";
+import {
+  isDiscoveryFollowUpQuery,
+  isDiscoveryRankExplainQuery,
+  isDiscoveryRiskiestQuery,
+} from "./market-intent";
 
 export type WorkingEntity = {
   symbol: string;
@@ -73,6 +78,8 @@ export type ContextPlan =
       targetSymbols?: string[];
       /** After handler, shrink active to this subset (ranked unchanged). */
       nextActive?: WorkingEntity[];
+      /** Select top vs bottom of ranked scores (default top). */
+      selectSide?: "top" | "bottom";
     };
 
 const store = new Map<string, ConversationWorkingSet>();
@@ -141,14 +148,143 @@ function symbolsLine(entities: WorkingEntity[], max = CONTEXT_RESEARCH_MAX): str
 
 /** Full ranked universe (fallback when active empty). */
 export function getRankedUniverse(ws: ConversationWorkingSet): WorkingEntity[] {
+  const label = ws.lastUniverseLabel?.toLowerCase();
+  if (label && ws.groups[label]?.length) return ws.groups[label]!;
+  if (ws.lastHandler === "earnings_day" && ws.active.length) return ws.active;
   return ws.ranked.length ? ws.ranked : ws.active;
 }
 
-/** What referential pronouns resolve to — always prefer narrowed active scope. */
+/** What referential pronouns resolve to — prefer semantic group match over last active scope. */
 export function getReferentialTarget(ws: ConversationWorkingSet): WorkingEntity[] {
   if (ws.active.length) return ws.active;
   if (ws.groups.focus?.length) return ws.groups.focus;
   return ws.ranked;
+}
+
+const GROUP_DISPLAY: Record<string, string> = {
+  stock_discovery: "buy / discovery candidates",
+  market_movers: "today's movers scan",
+  universe: "last research universe",
+};
+
+const SKIP_REFERENTIAL_GROUPS = new Set(["focus", "last_selection"]);
+
+function referentialGroupKeys(ws: ConversationWorkingSet): string[] {
+  return Object.keys(ws.groups).filter(
+    (k) => !SKIP_REFERENTIAL_GROUPS.has(k) && (ws.groups[k]?.length ?? 0) > 0,
+  );
+}
+
+function scoreReferentialGroup(text: string, groupKey: string, ws: ConversationWorkingSet): number {
+  const lower = text.toLowerCase();
+  let score = 0;
+
+  if (groupKey === "stock_discovery") {
+    const moversWasLast = ws.lastUniverseLabel === "market_movers";
+    if (isDiscoveryFollowUpQuery(text) && !(moversWasLast && isDiscoveryRankExplainQuery(text))) {
+      score += 100;
+    }
+    if (isDiscoveryRankExplainQuery(text) && !moversWasLast) score += 85;
+    if (isDiscoveryRiskiestQuery(text) && !/\b(earnings|evidence|partial score|rev-?1)\b/i.test(text)) {
+      score += 75;
+    }
+    if (
+      /\b(buy|candidates?|discovery|ranked|focus sector|should i buy)\b/i.test(lower) &&
+      !(moversWasLast && isDiscoveryRankExplainQuery(text))
+    ) {
+      score += 45;
+    }
+    if (/\b(rank(ed)?\s+#?1|top one ranked|ranked first)\b/i.test(lower) && !moversWasLast) score += 60;
+  }
+
+  if (groupKey === "market_movers") {
+    if (/\b(moving|movers?|gainers?|losers?|what's hot|crashing|biggest move)\b/i.test(lower)) {
+      score += 65;
+    }
+    if (/\bwhy is .+ moving\b/i.test(lower)) score += 70;
+    if (isDiscoveryRankExplainQuery(text) && ws.lastUniverseLabel === "market_movers") score += 95;
+  }
+
+  if (/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)$/.test(groupKey)) {
+    if (new RegExp(`\\b${groupKey}\\b`, "i").test(lower)) score += 90;
+    if (/\b(earnings|report|amc|bmo|calendar)\b/i.test(lower)) score += 35;
+  }
+
+  if (groupKey === "universe") {
+    if (/\b(research|rev-?1|partial score|evidence|go deeper)\b/i.test(lower)) score += 40;
+  }
+
+  if (/\b(go deeper|drill down|more detail)\b/i.test(lower)) {
+    if (groupKey === ws.lastUniverseLabel?.toLowerCase()) score += 15;
+  }
+
+  // Never boost last message alone — only a weak tie-breaker after topic signals.
+  if (groupKey === ws.lastUniverseLabel?.toLowerCase()) score += 5;
+
+  return score;
+}
+
+export type ReferentialResolution =
+  | { pool: WorkingEntity[]; label: string }
+  | { ambiguous: true; question: string };
+
+function formatReferentialClarify(
+  a: { key: string; pool: WorkingEntity[] },
+  b: { key: string; pool: WorkingEntity[] },
+): string {
+  const labelA = GROUP_DISPLAY[a.key] ?? a.key.replace(/_/g, " ");
+  const labelB = GROUP_DISPLAY[b.key] ?? b.key.replace(/_/g, " ");
+  return [
+    "I have more than one list in this chat — which do you mean?",
+    "",
+    `- **${labelA}:** ${symbolsLine(a.pool, 6)}`,
+    `- **${labelB}:** ${symbolsLine(b.pool, 6)}`,
+  ].join("\n");
+}
+
+/**
+ * Resolve "those / them / the top one" to the intended universe using topic cues —
+ * not whichever handler ran last.
+ */
+export function resolveReferentialUniverse(
+  text: string,
+  ws: ConversationWorkingSet,
+): ReferentialResolution | null {
+  const explicit = resolveContextSymbolsFromText(text);
+  const referential = hasReferentialLanguage(text);
+  const contextual = isContextualFollowUp(text, ws, explicit);
+  const wantsReferential =
+    referential || contextual || isDiscoveryFollowUpQuery(text) || isDiscoveryRankExplainQuery(text);
+
+  if (!wantsReferential) return null;
+
+  const keys = referentialGroupKeys(ws);
+  const scored = keys
+    .map((key) => ({
+      key,
+      pool: ws.groups[key]!,
+      score: scoreReferentialGroup(text, key, ws),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length >= 2) {
+    const top = scored[0]!;
+    const second = scored[1]!;
+    if (top.score - second.score < 20 && top.score < 85) {
+      return { ambiguous: true, question: formatReferentialClarify(top, second) };
+    }
+  }
+
+  if (scored.length) {
+    return { pool: scored[0]!.pool, label: scored[0]!.key };
+  }
+
+  const fallback = getReferentialTarget(ws);
+  if (fallback.length) {
+    return { pool: fallback, label: ws.lastUniverseLabel ?? "active" };
+  }
+  return null;
 }
 
 export function setActiveEntities(
@@ -209,6 +345,7 @@ export function applyActiveSubset(
 export function recordResearchResults(
   ws: ConversationWorkingSet,
   results: Array<{ symbol: string; rawScore?: number | null; classification?: string }>,
+  opts?: { groupLabel?: string; lastHandler?: ConversationWorkingSet["lastHandler"] },
 ): ConversationWorkingSet {
   const ranked = uniqEntities(
     [...results]
@@ -223,7 +360,11 @@ export function recordResearchResults(
   ws.ranked = ranked;
   ws.active = ranked;
   if (ranked.length >= 2) ws.groups.universe = [...ranked];
-  ws.lastHandler = "research";
+  if (opts?.groupLabel) {
+    ws.groups[opts.groupLabel.toLowerCase()] = [...ranked];
+    ws.lastUniverseLabel = opts.groupLabel;
+  }
+  ws.lastHandler = opts?.lastHandler ?? "research";
   ws.lastIntent = "research";
   ws.updatedAt = Date.now();
   store.set(ws.key, ws);
@@ -267,8 +408,10 @@ export function parseQuantity(text: string): number | null {
     if (n) return n;
   }
 
-  if (/\b(top|best|strongest|first|weakest|worst)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(lower)) {
-    const m = lower.match(/\b(top|best|strongest|first|weakest|worst)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/);
+  if (/\b(top|best|strongest|first|weakest|worst|bottom)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(lower)) {
+    const m = lower.match(
+      /\b(top|best|strongest|first|weakest|worst|bottom)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/,
+    );
     const n = quantityTokenToNumber(m?.[2] ?? "");
     if (n) return n;
   }
@@ -350,10 +493,10 @@ function isContextualFollowUp(text: string, ws: ConversationWorkingSet, explicit
   if (explicit.length > 0) return false;
   return (
     hasReferentialLanguage(text) ||
-    /\b(rank|analyze|analyse|compare|remove|deeper|strongest|weakest|focus|pick|select|sort|keep|want|narrow)\b/.test(
+    /\b(rank|analyze|analyse|compare|remove|deeper|strongest|weakest|focus|pick|select|sort|keep|want|narrow|bottom)\b/.test(
       lower,
     ) ||
-    (/\b(only|top)\b/.test(lower) &&
+    (/\b(only|top|bottom)\b/.test(lower) &&
       /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(lower))
   );
 }
@@ -364,8 +507,32 @@ type IntentClassification = {
   day?: string;
   group?: string;
   removeWhich?: "weakest" | "riskiest" | "worst";
+  /** top = strongest / best; bottom = weakest / worst. */
+  selectSide?: "top" | "bottom";
   confidence: number;
 };
+
+/** Whether the user asked for bottom/worst N rather than top/best N. */
+export function resolveSelectSide(text: string): "top" | "bottom" {
+  const lower = text.toLowerCase();
+  const wantsBottom = /\b(bottom|worst|weakest|lowest)\b/.test(lower);
+  const wantsTop = /\b(top|best|strongest)\b/.test(lower);
+  if (wantsBottom && !wantsTop) return "bottom";
+  if (wantsBottom && /\bbottom\b/.test(lower)) return "bottom";
+  return "top";
+}
+
+/**
+ * Pick top or bottom N from a list already sorted best→worst (desc score).
+ * Bottom picks are returned worst-first for the selection card.
+ */
+export function pickRankedSlice<T>(ranked: T[], count: number, side: "top" | "bottom" = "top"): T[] {
+  const n = Math.max(1, Math.min(count, ranked.length || 1));
+  if (side === "bottom") {
+    return ranked.slice(-n).reverse();
+  }
+  return ranked.slice(0, n);
+}
 
 function weekdayFromText(text: string): string | null {
   const m = text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b/i);
@@ -408,6 +575,12 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
   }
 
   const count = parseQuantity(text);
+
+  // Discovery follow-ups — never select-top-1 or Rev-1 research (even if discovery group is missing).
+  if (isDiscoveryFollowUpQuery(text)) {
+    return { intent: "passthrough", confidence: 0 };
+  }
+
   const selectionSignals =
     (/\b(which|what|pick|select|show|give|take|focus|name|identify|keep|want|narrow)\b/.test(lower) ? 1 : 0) +
     (/\b(strongest|best|top|promising|stand\s+out|focus)\b/.test(lower) ? 1 : 0) +
@@ -425,6 +598,10 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
     /\b(top|best|strongest|three|two|five|\d)\b/.test(lower)
   ) {
     scores.select = Math.max(scores.select ?? 0, 90);
+  }
+  // "bottom 3" / "info about bottom three" / "worst three"
+  if (count && /\b(bottom|worst|weakest|lowest)\b/.test(lower)) {
+    scores.select = Math.max(scores.select ?? 0, 92);
   }
 
   if (/\b(rank|ranking|sort|order\s+by|stack\s+rank)\b/.test(lower) || /\brank\s+them\b/.test(lower)) {
@@ -479,20 +656,27 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
     day: day ?? undefined,
     group: resolveNamedGroup(ws, text) ? "named" : undefined,
     removeWhich: removeMatch ? (removeMatch[1] as "weakest" | "riskiest" | "worst") : undefined,
+    selectSide: best === "select" ? resolveSelectSide(text) : undefined,
     confidence: bestScore,
   };
 }
 
-function formatSelectionReply(top: WorkingEntity[], universeSize: number, count: number): string {
+function formatSelectionReply(
+  selected: WorkingEntity[],
+  universeSize: number,
+  count: number,
+  side: "top" | "bottom" = "top",
+): string {
+  const label = side === "bottom" ? "bottom" : "top";
   const lines = [
-    "## Selection — top candidates from prior screen",
+    `## Selection — ${label} candidates from prior screen`,
     "",
-    `_Active scope updated to **${top.length}** symbol(s) (from ${universeSize} in the last ranked universe)._`,
+    `_Active scope updated to **${selected.length}** symbol(s) (from ${universeSize} in the last ranked universe)._`,
     "_Partial scores are research screens only — not trade authorization._",
     "",
     "| Rank | Symbol | Partial score | Classification |",
     "|------|--------|---------------|----------------|",
-    ...top.map(
+    ...selected.map(
       (e, i) =>
         `| ${i + 1} | **${e.symbol}** | ${e.score ?? "n/a"} | ${e.classification ?? "n/a"} |`,
     ),
@@ -509,15 +693,16 @@ function formatSelectionReply(top: WorkingEntity[], universeSize: number, count:
 export function formatSelectAfterRankReply(
   rankedResults: Array<{ symbol: string; rawScore?: number | null; classification?: string | null }>,
   count: number,
+  side: "top" | "bottom" = "top",
 ): string {
   const universeSize = rankedResults.length;
-  const top = rankedResults.slice(0, Math.max(1, count)).map((r, i) => ({
+  const picked = pickRankedSlice(rankedResults, count, side).map((r, i) => ({
     symbol: r.symbol,
     score: r.rawScore ?? null,
     classification: r.classification ?? null,
     rank: i + 1,
   }));
-  return formatSelectionReply(top, universeSize, count);
+  return formatSelectionReply(picked, universeSize, count, side);
 }
 
 function formatCachedRankReply(ranked: WorkingEntity[]): string {
@@ -589,6 +774,27 @@ export function planFromConversationContext(
     return { kind: "passthrough", text };
   }
 
+  // Stock-discovery follow-ups (Pack D2) — never steal into select-top-1 or Rev-1 research.
+  if (isDiscoveryFollowUpQuery(text)) {
+    const resolved = resolveReferentialUniverse(text, ws);
+    if (resolved && "ambiguous" in resolved && resolved.ambiguous) {
+      return { kind: "clarify", question: resolved.question };
+    }
+    if (ws.groups.stock_discovery?.length) {
+      return { kind: "passthrough", text };
+    }
+    return {
+      kind: "clarify",
+      question: [
+        "I don't have a **stock discovery** list in this chat yet.",
+        "",
+        "Ask e.g. `What should I buy today?` first — then follow up with rank or risk questions on that list.",
+        "",
+        "_Movers and discovery are separate lists — those follow-ups refer to discovery, not the movers scan._",
+      ].join("\n"),
+    };
+  }
+
   // Handler-ready research prompts pass through unchanged.
   if (/^Run earnings candidate research on /i.test(text.trim())) {
     return { kind: "passthrough", text };
@@ -647,8 +853,23 @@ export function planFromConversationContext(
   }
 
   const classified = classifyFollowUpIntent(text, ws);
-  const universe = getRankedUniverse(ws);
-  const target = getReferentialTarget(ws);
+  const resolved = resolveReferentialUniverse(text, ws);
+  if (resolved && "ambiguous" in resolved && resolved.ambiguous) {
+    return { kind: "clarify", question: resolved.question };
+  }
+  let universe = getRankedUniverse(ws);
+  let target = getReferentialTarget(ws);
+  if (resolved && !("ambiguous" in resolved)) {
+    const subsetRef = /\b(those|them|these|from the|remaining)\b/i.test(text);
+    const useResolvedPool =
+      subsetRef ||
+      isDiscoveryFollowUpQuery(text) ||
+      ["research", "go_deeper", "compare", "remove"].includes(classified.intent);
+    if (useResolvedPool) {
+      universe = resolved.pool;
+      target = resolved.pool;
+    }
+  }
   const named = resolveNamedGroup(ws, text);
 
   // --- GROUP REF ---
@@ -719,22 +940,29 @@ export function planFromConversationContext(
     }
   }
 
-  // --- SELECT (which three look strongest, focus on top 5, etc.) ---
+  // --- SELECT (which three look strongest, focus on top 5, bottom 3, etc.) ---
   if (classified.intent === "select" && classified.count) {
     let source = universe.length ? universe : target;
+    if (ws.lastHandler === "earnings_day" && ws.active.length >= classified.count) {
+      source = ws.active;
+    } else if (ws.lastUniverseLabel && ws.groups[ws.lastUniverseLabel.toLowerCase()]?.length) {
+      source = ws.groups[ws.lastUniverseLabel.toLowerCase()]!;
+    }
     if (/\b(those|the)\s+five\b/i.test(text) && ws.groups.top_5?.length) {
       source = ws.groups.top_5;
     } else if (/\b(those|them|these|from|remaining)\b/i.test(text) && target.length >= classified.count) {
       source = target;
     }
-    const top = source.slice(0, classified.count);
+    const side = classified.selectSide ?? resolveSelectSide(text);
+    const selected = pickRankedSlice(source, classified.count, side);
+    const sideLabel = side === "bottom" ? "bottom" : "top";
     if (hasCachedScores(source)) {
       return {
         kind: "reply",
-        reply: formatSelectionReply(top, source.length, classified.count),
+        reply: formatSelectionReply(selected, source.length, classified.count, side),
         intent: "select",
-        applyActive: top,
-        note: `Context: selected top ${classified.count} by prior partial-score ranking → ${symbolsLine(top, classified.count)}. Active scope updated.`,
+        applyActive: selected,
+        note: `Context: selected ${sideLabel} ${classified.count} by prior partial-score ranking → ${symbolsLine(selected, classified.count)}. Active scope updated.`,
       };
     }
     return {
@@ -743,8 +971,9 @@ export function planFromConversationContext(
       intent: "select",
       action: "rank",
       targetSymbols: source.map((e) => e.symbol),
-      nextActive: top,
-      note: `Context: ranking to select top ${classified.count}; active scope will narrow after results.`,
+      nextActive: selected,
+      selectSide: side,
+      note: `Context: ranking to select ${sideLabel} ${classified.count}; active scope will narrow after results.`,
     };
   }
 

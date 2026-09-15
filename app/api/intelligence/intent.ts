@@ -5,6 +5,7 @@ import { sizePosition, portfolioHeatPct, returnCorrelation, GLOBAL_RISK } from "
 import { openRiskDollars, listPositions } from "../engine/portfolio";
 import { publicPackageStatus } from "../governance/runtime";
 import { parseTradeQuantity, resolveTradeSymbol } from "./trade-symbol";
+import { classifyMarketIntelligenceIntent } from "./market-intent";
 
 /**
  * INTENT ROUTER — the deterministic switch between the AI reasoning model
@@ -62,7 +63,8 @@ export const STATUS_TRIGGERS = /\b(p&l|pnl|profit|loss|positions?|orders?|ticket
 export const STRATEGIZE_TRIGGERS = /\b(strategi[sz]e|build (me )?a strategy|create (a )?strategy|design (a )?strategy|write (a )?strategy|backtest|game ?plan|trade plan)\b/i;
 export const TRADE_TRIGGERS = /\b(buy|sell|long|short|flatten|exit|close (my |the )?position|add to)\b/i;
 export const STAGE_FOLLOWUP_RE = /\b(stage|stage it|do it|go ahead|place it|send it|buy it|sell it|execute|proceed|let'?s do it|confirmed?)\b/i;
-const QUESTION_OR_NEGATION = /(\?|^\s*(should|would|could|is it|what if|what happens|why did|when (to|should)|how about)|\b(don'?t|do not|hold off|not yet|wait)\b)/i;
+const QUESTION_OR_NEGATION =
+  /(\?|^\s*what\s+should\s+i\s+buy\b|^\s*what\s+(?:stock\s+)?should\s+i\b|^\s*(should|would|could|is it|what if|what happens|why did|when (to|should)|how about)|\b(don'?t|do not|hold off|not yet|wait)\b)/i;
 
 export interface IntentResult {
   mode: ChatMode;
@@ -91,6 +93,17 @@ export function classifyIntent(text: string, thread: ThreadState): IntentResult 
     quantityError: qty.error,
     followUp: false,
   };
+
+  // Beginner market intelligence — never a trade order (Client Rev 9/14).
+  if (classifyMarketIntelligenceIntent(text)) {
+    return {
+      ...base,
+      symbol: null,
+      side: null,
+      mode: "CHAT",
+      reason: "market intelligence pipeline — not an imperative trade",
+    };
+  }
 
   if (ORDER_COMMAND_RE.test(text)) {
     return { ...base, mode: "ORDER_COMMAND", reason: "exact order command — existing confirmation path" };

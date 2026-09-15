@@ -5,6 +5,9 @@ import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
 import { tryDeterministicDataReply } from "./intelligence/data-reply";
+import { tryDiscoveryFollowUpReply, tryMarketIntelligenceReply } from "./intelligence/general-market";
+import { formatMoversTopExplain } from "./intelligence/stock-discovery";
+import { classifyMarketIntelligenceIntent, isDiscoveryFollowUpQuery, isDiscoveryRankExplainQuery } from "./intelligence/market-intent";
 import { runRevision1Research } from "./intelligence/research/earnings-candidate";
 import { runLivePriceConfirmationGate } from "./intelligence/research/live-price-gate";
 import {
@@ -32,8 +35,10 @@ import {
   applyPlanScopeUpdate,
   formatSelectAfterRankReply,
   getWorkingSet,
+  pickRankedSlice,
   planFromConversationContext,
   recordResearchResults,
+  resolveReferentialUniverse,
   setActiveEntities,
   withContextNote,
   type ContextPlan,
@@ -239,6 +244,73 @@ export async function runIntelligenceChat(
   // Recent Conversations always has the full thread).
   if (conversationId) await saveMessage(user.id, "user", text, conversationId);
 
+  // Referential market follow-ups — resolve topic before select/research context runs.
+  if (contextEnabled) {
+    const resolved = resolveReferentialUniverse(text, workingSet);
+    if (resolved && "ambiguous" in resolved && resolved.ambiguous) {
+      if (conversationId) await saveMessage(user.id, "assistant", resolved.question, conversationId);
+      return { kind: "text" as const, reply: resolved.question };
+    }
+    if (isDiscoveryFollowUpQuery(text)) {
+      const discoveryPool = workingSet.groups.stock_discovery;
+      const moversPool = workingSet.groups.market_movers;
+      if (
+        resolved &&
+        !("ambiguous" in resolved) &&
+        resolved.label === "market_movers" &&
+        isDiscoveryRankExplainQuery(text) &&
+        moversPool?.length
+      ) {
+        const moversExplain = formatMoversTopExplain(moversPool);
+        const reply = withContextNote(
+          moversExplain,
+          `Context: referring to **today's movers scan** (${moversPool.map((e) => e.symbol).join(", ")}) — not discovery candidates.`,
+        );
+        if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+        return { kind: "text" as const, reply };
+      }
+      if (!discoveryPool?.length) {
+        const reply = withContextNote(
+          [
+            "I don't have a **stock discovery** list in this chat yet.",
+            "",
+            "Ask e.g. `What should I buy today?` first — then you can follow up with `Why is the top one ranked first?` or `Which of those is riskiest?` on that ranked list.",
+            "",
+            "_Movers and discovery are separate lists — rank/risk follow-ups refer to discovery, not today's gainers/losers scan._",
+          ].join("\n"),
+          "Context: discovery follow-up without a prior stock-discovery run.",
+        );
+        if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+        return { kind: "text" as const, reply };
+      }
+      const discoveryFollowUp = await tryDiscoveryFollowUpReply(
+        user.id,
+        text,
+        discoveryPool,
+        "stock_discovery",
+      ).catch(() => null);
+      if (discoveryFollowUp) {
+        if (discoveryFollowUp.rankedResults?.length) {
+          recordResearchResults(
+            workingSet,
+            discoveryFollowUp.rankedResults.map((r) => ({
+              symbol: r.symbol,
+              rawScore: r.rawScore,
+              classification: r.classification ?? undefined,
+            })),
+            { groupLabel: "stock_discovery" },
+          );
+        }
+        const reply = withContextNote(
+          discoveryFollowUp.reply,
+          `Context: referring to **buy / discovery candidates** (${discoveryPool.map((e) => e.symbol).join(", ")}) — not whichever list ran last.`,
+        );
+        if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+        return { kind: "text" as const, reply };
+      }
+    }
+  }
+
   // Referential follow-ups → intent → entity resolution → scope → action.
   const contextPlan = contextEnabled
     ? planFromConversationContext(text, workingSet)
@@ -292,12 +364,25 @@ export async function runIntelligenceChat(
       )?.[1]?.toLowerCase() ||
         workingSet.lastUniverseLabel);
 
+    if (handler === "earnings_day") {
+      recordResearchResults(
+        workingSet,
+        cleaned.map((symbol, i) => ({
+          symbol,
+          rawScore: cleaned.length - i,
+          classification: "EARNINGS",
+        })),
+        { groupLabel: label ?? "earnings", lastHandler: "earnings_day" },
+      );
+      return;
+    }
+
     if (handler === "research" && researchResults?.length) {
       const safeResearch = researchResults.filter(
         (r) => filterLikelyFalsePositiveTickers([r.symbol], effectiveText).length > 0,
       );
       if (safeResearch.length) {
-        recordResearchResults(workingSet, safeResearch);
+        recordResearchResults(workingSet, safeResearch, { groupLabel: label });
       } else {
         setActiveEntities(workingSet, cleaned, {
           handler,
@@ -317,7 +402,8 @@ export async function runIntelligenceChat(
       if (pendingScope.nextActive?.length) {
         if (pendingScope.action === "rank" && handler === "research" && researchResults?.length) {
           const n = pendingScope.nextActive.length;
-          const top = researchResults.slice(0, n).map((r) => ({
+          const side = pendingScope.selectSide ?? "top";
+          const picked = pickRankedSlice(researchResults, n, side).map((r) => ({
             symbol: r.symbol,
             score: r.rawScore ?? null,
             classification: r.classification ?? null,
@@ -326,7 +412,7 @@ export async function runIntelligenceChat(
             kind: "reply",
             reply: "",
             intent: "select",
-            applyActive: top,
+            applyActive: picked,
           });
         } else {
           applyPlanScopeUpdate(workingSet, pendingScope);
@@ -410,8 +496,12 @@ export async function runIntelligenceChat(
           (research.rankedResults?.length ?? 0) > 0;
 
         const selectCount = selectAfterRank ? pendingScope.nextActive!.length : 0;
+        const selectSide =
+          selectAfterRank && pendingScope.kind === "rewrite"
+            ? (pendingScope.selectSide ?? "top")
+            : "top";
         const selectSymbols = selectAfterRank
-          ? research.rankedResults!.slice(0, selectCount).map((r) => r.symbol)
+          ? pickRankedSlice(research.rankedResults!, selectCount, selectSide).map((r) => r.symbol)
           : research.symbols;
 
         marketMeta = {
@@ -428,7 +518,7 @@ export async function runIntelligenceChat(
         if (selectAfterRank) {
           // Phase 3 MT-001: narrow UX — selection table only; full cards on "Go deeper".
           return withContextNote(
-            formatSelectAfterRankReply(research.rankedResults!, selectCount),
+            formatSelectAfterRankReply(research.rankedResults!, selectCount, selectSide),
             contextNote,
           );
         }
@@ -439,10 +529,26 @@ export async function runIntelligenceChat(
         marketMeta = deterministic.meta;
         const isCalendar = /finnhub/i.test(deterministic.meta.sourceName ?? "") ||
           /quarterly earnings/i.test(deterministic.reply);
-        rememberFromMeta(
-          isCalendar ? "earnings_day" : "data_reply",
-          deterministic.meta.symbols ?? [],
-        );
+        const isDiscovery = /stock-discovery/i.test(deterministic.meta.sourceName ?? "");
+        const isMovers = /market-movers/i.test(deterministic.meta.sourceName ?? "");
+        if (isCalendar) {
+          rememberFromMeta(
+            "earnings_day",
+            deterministic.rankedResults?.map((r) => r.symbol) ?? deterministic.meta.symbols ?? [],
+            effectiveText.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b/i)?.[1]?.toLowerCase(),
+          );
+        } else if (isDiscovery || isMovers) {
+          rememberFromMeta(
+            "research",
+            deterministic.rankedResults?.map((r) => r.symbol) ?? deterministic.meta.symbols ?? [],
+            isDiscovery ? "stock_discovery" : "market_movers",
+            deterministic.rankedResults?.map((r) => ({
+              symbol: r.symbol,
+              rawScore: r.rawScore,
+              classification: r.classification ?? undefined,
+            })),
+          );
+        }
         return withContextNote(deterministic.reply, contextNote);
       }
     }
@@ -481,6 +587,32 @@ export async function runIntelligenceChat(
       // 0) anti-exposure guard — architectural confidentiality, checked first
       if (isExposureAttempt(text)) {
         return { kind: "text" as const, reply: EXPOSURE_REFUSAL };
+      }
+
+      // 0b) Client Rev 9/14 — market intelligence before trade intent can misread TODAY as a ticker.
+      if (classifyMarketIntelligenceIntent(effectiveText)) {
+        const marketEarly = await tryMarketIntelligenceReply(ctx.user.id, effectiveText).catch(() => null);
+        if (marketEarly) {
+          marketMeta = marketEarly.meta;
+          const isDiscovery = /stock-discovery/i.test(marketEarly.meta.sourceName ?? "");
+          const isMovers = /market-movers/i.test(marketEarly.meta.sourceName ?? "");
+          if (isDiscovery || isMovers) {
+            rememberFromMeta(
+              "research",
+              marketEarly.rankedResults?.map((r) => r.symbol) ?? marketEarly.meta.symbols ?? [],
+              isDiscovery ? "stock_discovery" : "market_movers",
+              marketEarly.rankedResults?.map((r) => ({
+                symbol: r.symbol,
+                rawScore: r.rawScore,
+                classification: r.classification ?? undefined,
+              })),
+            );
+          }
+          return {
+            kind: "text" as const,
+            reply: withContextNote(marketEarly.reply, contextNote),
+          };
+        }
       }
 
       // 1) confirmation-gate commands — CONFIRM/REJECT ORDER [TICKET_ID]

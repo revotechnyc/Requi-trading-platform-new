@@ -16,6 +16,11 @@ describe("resolveTradeSymbol", () => {
   it("parses Buy 2 shares of TSLA", () => {
     expect(resolveTradeSymbol("Buy 2 shares of TSLA", emptyThread)).toBe("TSLA");
   });
+
+  it("does not resolve TODAY from stock-discovery phrasing", () => {
+    expect(resolveTradeSymbol("What should I buy today", emptyThread)).toBeNull();
+    expect(resolveTradeSymbol("What should I buy today?", emptyThread)).toBeNull();
+  });
 });
 
 describe("parseTradeQuantity", () => {
@@ -38,5 +43,11 @@ describe("classifyIntent trade flow", () => {
     expect(intent.mode).toBe("TRADE_INTENT");
     expect(intent.quantityError).toBeTruthy();
     expect(intent.symbol).toBe("AAPL");
+  });
+
+  it("routes stock-discovery questions to CHAT, not TRADE_INTENT", () => {
+    const intent = classifyIntent("What should I buy today", emptyThread);
+    expect(intent.mode).toBe("CHAT");
+    expect(intent.symbol).toBeNull();
   });
 });

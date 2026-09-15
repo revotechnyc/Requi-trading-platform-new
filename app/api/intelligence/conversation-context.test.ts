@@ -7,8 +7,11 @@ import {
   getWorkingSet,
   hasReferentialLanguage,
   parseQuantity,
+  pickRankedSlice,
   planFromConversationContext,
   recordResearchResults,
+  resolveReferentialUniverse,
+  resolveSelectSide,
   setActiveEntities,
 } from "./conversation-context";
 
@@ -97,6 +100,54 @@ describe("conversation context orchestrator", () => {
       expect(deeperPlan.text).not.toMatch(/KAVL/);
       expect(deeperPlan.targetSymbols).toEqual(["CODA", "CBRL", "IVDN"]);
     }
+  });
+
+  it("bottom 3 selects weakest scores — not the top of the board (Phase 3)", () => {
+    const ws = seedRankedResearch();
+    expect(resolveSelectSide("i want info about bottom 3")).toBe("bottom");
+    expect(parseQuantity("i want info about bottom 3")).toBe(3);
+
+    const plan = planFromConversationContext("i want info about bottom 3", ws);
+    expect(plan.kind).toBe("reply");
+    if (plan.kind !== "reply") return;
+    // SYMS ranked best→worst; bottom 3 worst-first = BRRE, CLSD, HYFT
+    expect(plan.applyActive.map((e) => e.symbol)).toEqual(["BRRE", "CLSD", "HYFT"]);
+    expect(plan.reply).toMatch(/bottom candidates/i);
+    expect(plan.reply).not.toMatch(/CODA/);
+    expect(plan.note).toMatch(/bottom 3/i);
+  });
+
+  it("top 3 after bottom select still uses full ranked universe (Phase 3)", () => {
+    const ws = seedRankedResearch();
+    const bottom = planFromConversationContext("i want info about bottom 3", ws);
+    if (bottom.kind === "reply") applyActiveSubset(ws, bottom.applyActive, "select");
+    expect(ws.active.map((e) => e.symbol)).toEqual(["BRRE", "CLSD", "HYFT"]);
+    expect(ws.ranked.length).toBe(12);
+
+    const top = planFromConversationContext("now give me top 3", ws);
+    expect(top.kind).toBe("reply");
+    if (top.kind !== "reply") return;
+    expect(top.applyActive.map((e) => e.symbol)).toEqual(["CODA", "CBRL", "IVDN"]);
+    expect(top.reply).toMatch(/top candidates/i);
+  });
+
+  it("formatSelectAfterRankReply bottom side picks end of ranked list", () => {
+    const reply = formatSelectAfterRankReply(
+      [
+        { symbol: "HERE", rawScore: 70, classification: "WATCHLIST" },
+        { symbol: "GIS", rawScore: 63, classification: "REJECT" },
+        { symbol: "VRA", rawScore: 60, classification: "REJECT" },
+        { symbol: "EPM", rawScore: 40, classification: "REJECT" },
+        { symbol: "DDDX", rawScore: 28, classification: "WAIT" },
+      ],
+      3,
+      "bottom",
+    );
+    expect(reply).toMatch(/bottom candidates/i);
+    expect(reply).toMatch(/\bDDDX\b/);
+    expect(reply).toMatch(/\bEPM\b/);
+    expect(reply).toMatch(/\bVRA\b/);
+    expect(reply).not.toMatch(/\bHERE\b/);
   });
 
   it("select top-N without cached scores rewrites to rank the full universe (not a silent empty select)", () => {
@@ -366,6 +417,128 @@ describe("conversation context orchestrator", () => {
       expect(follow.text).toMatch(/NVDA/i);
       expect(follow.text).not.toMatch(/\bAAPL\b/);
       expect(follow.targetSymbols).toEqual(["NVDA"]);
+    }
+  });
+
+  it("discovery follow-ups passthrough instead of select-top-1 or Rev-1 (Pack D2)", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "XOM", rawScore: 82, classification: "MODERATE · Energy" },
+        { symbol: "CVX", rawScore: 70, classification: "MODERATE · Energy" },
+        { symbol: "CAT", rawScore: 53, classification: "MODERATE · Materials" },
+      ],
+      { groupLabel: "stock_discovery" },
+    );
+    // Movers overwrote active ranked universe — discovery group must remain.
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "QCOM", rawScore: 4.99, classification: "GAINER" },
+        { symbol: "XOM", rawScore: 2.64, classification: "GAINER" },
+      ],
+      { groupLabel: "market_movers" },
+    );
+    expect(ws.groups.stock_discovery?.map((e) => e.symbol)).toEqual(["XOM", "CVX", "CAT"]);
+
+    const whyTop = planFromConversationContext("Why is the top one ranked first?", ws);
+    expect(whyTop.kind).toBe("passthrough");
+
+    const riskiest = planFromConversationContext("Which of those is riskiest?", ws);
+    expect(riskiest.kind).toBe("passthrough");
+  });
+
+  it("discovery follow-ups without prior discovery run return guidance, not select or Rev-1", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "QCOM", rawScore: 4.99, classification: "GAINER" },
+        { symbol: "XOM", rawScore: 2.64, classification: "GAINER" },
+      ],
+      { groupLabel: "market_movers" },
+    );
+
+    const whyTop = planFromConversationContext("Why is the top one ranked first?", ws);
+    expect(whyTop.kind).toBe("clarify");
+
+    const riskiest = planFromConversationContext("Which of those is riskiest?", ws);
+    expect(riskiest.kind).toBe("clarify");
+    if (riskiest.kind === "clarify") {
+      expect(riskiest.question).toMatch(/What should I buy today/i);
+    }
+  });
+
+  it("resolveReferentialUniverse picks discovery over movers when user asks about rank/risk", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "XOM", rawScore: 82, classification: "MODERATE · Energy" },
+        { symbol: "CVX", rawScore: 70, classification: "MODERATE · Energy" },
+        { symbol: "GE", rawScore: 43, classification: "HIGH · Materials" },
+      ],
+      { groupLabel: "stock_discovery" },
+    );
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "QCOM", rawScore: 4.99, classification: "GAINER" },
+        { symbol: "XOM", rawScore: 2.64, classification: "GAINER" },
+      ],
+      { groupLabel: "market_movers" },
+    );
+
+    const rankExplain = resolveReferentialUniverse("Why is the top one ranked first?", ws);
+    expect(rankExplain).not.toBeNull();
+    if (rankExplain && !("ambiguous" in rankExplain)) {
+      expect(rankExplain.label).toBe("market_movers");
+      expect(rankExplain.pool[0]!.symbol).toBe("QCOM");
+    }
+
+    const riskiest = resolveReferentialUniverse("Which of those is riskiest?", ws);
+    expect(riskiest).not.toBeNull();
+    if (riskiest && !("ambiguous" in riskiest)) {
+      expect(riskiest.label).toBe("stock_discovery");
+    }
+
+    const movers = resolveReferentialUniverse("Why are those gainers moving?", ws);
+    expect(movers).not.toBeNull();
+    if (movers && !("ambiguous" in movers)) {
+      expect(movers.label).toBe("market_movers");
+    }
+  });
+
+  it("select top 3 after earnings calendar uses earnings group, not stale index ranked", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "SPY", rawScore: 13, classification: "BLOCKED" },
+        { symbol: "QQQ", rawScore: 13, classification: "BLOCKED" },
+        { symbol: "DIA", rawScore: 13, classification: "BLOCKED" },
+        { symbol: "IWM", rawScore: 13, classification: "BLOCKED" },
+      ],
+      { groupLabel: "general_market_indexes" },
+    );
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "FDX", rawScore: 7, classification: "EARNINGS" },
+        { symbol: "LEN", rawScore: 6, classification: "EARNINGS" },
+        { symbol: "ALMU", rawScore: 5, classification: "EARNINGS" },
+        { symbol: "ABAT", rawScore: 4, classification: "EARNINGS" },
+      ],
+      { groupLabel: "tomorrow", lastHandler: "earnings_day" },
+    );
+
+    const select = planFromConversationContext("Keep the top 3 only", ws);
+    expect(select.kind).toBe("reply");
+    if (select.kind === "reply") {
+      expect(select.reply).toMatch(/FDX/);
+      expect(select.reply).toMatch(/LEN/);
+      expect(select.reply).not.toMatch(/\bSPY\b/);
     }
   });
 });

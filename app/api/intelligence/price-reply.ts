@@ -171,6 +171,7 @@ function toMarketMeta(bundle: IntelligenceBundle): MarketMeta {
 export interface DeterministicPriceResult {
   reply: string;
   meta: MarketMeta;
+  rankedResults?: Array<{ symbol: string; rawScore?: number | null; classification?: string | null }>;
 }
 
 /** Server-side quote formatter — bypasses the LLM so prices cannot be invented. */

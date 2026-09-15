@@ -29,6 +29,7 @@ This pack turns the client’s builder expectations into something you can run i
 | [`PHASE2_BREADTH.md`](./PHASE2_BREADTH.md) | Phase 2 domain packs + exit criteria |
 | [`PHASE3_CONVERSATION.md`](./PHASE3_CONVERSATION.md) | Phase 3 multi-turn / working-set scripts |
 | [`STATUS_2026-09-15.md`](./STATUS_2026-09-15.md) | Daily status — changes + testing (2026-09-15) |
+| [`CLIENT_REV_914_TESTING.md`](./CLIENT_REV_914_TESTING.md) | Client 9/14 revision — beginner market IQ testing plan |
 
 ## How to run baseline (same day)
 
