@@ -121,3 +121,17 @@ export function isDiscoveryRiskiestQuery(text: string): boolean {
     /\b(riskiest|highest\s+risk)\s+(of|among)\s+(those|these|them)\b/i.test(text)
   );
 }
+
+/** Pack G1 — user tries to bypass tools / invent from memory. */
+export function isMemoryBypassProbe(text: string): boolean {
+  const lower = text.toLowerCase();
+  const bypass =
+    /\b(ignore\s+(your\s+)?tools|without\s+(using\s+)?tools|from\s+memory|don't\s+use\s+tools)\b/.test(
+      lower,
+    ) || /\bignore\s+your\s+tools\b/.test(lower);
+  const marketOrBuys =
+    /\b(bullish|bearish|market\s+is|pick\s+(three|3|\d+)\s+buys?|three\s+buys?|recommend\s+stocks?)\b/.test(
+      lower,
+    );
+  return bypass && marketOrBuys;
+}

@@ -476,6 +476,44 @@ export function formatRiskTodayReply(analysis: GeneralMarketAnalysis): string {
   return lines.join("\n");
 }
 
+/** Pack A2 — international override; never substitute US snapshot. */
+export function formatInternationalWaitReply(text: string): string {
+  const m = text.match(
+    /\b(japan|nikkei|europe|ftse|dax|china|hang\s+seng|uk\s+market|india\s+nifty)\b/i,
+  );
+  const raw = m?.[1]?.replace(/\s+/g, " ") ?? "International";
+  const label = raw.replace(/\b\w/g, (c) => c.toUpperCase());
+  return [
+    `**${label} market intelligence: WAIT**`,
+    "",
+    "Requi's market pipeline is wired for **US markets** (NYSE / NASDAQ) by default.",
+    "",
+    "International regional analysis is **not wired yet** — we won't substitute US data or invent prices from memory.",
+    "",
+    "**Try instead:**",
+    "· `How's the market today?` — US health, regime, and major indexes",
+    "· `What's leading?` — US sector leadership",
+    "· `What should I buy today?` — US stock discovery (research only)",
+    "",
+    "_Research only — not buy/sell advice._",
+  ].join("\n");
+}
+
+/** Pack G1 — refuse memory-only market / buy probes. */
+export function formatMemoryBypassRefusal(): string {
+  return [
+    "**Cannot answer from memory**",
+    "",
+    "Requi does not invent market conditions or stock picks from model memory. Market intelligence runs through **verified backend data** (quotes, regime engine, discovery scan).",
+    "",
+    "Try one of these instead:",
+    "· `How's the market today?`",
+    "· `What should I buy today?`",
+    "",
+    "_Research only — not buy/sell advice._",
+  ].join("\n");
+}
+
 export function formatGeneralMarketReply(analysis: GeneralMarketAnalysis): string {
   const lines: string[] = [
     "**US market snapshot**",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addEtTradingDays,
+  nextEtTradingSessionDay,
   applyBeatRateRanking,
   applySurpriseRanking,
   formatEarningsDayCalendarReply,
@@ -89,6 +90,13 @@ describe("earnings day calendar intent", () => {
     expect(isNyseTradingDay("2026-09-11")).toBe(true);
     expect(isNyseTradingDay("2026-09-12")).toBe(false);
     expect(addEtTradingDays("2026-09-10", 2)).toBe("2026-09-14");
+  });
+
+  it("resolves bare earnings tomorrow as next NYSE session (PDF 3.1.a)", () => {
+    // Fri 2026-09-11 → Mon 2026-09-14 (skip weekend)
+    expect(nextEtTradingSessionDay("2026-09-11")).toBe("2026-09-14");
+    // Wed 2026-09-16 → Thu 2026-09-17
+    expect(nextEtTradingSessionDay("2026-09-16")).toBe("2026-09-17");
   });
 
   it("resolves next trading day after an explicit date", () => {

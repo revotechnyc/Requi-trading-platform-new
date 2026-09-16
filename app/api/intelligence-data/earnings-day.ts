@@ -182,6 +182,11 @@ export function addEtTradingDays(ymd: string, n: number): string {
   return cur;
 }
 
+/** PDF §29 — bare "tomorrow" for earnings = next NYSE session day (ET), not calendar +1. */
+export function nextEtTradingSessionDay(fromYmd: string): string {
+  return addEtTradingDays(fromYmd, 1);
+}
+
 /**
  * Resolve relative trading-day offsets such as:
  * - "two trading days after tomorrow"
@@ -204,7 +209,7 @@ export function resolveRelativeTradingDayOffset(text: string): string | null {
       .trim();
     const today = ymdFromEtParts(etParts());
     let anchor: string | null = null;
-    if (/\btomorrow\b/.test(anchorRaw)) anchor = addEtDays(today, 1);
+    if (/\btomorrow\b/.test(anchorRaw)) anchor = nextEtTradingSessionDay(today);
     else if (/\btoday\b/.test(anchorRaw)) anchor = today;
     else anchor = parseMonthDay(anchorRaw);
     if (anchor) return addEtTradingDays(anchor, 1);
@@ -223,7 +228,7 @@ export function resolveRelativeTradingDayOffset(text: string): string | null {
     .trim();
   const today = ymdFromEtParts(etParts());
   let anchor: string | null = null;
-  if (/\btomorrow\b/.test(anchorRaw)) anchor = addEtDays(today, 1);
+  if (/\btomorrow\b/.test(anchorRaw)) anchor = nextEtTradingSessionDay(today);
   else if (/\btoday\b/.test(anchorRaw)) anchor = today;
   else anchor = parseMonthDay(anchorRaw);
 
@@ -341,7 +346,7 @@ export function resolveEarningsCalendarDate(text: string): string | null {
   const today = ymdFromEtParts(etParts());
 
   if (/\btoday\b/.test(lower)) return today;
-  if (/\btomorrow\b/.test(lower)) return addEtDays(today, 1);
+  if (/\btomorrow\b/.test(lower)) return nextEtTradingSessionDay(today);
 
   // "this week" → use today as the board day (caller may expand later).
   if (/\bthis week\b/.test(lower) && !/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(lower)) {
@@ -384,7 +389,7 @@ function parseDateToken(part: string): string | null {
   if (monthDay) return monthDay;
   const today = ymdFromEtParts(etParts());
   if (/\btoday\b/.test(cleaned)) return today;
-  if (/\btomorrow\b/.test(cleaned)) return addEtDays(today, 1);
+  if (/\btomorrow\b/.test(cleaned)) return nextEtTradingSessionDay(today);
   for (const [name, targetDow] of Object.entries(WEEKDAY_INDEX)) {
     if (!new RegExp(`\\b${name}\\b`).test(cleaned)) continue;
     const { weekday } = etParts();

@@ -5,9 +5,20 @@ import { confirmTicket, proposeTicket, rejectTicket } from "./queries/tickets";
 import { agentChat, type AgentChatOptions, type MarketMeta } from "./intelligence/tools";
 import { luciaPromptChat } from "./intelligence/lucia-prompt";
 import { tryDeterministicDataReply } from "./intelligence/data-reply";
-import { tryDiscoveryFollowUpReply, tryMarketIntelligenceReply } from "./intelligence/general-market";
+import {
+  formatInternationalWaitReply,
+  formatMemoryBypassRefusal,
+  tryDiscoveryFollowUpReply,
+  tryMarketIntelligenceReply,
+} from "./intelligence/general-market";
 import { formatMoversTopExplain } from "./intelligence/stock-discovery";
-import { classifyMarketIntelligenceIntent, isDiscoveryFollowUpQuery, isDiscoveryRankExplainQuery } from "./intelligence/market-intent";
+import {
+  classifyMarketIntelligenceIntent,
+  isDiscoveryFollowUpQuery,
+  isDiscoveryRankExplainQuery,
+  isInternationalMarketQuery,
+  isMemoryBypassProbe,
+} from "./intelligence/market-intent";
 import { runRevision1Research } from "./intelligence/research/earnings-candidate";
 import { runLivePriceConfirmationGate } from "./intelligence/research/live-price-gate";
 import {
@@ -243,6 +254,20 @@ export async function runIntelligenceChat(
   // agentChat, which no longer saves — persistence is centralized here so
   // Recent Conversations always has the full thread).
   if (conversationId) await saveMessage(user.id, "user", text, conversationId);
+
+  // Pack G1 — refuse memory-only market / buy probes before any LLM path.
+  if (isMemoryBypassProbe(text)) {
+    const reply = formatMemoryBypassRefusal();
+    if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+    return { kind: "text" as const, reply };
+  }
+
+  // Pack A2 — international markets; honest WAIT (never US-default substitute).
+  if (isInternationalMarketQuery(text)) {
+    const reply = formatInternationalWaitReply(text);
+    if (conversationId) await saveMessage(user.id, "assistant", reply, conversationId);
+    return { kind: "text" as const, reply };
+  }
 
   // Referential market follow-ups — resolve topic before select/research context runs.
   if (contextEnabled) {
