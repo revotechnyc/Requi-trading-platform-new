@@ -199,6 +199,24 @@ describe("deterministic provider routing", () => {
     expect(snap.market_data_available).toBe(false);
     expect(yahooState.throwOnQuote).toBeNull();
   });
+
+  it("accepts Yahoo index tickers such as ^VIX", async () => {
+    yahooState.quote = {
+      symbol: "^VIX",
+      price: 16.2,
+      open: 16.5,
+      high: 17.0,
+      low: 15.8,
+      previousClose: 16.8,
+      volume: 0,
+      timestamp: nowIso(),
+      exchange: "CBOE",
+      isDelayed: true,
+    };
+    const snap = await getSnapshot(USER, "^VIX");
+    expect(snap.symbol).toBe("^VIX");
+    expect(snap.market_data_available).toBe(true);
+  });
 });
 
 /* ---------- validation & staleness ---------- */

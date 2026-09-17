@@ -17,7 +17,8 @@ import type { MarketDataUnavailable, OhlcvBar, SnapshotResult, UnifiedMarketSnap
  * payloads — only the unified snapshot + computed indicators.
  */
 
-const SYMBOL_RE = /^[A-Z][A-Z0-9.-]{0,11}$/;
+/** Allows Yahoo index tickers such as ^VIX (CBOE volatility index). */
+const SYMBOL_RE = /^(\^)?[A-Z][A-Z0-9.-]{0,11}$/;
 
 function normalizeQuote(routed: Awaited<ReturnType<typeof routedQuote>>, symbol: string): UnifiedMarketSnapshot {
   const session = currentMarketSession();

@@ -2,7 +2,7 @@
  * Client Rev 9/14 — predetermined US general-market intelligence pipeline.
  * DATA → CALC → CLASSIFICATION → formatted reply (LLM explains only when routed upstream).
  */
-import { getSnapshot, getIndicators } from "../marketdata/gateway/gateway";
+import { getSnapshot, getIndicators, getHistory } from "../marketdata/gateway/gateway";
 import type { MarketSession, SnapshotResult } from "../marketdata/gateway/types";
 import type { GatewayIndicators } from "../marketdata/gateway/indicators";
 import { fetchFredMacroBackdrop, formatFredMacroBrief } from "../intelligence-data/providers/fred";
@@ -12,6 +12,8 @@ import {
   isDiscoveryFollowUpQuery,
   isDiscoveryRankExplainQuery,
   isDiscoveryRiskiestQuery,
+  isExtendedMarketSnapshotQuery,
+  isIndexDepthQuery,
   isRiskTodayQuery,
   isSectorLeadingQuery,
   type MarketIntelligenceIntent,
@@ -19,11 +21,14 @@ import {
 import {
   runStockDiscovery,
   runMarketMoversScan,
+  runMarketBreadthScan,
   formatStockDiscoveryReply,
   formatMarketMoversReply,
   discoveryToRankedResults,
   moversToRankedResults,
   formatDiscoveryRankExplain,
+  type MarketBreadthResult,
+  type BreadthClassification,
 } from "./stock-discovery";
 import type { DeterministicPriceResult } from "./price-reply";
 import type { MarketMeta } from "./tools";
@@ -44,6 +49,21 @@ export const US_SECTOR_ETFS = [
 ] as const;
 
 export const VOL_PROXY_SYMBOL = "VIXY";
+/** Spot CBOE VIX index (Yahoo: ^VIX). */
+export const SPOT_VIX_SYMBOL = "^VIX";
+
+export type VixClassification = "LOW" | "NORMAL" | "ELEVATED" | "HIGH" | "EXTREME";
+
+export type SpotVixSnapshot = {
+  symbol: string;
+  level: number | null;
+  dailyChangePct: number | null;
+  classification: VixClassification | null;
+  source: string | null;
+  timestamp: string | null;
+  stale: boolean;
+  available: boolean;
+};
 
 export type MarketRegime =
   | "STRONG_BULL"
@@ -66,6 +86,17 @@ export type IndexSnapshot = {
   available: boolean;
   rsi14: number | null;
   relativeVolume: number | null;
+};
+
+/** Pack B2 — index drill-down fields (PDF §5). */
+export type IndexDepthSnapshot = IndexSnapshot & {
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  return5d: number | null;
+  return20d: number | null;
+  volume: number | null;
+  averageVolume: number | null;
 };
 
 export type SectorSnapshot = {
@@ -91,7 +122,9 @@ export type GeneralMarketAnalysis = {
   asOf: string;
   indexes: IndexSnapshot[];
   sectors: SectorSnapshot[];
+  breadth: MarketBreadthResult;
   volProxy: { symbol: string; dailyChangePct: number | null; available: boolean };
+  spotVix: SpotVixSnapshot;
   missingFields: string[];
   analysisConfidence: number;
   marketHealth: number;
@@ -137,6 +170,16 @@ function normalizeRelativeVolumeScore(rv: number | null): number {
   return clamp(20 + rv * 30, 0, 100);
 }
 
+/** PDF §8 — spot VIX level bands (regime still uses health score, not VIX alone). */
+export function classifySpotVixLevel(vix: number): VixClassification {
+  if (!Number.isFinite(vix)) return "NORMAL";
+  if (vix < 15) return "LOW";
+  if (vix < 20) return "NORMAL";
+  if (vix < 25) return "ELEVATED";
+  if (vix < 30) return "HIGH";
+  return "EXTREME";
+}
+
 function normalizeVolatilityScore(volProxyDailyPct: number | null): number {
   if (volProxyDailyPct === null || !Number.isFinite(volProxyDailyPct)) return 50;
   const abs = Math.abs(volProxyDailyPct);
@@ -169,6 +212,8 @@ function macroScoreFromFred(available: boolean): number {
 /** V1 weights — must sum to 100% (CLIENT_REV_914 Pack B4). */
 export function calculateMarketHealthV1(input: {
   indexReturns: Array<number | null>;
+  /** True liquid-universe breadth when available; falls back to index ETF proxy. */
+  breadthPctAdvancing?: number | null;
   sectorSnapshots: SectorSnapshot[];
   volProxyDailyPct: number | null;
   spyRsi: number | null;
@@ -180,7 +225,12 @@ export function calculateMarketHealthV1(input: {
       ? input.indexReturns.reduce((a, b) => a + (b ?? 0), 0) / input.indexReturns.filter((r) => r !== null).length
       : null,
   );
-  const breadth = breadthScoreFromReturns(input.indexReturns);
+  const breadth =
+    input.breadthPctAdvancing !== null &&
+    input.breadthPctAdvancing !== undefined &&
+    Number.isFinite(input.breadthPctAdvancing)
+      ? clamp(input.breadthPctAdvancing, 0, 100)
+      : breadthScoreFromReturns(input.indexReturns);
   const sector = sectorParticipationScore(input.sectorSnapshots);
   const volatility = normalizeVolatilityScore(input.volProxyDailyPct);
   const momentum = normalizeRsiScore(input.spyRsi);
@@ -232,6 +282,46 @@ function confidenceFromCoverage(available: number, total: number, staleCount: nu
   return Math.round(clamp(coverage * 100 - stalePenalty * 100, 15, 95));
 }
 
+function returnPctFromCloses(closes: number[], offsetDays: number): number | null {
+  if (closes.length <= offsetDays) return null;
+  const last = closes[closes.length - 1]!;
+  const prior = closes[closes.length - 1 - offsetDays]!;
+  if (!prior || prior <= 0) return null;
+  return ((last - prior) / prior) * 100;
+}
+
+function priceVsSmaLabel(price: number | null, sma: number | null): string {
+  if (price === null || sma === null || !Number.isFinite(price) || !Number.isFinite(sma)) return "WAIT";
+  if (price > sma * 1.0001) return "above";
+  if (price < sma * 0.9999) return "below";
+  return "at";
+}
+
+async function loadIndexDepth(userId: string, symbol: string): Promise<IndexDepthSnapshot> {
+  const base = await loadIndex(userId, symbol);
+  const [ind, daily] = await Promise.all([
+    getIndicators(userId, symbol).catch(() => ({ available: false, indicators: null })),
+    getHistory(userId, symbol, "1y", "1d").catch(() => ({ available: false, bars: [] })),
+  ]);
+  const indicators = ind.available ? ind.indicators : null;
+  const closes = daily.available ? daily.bars.map((b) => b.c) : [];
+  return {
+    ...base,
+    sma20: indicators?.sma_20 ?? null,
+    sma50: indicators?.sma_50 ?? null,
+    sma200: indicators?.sma_200 ?? null,
+    return5d: returnPctFromCloses(closes, 5),
+    return20d: returnPctFromCloses(closes, 20),
+    volume: indicators?.volume ?? null,
+    averageVolume: indicators?.average_volume ?? null,
+    relativeVolume: indicators?.relative_volume ?? base.relativeVolume,
+  };
+}
+
+export async function loadIndexesDepth(userId: string): Promise<IndexDepthSnapshot[]> {
+  return Promise.all(US_INDEX_SYMBOLS.map((s) => loadIndexDepth(userId, s)));
+}
+
 async function loadIndex(userId: string, symbol: string): Promise<IndexSnapshot> {
   const [snap, ind] = await Promise.all([
     getSnapshot(userId, symbol).catch(() => null),
@@ -266,6 +356,34 @@ async function loadIndex(userId: string, symbol: string): Promise<IndexSnapshot>
   };
 }
 
+async function loadSpotVix(userId: string): Promise<SpotVixSnapshot> {
+  const empty: SpotVixSnapshot = {
+    symbol: SPOT_VIX_SYMBOL,
+    level: null,
+    dailyChangePct: null,
+    classification: null,
+    source: null,
+    timestamp: null,
+    stale: true,
+    available: false,
+  };
+  for (const symbol of [SPOT_VIX_SYMBOL, "VIX"]) {
+    const snap = await getSnapshot(userId, symbol).catch(() => null);
+    if (!snap?.market_data_available || !Number.isFinite(snap.price)) continue;
+    return {
+      symbol,
+      level: snap.price,
+      dailyChangePct: dailyReturnPct(snap),
+      classification: classifySpotVixLevel(snap.price),
+      source: snap.source_name,
+      timestamp: snap.timestamp,
+      stale: snap.stale,
+      available: true,
+    };
+  }
+  return empty;
+}
+
 async function loadSector(userId: string, symbol: string, label: string): Promise<SectorSnapshot> {
   const snap = await getSnapshot(userId, symbol).catch(() => null);
   if (!snap || !snap.market_data_available) {
@@ -283,16 +401,30 @@ export async function runGeneralMarketAnalysis(userId: string): Promise<GeneralM
   const sectorSymbols = US_SECTOR_ETFS.map((s) => s.symbol);
   const allSymbols = [...indexSymbols, ...sectorSymbols, VOL_PROXY_SYMBOL];
 
-  const [indexes, sectorRows, volSnap, fred] = await Promise.all([
+  const [indexes, sectorRows, volSnap, spotVix, fred, breadth] = await Promise.all([
     Promise.all(indexSymbols.map((s) => loadIndex(userId, s))),
     Promise.all(US_SECTOR_ETFS.map((s) => loadSector(userId, s.symbol, s.label))),
     getSnapshot(userId, VOL_PROXY_SYMBOL).catch(() => null),
+    loadSpotVix(userId),
     fetchFredMacroBackdrop().catch(() => ({
       available: false,
       asOf: new Date().toISOString(),
       series: [],
       source: "FRED",
       error: "fetch failed",
+    })),
+    runMarketBreadthScan(userId).catch(() => ({
+      advancing: 0,
+      declining: 0,
+      unchanged: 0,
+      scanned: 0,
+      quoted: 0,
+      pctAdvancing: null,
+      advanceDeclineRatio: null,
+      classification: "MIXED" as BreadthClassification,
+      universeLabel: "liquid US equities",
+      available: false,
+      asOf: new Date().toISOString(),
     })),
   ]);
 
@@ -301,6 +433,7 @@ export async function runGeneralMarketAnalysis(userId: string): Promise<GeneralM
   const spy = indexes.find((i) => i.symbol === "SPY");
   const { score, components } = calculateMarketHealthV1({
     indexReturns: indexes.map((i) => i.dailyChangePct),
+    breadthPctAdvancing: breadth.available ? breadth.pctAdvancing : null,
     sectorSnapshots: sectorRows,
     volProxyDailyPct: volProxyPct,
     spyRsi: spy?.rsi14 ?? null,
@@ -316,6 +449,8 @@ export async function runGeneralMarketAnalysis(userId: string): Promise<GeneralM
     if (!sec.available) missingFields.push(`${sec.symbol} sector`);
   }
   if (volProxyPct === null) missingFields.push(`${VOL_PROXY_SYMBOL} volatility proxy`);
+  if (!spotVix.available) missingFields.push(`spot VIX (${SPOT_VIX_SYMBOL})`);
+  if (!breadth.available) missingFields.push("market breadth (liquid universe)");
   if (!fred.available) missingFields.push("macro backdrop (FRED)");
   if (spy?.rsi14 === null) missingFields.push("SPY momentum (RSI)");
   if (spy?.relativeVolume === null) missingFields.push("SPY relative volume");
@@ -333,7 +468,9 @@ export async function runGeneralMarketAnalysis(userId: string): Promise<GeneralM
     asOf: new Date().toISOString(),
     indexes,
     sectors: sectorRows,
+    breadth,
     volProxy: { symbol: VOL_PROXY_SYMBOL, dailyChangePct: volProxyPct, available: volProxyPct !== null },
+    spotVix,
     missingFields,
     analysisConfidence: confidenceFromCoverage(availableCount, allSymbols.length + 1, staleCount),
     marketHealth: score,
@@ -375,6 +512,49 @@ function rankedSectors(sectors: SectorSnapshot[]): SectorSnapshot[] {
   return [...sectors]
     .filter((s) => s.available && s.dailyChangePct !== null)
     .sort((a, b) => (b.dailyChangePct ?? 0) - (a.dailyChangePct ?? 0));
+}
+
+export type SectorStrengthLabel = "LEADING" | "STRONG" | "NEUTRAL" | "WEAK" | "LAGGING";
+
+/** PDF §7 — sector ETF strength taxonomy for snapshot display. */
+export function classifySectorStrength(
+  dailyChangePct: number | null,
+  rank: number,
+  total: number,
+): SectorStrengthLabel {
+  if (dailyChangePct === null || !Number.isFinite(dailyChangePct)) return "NEUTRAL";
+  if (total > 1 && rank === 0) return "LEADING";
+  if (total > 1 && rank === total - 1) return "LAGGING";
+  if (dailyChangePct >= 1) return "STRONG";
+  if (dailyChangePct <= -0.75) return "WEAK";
+  return "NEUTRAL";
+}
+
+function formatSectorLine(s: SectorSnapshot, rank: number, total: number): string {
+  const label = classifySectorStrength(s.dailyChangePct, rank, total);
+  return `${s.label} (${s.symbol} ${fmtPct(s.dailyChangePct)}) · **${label}**`;
+}
+
+/** Pack B3 — true advance/decline breadth from liquid universe scan. */
+export function formatBreadthSectionLines(analysis: GeneralMarketAnalysis): string[] {
+  const b = analysis.breadth;
+  const lines: string[] = [];
+  if (!b.available || b.pctAdvancing === null) {
+    lines.push("Market breadth: **WAIT** — liquid-universe scan did not return enough verified quotes.");
+    lines.push("_Breadth health component falls back to major-index proxy when scan unavailable._");
+    return lines;
+  }
+  lines.push(
+    `**${b.pctAdvancing.toFixed(1)}% advancing** · ${b.advancing} up · ${b.declining} down · ${b.unchanged} flat` +
+      ` · **${b.classification}** breadth`,
+  );
+  if (b.advanceDeclineRatio !== null) {
+    lines.push(`Advance/decline ratio: **${b.advanceDeclineRatio.toFixed(2)}** (${b.quoted} names quoted)`);
+  } else {
+    lines.push(`Sample: **${b.quoted}** of ${b.scanned} names quoted · ${b.universeLabel}`);
+  }
+  lines.push("_Universe scan — not full NYSE/NASDAQ tape; research context only._");
+  return lines;
 }
 
 function marketMeta(analysis: GeneralMarketAnalysis, sourceName: string, symbols?: string[]): MarketMeta {
@@ -464,9 +644,7 @@ export function formatRiskTodayReply(analysis: GeneralMarketAnalysis): string {
     `- Volatility: ${c.volatility}/100`,
     `- Momentum: ${c.momentum}/100`,
   );
-  if (analysis.volProxy.available) {
-    lines.push(`- Vol proxy (${analysis.volProxy.symbol}): ${fmtPct(analysis.volProxy.dailyChangePct)} daily change`);
-  }
+  lines.push("", ...formatVolatilitySectionLines(analysis));
   lines.push(
     "",
     "**Decision:** RESEARCH ONLY — reduce size / widen stops in CAUTIOUS BEAR or sub-40 health; not a blanket no-trade rule.",
@@ -514,9 +692,104 @@ export function formatMemoryBypassRefusal(): string {
   ].join("\n");
 }
 
-export function formatGeneralMarketReply(analysis: GeneralMarketAnalysis): string {
+function fmtNum(n: number | null, dp = 2): string {
+  if (n === null || !Number.isFinite(n)) return "WAIT";
+  return n.toFixed(dp);
+}
+
+/** Shared volatility block — spot VIX bands + VIXY fallback (PDF §8). */
+export function formatVolatilitySectionLines(analysis: GeneralMarketAnalysis): string[] {
+  const lines: string[] = [];
+  const vix = analysis.spotVix;
+  if (vix.available && vix.level !== null) {
+    lines.push(
+      `Spot **${vix.symbol.replace("^", "")}**: **${vix.level.toFixed(2)}**` +
+        (vix.dailyChangePct !== null ? ` · daily change: ${fmtPct(vix.dailyChangePct)}` : "") +
+        (vix.classification ? ` · **${vix.classification}** volatility` : "") +
+        (vix.source ? ` · ${vix.source}` : "") +
+        (vix.timestamp ? ` · ${vix.timestamp}` : "") +
+        (vix.stale ? " _(delayed/stale)_" : ""),
+    );
+  } else {
+    lines.push(`Spot **VIX**: **WAIT** — verified spot quote unavailable after provider fallback.`);
+  }
+  if (analysis.volProxy.available) {
+    lines.push(
+      `Volatility proxy **${analysis.volProxy.symbol}** daily change: ${fmtPct(analysis.volProxy.dailyChangePct)} (ETF proxy — supplemental).`,
+    );
+  } else {
+    lines.push(`Volatility proxy (${VOL_PROXY_SYMBOL}): **WAIT**`);
+  }
+  lines.push("_Market regime uses health score — not VIX alone._");
+  return lines;
+}
+
+function fmtVol(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return "WAIT";
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(Math.round(n));
+}
+
+/** Pack B2 — per-index price / SMA / return / volume drill-down. */
+export function formatIndexDepthReply(
+  analysis: GeneralMarketAnalysis,
+  depths: IndexDepthSnapshot[],
+): string {
   const lines: string[] = [
-    "**US market snapshot**",
+    "**US major indexes — drill-down (verified quotes + indicators)**",
+    "",
+    `_Default market: ${US_MARKET_DEFAULT.exchanges.join(" / ")} · ${US_MARKET_DEFAULT.currency} · ${US_MARKET_DEFAULT.timezone}_`,
+    "",
+    `**Session:** ${analysis.session} · **As of:** ${analysis.asOf}`,
+    `**Market Health:** ${analysis.marketHealth}/100 · **Regime:** ${analysis.regime.replace(/_/g, " ")}`,
+    "",
+    regimePlainEnglish(analysis.regime),
+    "",
+  ];
+
+  for (const idx of depths) {
+    lines.push(`### ${idx.symbol}`);
+    if (!idx.available) {
+      lines.push(`- **Status:** WAIT — verified quote unavailable`);
+      lines.push("");
+      continue;
+    }
+    lines.push(
+      `- **Price:** ${fmtPrice(idx.price)} · **Today:** ${fmtPct(idx.dailyChangePct)} · **Source:** ${idx.source ?? "WAIT"} · **As of:** ${idx.timestamp ?? "WAIT"}${idx.stale ? " _(delayed/stale)_" : ""}`,
+    );
+    lines.push(`- **5-day return:** ${idx.return5d !== null ? fmtPct(idx.return5d) : "WAIT"}`);
+    lines.push(`- **20-day return:** ${idx.return20d !== null ? fmtPct(idx.return20d) : "WAIT"}`);
+    lines.push(
+      `- **SMA 20:** ${idx.sma20 !== null ? `$${fmtNum(idx.sma20)}` : "WAIT"} · price ${priceVsSmaLabel(idx.price, idx.sma20)} SMA20`,
+    );
+    lines.push(
+      `- **SMA 50:** ${idx.sma50 !== null ? `$${fmtNum(idx.sma50)}` : "WAIT"} · price ${priceVsSmaLabel(idx.price, idx.sma50)} SMA50`,
+    );
+    lines.push(
+      `- **SMA 200:** ${idx.sma200 !== null ? `$${fmtNum(idx.sma200)}` : "WAIT"} · price ${priceVsSmaLabel(idx.price, idx.sma200)} SMA200`,
+    );
+    lines.push(
+      `- **Volume:** ${fmtVol(idx.volume)} · **Avg volume:** ${fmtVol(idx.averageVolume)} · **RVOL:** ${idx.relativeVolume !== null ? `${idx.relativeVolume.toFixed(2)}x` : "WAIT"}`,
+    );
+    lines.push("");
+  }
+
+  lines.push(
+    "_Research context only — not a trade authorization. Missing fields labeled WAIT; nothing invented._",
+  );
+  return lines.join("\n");
+}
+
+export function formatGeneralMarketReply(
+  analysis: GeneralMarketAnalysis,
+  opts?: { extended?: boolean },
+): string {
+  const lines: string[] = [
+    opts?.extended
+      ? "**US market snapshot — breadth · sectors · volatility**"
+      : "**US market snapshot**",
     "",
     `_Default market: ${US_MARKET_DEFAULT.exchanges.join(" / ")} · ${US_MARKET_DEFAULT.currency} · ${US_MARKET_DEFAULT.timezone}_`,
     "",
@@ -542,15 +815,18 @@ export function formatGeneralMarketReply(analysis: GeneralMarketAnalysis): strin
     );
   }
 
-  const leaders = rankedSectors(analysis.sectors).slice(0, 3);
-  const laggards = rankedSectors(analysis.sectors).slice(-3).reverse();
+  lines.push("", "### Market breadth (liquid universe)", ...formatBreadthSectionLines(analysis));
+
+  const ranked = rankedSectors(analysis.sectors);
+  const leaders = ranked.slice(0, 3);
+  const laggards = ranked.slice(-3).reverse();
   const allSectorNegative = leaders.length > 0 && leaders.every((s) => (s.dailyChangePct ?? 0) <= 0);
   const sectorLeadLabel = allSectorNegative ? "Relative strength" : "Leading";
   lines.push("", "### Sector leadership (sector ETFs)");
   if (leaders.length) {
     lines.push(
       `**${sectorLeadLabel}:** ` +
-        leaders.map((s) => `${s.label} (${s.symbol} ${fmtPct(s.dailyChangePct)})`).join(" · "),
+        leaders.map((s, i) => formatSectorLine(s, i, ranked.length)).join(" · "),
     );
   } else {
     lines.push("Sector ranks: **WAIT** — sector ETF quotes unavailable.");
@@ -558,18 +834,14 @@ export function formatGeneralMarketReply(analysis: GeneralMarketAnalysis): strin
   if (laggards.length >= 2) {
     lines.push(
       "**Lagging:** " +
-        laggards.map((s) => `${s.label} (${s.symbol} ${fmtPct(s.dailyChangePct)})`).join(" · "),
+        laggards.map((s) => {
+          const rank = ranked.findIndex((r) => r.symbol === s.symbol);
+          return formatSectorLine(s, rank >= 0 ? rank : ranked.length - 1, ranked.length);
+        }).join(" · "),
     );
   }
 
-  lines.push("", "### Volatility");
-  if (analysis.volProxy.available) {
-    lines.push(
-      `Volatility proxy **${analysis.volProxy.symbol}** daily change: ${fmtPct(analysis.volProxy.dailyChangePct)} (ETF proxy — not spot VIX).`,
-    );
-  } else {
-    lines.push(`Volatility proxy (${VOL_PROXY_SYMBOL}): **WAIT**`);
-  }
+  lines.push("", "### Volatility", ...formatVolatilitySectionLines(analysis));
 
   lines.push("", "### Health components (V1 weights)");
   const c = analysis.healthComponents;
@@ -662,15 +934,23 @@ export async function tryMarketIntelligenceReply(
 
   switch (intent) {
     case "GENERAL_MARKET":
-      if (isRiskTodayQuery(text)) {
+      if (isIndexDepthQuery(text)) {
+        const depths = await loadIndexesDepth(userId);
+        reply = formatIndexDepthReply(analysis, depths);
+        sourceName = "general-market-index-depth-v1";
+      } else if (isRiskTodayQuery(text)) {
         reply = formatRiskTodayReply(analysis);
         sourceName = "general-market-risk-v1";
       } else if (isSectorLeadingQuery(text)) {
         reply = formatSectorLeadingReply(analysis);
         sourceName = "general-market-leading-v1";
       } else {
-        reply = formatGeneralMarketReply(analysis);
-        sourceName = "general-market-v1";
+        reply = formatGeneralMarketReply(analysis, {
+          extended: isExtendedMarketSnapshotQuery(text),
+        });
+        sourceName = isExtendedMarketSnapshotQuery(text)
+          ? "general-market-extended-v1"
+          : "general-market-v1";
       }
       meta = marketMeta(analysis, sourceName);
       break;

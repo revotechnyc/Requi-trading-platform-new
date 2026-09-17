@@ -520,6 +520,18 @@ describe("earnings day calendar intent", () => {
     expect(reply).toContain("not** an expected-surprise ranking");
   });
 
+  it("maps plain after close / before open to AMC / BMO (Pack F1)", () => {
+    const amc = parseEarningsCalendarIntent("Who reports after close tomorrow?");
+    expect(amc).not.toBeNull();
+    expect(amc!.sessionFilter).toBe("AMC");
+    expect(amc!.timeScope).toBe("single_date");
+
+    const bmo = parseEarningsCalendarIntent("Who reports before open today?");
+    expect(bmo).not.toBeNull();
+    expect(bmo!.sessionFilter).toBe("BMO");
+    expect(bmo!.timeScope).toBe("single_date");
+  });
+
   it("maps pre-market / after-hours slang to BMO / AMC (plain ↔ trader)", () => {
     const plainPre = parseEarningsCalendarIntent("Who reports pre-market tomorrow?");
     const traderBmo = parseEarningsCalendarIntent("ER BMO tomorrow");

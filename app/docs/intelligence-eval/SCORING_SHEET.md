@@ -41,7 +41,46 @@ Score each dimension **0–5**:
 
 | Date | Tester | Env (mock/live) | Notes |
 |------|--------|-----------------|-------|
-| | | | |
+| 2026-09-17 | Team | live | Rev 9/14 packs — see section below |
+
+---
+
+## Client Rev 9/14 — test results (Sep 17, 2026)
+
+Master checklist: [`REV_914_MASTER_CHECKLIST.md`](./REV_914_MASTER_CHECKLIST.md)
+
+### Golden scripts
+
+| Script | Pass? | Notes |
+|--------|-------|-------|
+| Script 1 — market / leading / risk | **Pass** | Fresh chat |
+| Script 2 — buy today / rank / riskiest | **Pass** | DDOG #1, INTC riskiest |
+| Script 3 — earnings / top 3 / go deeper | **Pass** | No SPY/QQQ pollution |
+
+### Test packs
+
+| Pack | Pass? | Notes |
+|------|-------|-------|
+| A2 — Japan WAIT | **Pass** | Sprint 1 code |
+| G1 — memory bypass | **Pass** | Sprint 1 code |
+| E1 — movers (moving / hot / crashing) | **Pass** | Verified scan, RVOL |
+| F1 — earnings phrasings (11 prompts) | **Pass** | Session filters fixed Sep 17 |
+| B1 — core market snapshot | **Pass** | Health 65, regime, indexes |
+| B2 — index drill-down | **Partial** | Generic snapshot only — Sprint 2 |
+| B3–B6 | **Not run** | Sprint 2 |
+| C2–C3 labs | **Not run** | Sprint 5 |
+| D1 core | **Pass** | Script 2 |
+| D1 variants (watch / looks good / find) | **Not run** | |
+| F2 bottom 3 | **Not run** | |
+| G3 trace | **Not run** | Sprint 5 |
+
+### Multi-turn
+
+| Script | Pass? | Notes |
+|--------|-------|-------|
+| MT-001 / Script 3 | **Pass** | |
+| MT-002 | Not run | |
+| MT-003 | Not run | Regression: buy NVDA → risks → stage |
 
 ---
 

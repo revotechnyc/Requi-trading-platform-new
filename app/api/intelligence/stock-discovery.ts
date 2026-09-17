@@ -669,7 +669,79 @@ export function formatDiscoveryRankExplain(
     .join("\n");
 }
 
+export type BreadthClassification = "STRONG" | "POSITIVE" | "MIXED" | "WEAK" | "VERY_WEAK";
+
+export type MarketBreadthResult = {
+  advancing: number;
+  declining: number;
+  unchanged: number;
+  scanned: number;
+  quoted: number;
+  pctAdvancing: number | null;
+  advanceDeclineRatio: number | null;
+  classification: BreadthClassification;
+  universeLabel: string;
+  available: boolean;
+  asOf: string;
+};
+
+const breadthCache = new Map<string, { at: number; breadth: MarketBreadthResult }>();
+
+/** PDF §6 — classify % advancing across liquid universe sample. */
+export function classifyMarketBreadth(pctAdvancing: number | null): BreadthClassification {
+  if (pctAdvancing === null || !Number.isFinite(pctAdvancing)) return "MIXED";
+  if (pctAdvancing >= 70) return "STRONG";
+  if (pctAdvancing >= 55) return "POSITIVE";
+  if (pctAdvancing >= 45) return "MIXED";
+  if (pctAdvancing >= 30) return "WEAK";
+  return "VERY_WEAK";
+}
+
+/** Scan liquid universe for advance/decline breadth (PDF §6 / Pack B3). */
+export async function runMarketBreadthScan(userId: string): Promise<MarketBreadthResult> {
+  const cacheKey = userId || "anon";
+  const hit = breadthCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.breadth;
+
+  const symbols = buildMoversScanPool();
+  const metrics = await scanSymbols(userId, symbols);
+  let advancing = 0;
+  let declining = 0;
+  let unchanged = 0;
+  let quoted = 0;
+
+  for (const m of metrics.values()) {
+    if (!m.available || m.dailyChangePct === null || !Number.isFinite(m.dailyChangePct)) continue;
+    quoted++;
+    if (m.dailyChangePct > 0.01) advancing++;
+    else if (m.dailyChangePct < -0.01) declining++;
+    else unchanged++;
+  }
+
+  const pctAdvancing = quoted > 0 ? (advancing / quoted) * 100 : null;
+  const advanceDeclineRatio =
+    declining > 0 ? advancing / declining : advancing > 0 ? advancing : null;
+
+  const breadth: MarketBreadthResult = {
+    advancing,
+    declining,
+    unchanged,
+    scanned: symbols.length,
+    quoted,
+    pctAdvancing: pctAdvancing !== null ? Math.round(pctAdvancing * 10) / 10 : null,
+    advanceDeclineRatio: advanceDeclineRatio !== null ? Math.round(advanceDeclineRatio * 100) / 100 : null,
+    classification: classifyMarketBreadth(pctAdvancing),
+    universeLabel: `liquid US equities (${symbols.length}-name sample)`,
+    available: quoted >= Math.min(12, Math.floor(symbols.length * 0.3)),
+    asOf: new Date().toISOString(),
+  };
+
+  breadthCache.set(cacheKey, { at: Date.now(), breadth });
+  return breadth;
+}
+
 /** Clear cache between tests. */
 export function clearStockDiscoveryCache(): void {
   cache.clear();
+  breadthCache.clear();
 }

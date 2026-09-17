@@ -85,7 +85,7 @@ export function classifyMarketIntelligenceIntent(text: string): MarketIntelligen
 
   if (hasBuy) return "STOCK_DISCOVERY";
   if (hasMovers) return "MARKET_MOVERS";
-  if (hasGeneral) return "GENERAL_MARKET";
+  if (hasGeneral || isIndexDepthQuery(text)) return "GENERAL_MARKET";
   return null;
 }
 
@@ -112,6 +112,37 @@ export function isSectorLeadingQuery(text: string): boolean {
     /\bwhat\s+sectors?\s+(?:are\s+)?leading\b/i.test(text) ||
     /\bwho(?:'s|\s+is)\s+leading\b/i.test(text)
   );
+}
+
+/** Pack B3 — explicit breadth / sector leaders / volatility ask. */
+export function isExtendedMarketSnapshotQuery(text: string): boolean {
+  if (isInternationalMarketQuery(text)) return false;
+  if (!isGeneralMarketQuery(text)) return false;
+  const t = text.toLowerCase();
+  return (
+    /\bbreadth\b/.test(t) ||
+    /\badvanc/.test(t) ||
+    /\bdeclin/.test(t) ||
+    (/\bsector/.test(t) && /\bleaders?\b/.test(t)) ||
+    /\bvolatility\b/.test(t) ||
+    /\bvix\b/.test(t)
+  );
+}
+
+/** Pack B2 — per-index SMA / RVOL drill-down (PDF §5). */
+export function isIndexDepthQuery(text: string): boolean {
+  const hasIndex =
+    /\bSPY\b/.test(text) ||
+    /\bQQQ\b/.test(text) ||
+    /\bDIA\b/.test(text) ||
+    /\bIWM\b/.test(text);
+  if (!hasIndex) return false;
+  if (/\bbreak\s+down\b/i.test(text) || /\bdrill[-\s]?down\b/i.test(text)) return true;
+  if (/\b(SPY|QQQ|DIA|IWM)\b[\s\S]{0,100}\b(sma|moving averages?|rvol|relative volume)\b/i.test(text)) {
+    return true;
+  }
+  if (/\bmajor indexes?\b/i.test(text) && /\b(SPY|QQQ|DIA|IWM)\b/i.test(text)) return true;
+  return false;
 }
 
 export function isDiscoveryRiskiestQuery(text: string): boolean {

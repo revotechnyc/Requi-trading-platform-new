@@ -583,9 +583,13 @@ function extractEarningsSessionFilter(text: string): EarningsDayRow["reportTime"
   // Plain English: "before the market opens", "before market open"
   if (/\bbefore\s+(?:the\s+)?market\s+opens?\b/i.test(lower)) return "BMO";
   if (/\b(bmo|before\s+market\s+open|before\s+the\s+open)\b/i.test(lower)) return "BMO";
+  // Pack F1 shorthand: "before open today" (no "market")
+  if (/\bbefore\s+open\b/i.test(lower)) return "BMO";
   // Plain English: "after the market closes", "after market close"
   if (/\bafter\s+(?:the\s+)?market\s+clos(?:e|es|ing)\b/i.test(lower)) return "AMC";
   if (/\b(amc|after\s+market\s+close|after\s+the\s+close)\b/i.test(lower)) return "AMC";
+  // Pack F1 shorthand: "after close tomorrow" (no "market")
+  if (/\bafter\s+close\b/i.test(lower)) return "AMC";
   return null;
 }
 
