@@ -4,6 +4,7 @@ import {
   buildDiscoveryCandidatePool,
   computeCandidateRiskScore,
   formatDiscoveryRankExplain,
+  formatDiscoverySymbolExplain,
   formatStockDiscoveryReply,
   pickRiskiestCandidate,
   scoreDiscoveryCandidate,
@@ -161,6 +162,49 @@ describe("stock-discovery Phase 2", () => {
     expect(explain).not.toMatch(/UNVERIFIED/i);
   });
 
+  it("explains a named symbol rank from fresh engine order (Why is MU ranked first)", () => {
+    const sorted = [
+      {
+        symbol: "MU",
+        sectorEtf: "XLK",
+        sectorLabel: "Technology",
+        price: 999.28,
+        dailyChangePct: 2.23,
+        relativeStrengthVsSpy: 2.35,
+        rsi14: 56.4,
+        relativeVolume: 0.77,
+        score: 89,
+        risk: "MODERATE" as const,
+        reasons: ["outperforming SPY by 2.35%"],
+        source: "Yahoo Finance",
+        timestamp: "2026-09-18T17:54:52.000Z",
+        stale: false,
+        available: true,
+      },
+      {
+        symbol: "TXN",
+        sectorEtf: "XLK",
+        sectorLabel: "Technology",
+        price: 263.12,
+        dailyChangePct: 1.93,
+        relativeStrengthVsSpy: 2.05,
+        rsi14: 48.1,
+        relativeVolume: 0.58,
+        score: 66,
+        risk: "MODERATE" as const,
+        reasons: ["outperforming SPY by 2.05%"],
+        source: "Yahoo Finance",
+        timestamp: "2026-09-18T17:54:53.000Z",
+        stale: false,
+        available: true,
+      },
+    ];
+    const explain = formatDiscoverySymbolExplain(sorted[0]!, 1, sorted);
+    expect(explain).toMatch(/Why MU is ranked #1/i);
+    expect(explain).toMatch(/89\/100/);
+    expect(explain).not.toMatch(/TXN ranked #1/i);
+  });
+
   it("formats ranked discovery without inventing names outside engine output", () => {
     clearStockDiscoveryCache();
     const reply = formatStockDiscoveryReply(fixtureAnalysis(), {
@@ -194,6 +238,104 @@ describe("stock-discovery Phase 2", () => {
     expect(reply).toMatch(/XOM.*78\/100/i);
     expect(reply).toMatch(/RESEARCH ONLY/i);
     expect(reply).not.toMatch(/I('d| would) buy/i);
+  });
+
+  it("formats Console simple depth as one name without inventing tickers", () => {
+    const reply = formatStockDiscoveryReply(
+      fixtureAnalysis(),
+      {
+        asOf: "2026-09-15T20:00:00.000Z",
+        regime: "CAUTIOUS_BEAR",
+        marketHealth: 32,
+        focusSectors: [{ symbol: "XLE", label: "Energy", dailyChangePct: 2.1 }],
+        scanned: 18,
+        missingFields: [],
+        candidates: [
+          {
+            symbol: "XOM",
+            sectorEtf: "XLE",
+            sectorLabel: "Energy",
+            price: 112.5,
+            dailyChangePct: 2.2,
+            relativeStrengthVsSpy: 2.7,
+            rsi14: 56,
+            relativeVolume: 1.4,
+            score: 78,
+            risk: "MODERATE",
+            reasons: ["outperforming SPY by 2.70%"],
+            source: "Yahoo Finance",
+            timestamp: "2026-09-15T20:00:00.000Z",
+            stale: false,
+            available: true,
+          },
+          {
+            symbol: "CVX",
+            sectorEtf: "XLE",
+            sectorLabel: "Energy",
+            price: 155,
+            dailyChangePct: 1.1,
+            relativeStrengthVsSpy: 1.6,
+            rsi14: 54,
+            relativeVolume: 1.1,
+            score: 70,
+            risk: "MODERATE",
+            reasons: ["in leading sector XLE"],
+            source: "Yahoo Finance",
+            timestamp: "2026-09-15T20:00:00.000Z",
+            stale: false,
+            available: true,
+          },
+        ],
+      },
+      { depth: "simple" },
+    );
+    expect(reply).toMatch(/\*\*XOM\*\*/);
+    expect(reply).toMatch(/Yahoo Finance/);
+    expect(reply).toMatch(/brokerage account is not required/i);
+    expect(reply).not.toMatch(/\bSCAN\b/);
+    expect(reply).not.toMatch(/DATA_UNAVAILABLE/i);
+    expect(reply).not.toMatch(/UNVERIFIED/i);
+  });
+
+  it("formats Console quant depth with WAIT on EV/REOS, not invented numbers", () => {
+    const reply = formatStockDiscoveryReply(
+      fixtureAnalysis(),
+      {
+        asOf: "2026-09-15T20:00:00.000Z",
+        regime: "CAUTIOUS_BEAR",
+        marketHealth: 32,
+        focusSectors: [{ symbol: "XLE", label: "Energy", dailyChangePct: 2.1 }],
+        scanned: 18,
+        missingFields: [],
+        candidates: [
+          {
+            symbol: "XOM",
+            sectorEtf: "XLE",
+            sectorLabel: "Energy",
+            price: 112.5,
+            dailyChangePct: 2.2,
+            relativeStrengthVsSpy: 2.7,
+            rsi14: 56,
+            relativeVolume: 1.4,
+            score: 78,
+            risk: "MODERATE",
+            reasons: ["outperforming SPY by 2.70%"],
+            source: "Yahoo Finance",
+            timestamp: "2026-09-15T20:00:00.000Z",
+            stale: false,
+            available: true,
+          },
+        ],
+      },
+      { depth: "quant" },
+    );
+    expect(reply).toMatch(/\*\*XOM\*\*/);
+    expect(reply).toMatch(/78\/100/);
+    expect(reply).toMatch(/Calibrated probability:\*\* \*\*WAIT/i);
+    expect(reply).toMatch(/REOS \/ ERS:\*\* \*\*WAIT/i);
+    expect(reply).not.toMatch(/DATA_UNAVAILABLE/i);
+    expect(reply).not.toMatch(/\bSCAN\b/);
+    expect(reply).not.toMatch(/\bVALUE\b/);
   });
 
   it("riskiest is not the top discovery rank — GE beats XOM on live-style fixture", () => {

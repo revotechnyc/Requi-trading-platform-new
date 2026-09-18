@@ -7,7 +7,7 @@
  * provider responses.
  */
 
-export type ProviderCode = "BROKER" | "YFINANCE" | "PAPER_EXCHANGE";
+export type ProviderCode = "BROKER" | "YFINANCE" | "ALPHA_VANTAGE" | "PAPER_EXCHANGE" | "CACHE";
 export type MarketSession = "PREMARKET" | "REGULAR" | "AFTER_HOURS" | "CLOSED";
 export type Freshness = "FRESH" | "AGING" | "STALE";
 export type AssetType = "equity" | "etf" | "crypto" | "unknown";
@@ -51,7 +51,13 @@ export interface MarketDataUnavailable {
   broker_attempted: boolean;
   broker_status: "ok" | "failed" | "not_connected" | "unsupported";
   yfinance_attempted: boolean;
-  yfinance_status: "ok" | "failed";
+  yfinance_status: "ok" | "failed" | "not_configured";
+  secondary_attempted: boolean;
+  secondary_status: "ok" | "failed" | "not_configured";
+  cache_attempted: boolean;
+  cache_status: "ok" | "miss";
+  /** Ordered provider codes attempted before UNAVAILABLE. */
+  providers_attempted: ProviderCode[];
   reason: string;
 }
 

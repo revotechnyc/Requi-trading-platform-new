@@ -2,6 +2,8 @@
  * Resolve tickers from natural language — company names, lowercase tickers, $TICKER.
  */
 
+import { classifyConsoleResearchDepth, isConversationAck } from "../intelligence/market-intent";
+
 const COMPANY_ALIASES: Record<string, string> = {
   apple: "AAPL",
   microsoft: "MSFT",
@@ -29,7 +31,8 @@ const COMPANY_ALIASES: Record<string, string> = {
 const COMPANY_ALIAS_KEYS = new Set(Object.keys(COMPANY_ALIASES));
 
 const STOPWORDS = new Set([
-  "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "ON", "OR", "SO", "TO", "UP", "US", "WE", "S",
+  "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "OK", "OKAY", "ON", "OR", "SO", "TO", "UP", "US", "WE", "S",
+  "GOTCHA", "THANKS", "THX", "TY", "YEP", "YEAH", "YES", "SURE", "COOL", "GREAT",
   "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HAS", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET", "HIM", "HIS", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "SEE", "WAY", "WHO", "DID", "LET", "SAY", "SHE", "TOO", "USE",
   "BUY", "SELL", "LONG", "SHORT", "STOP", "RSI", "VWAP", "MACD", "ATR", "EMA", "SMA", "PAPER", "LIVE", "ORDER", "TRADE", "PRICE", "PRICES", "QUOTE", "CHART", "TODAY", "WHAT", "WHEN", "WITH", "THIS", "THAT", "FROM", "SHOW", "TELL", "ABOUT", "YOUR", "OPEN", "HIGH", "LOW", "LAST", "STOCK", "SHARE", "SHARES", "MARKET", "CURRENT", "RIGHT", "DOES", "DOING", "MOVE", "MOVING", "WHY", "HOW",
   "VS", "VERSUS", "MUCH", "WORTH", "SHOULD", "LATEST", "NEWS", "SIDE", "COMPARE", "SOCIAL", "REDDIT", "STOCKTWITS", "TRADERS", "SAYING", "SENTIMENT", "APPLE", "GOOGLE", "NVIDIA", "TESLA", "AMAZON", "MICROSOFT", "NETFLIX", "FACEBOOK", "ALPHABET", "COINBASE", "PALANTIR", "BERKSHIRE", "DISNEY", "WALMART",
@@ -140,6 +143,14 @@ export function normalizeForSymbolScan(text: string): string {
 }
 
 export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []): string[] {
+  // Chitchat / clarifications — never harvest tickers from "gotcha is not a stock".
+  if (isConversationAck(text)) {
+    return extraSymbols.map((s) => s.toUpperCase()).filter(Boolean);
+  }
+  // Console research chips have no tickers — never harvest SCAN/VALUE from the prompt.
+  if (classifyConsoleResearchDepth(text)) {
+    return extraSymbols.map((s) => s.toUpperCase()).filter(Boolean);
+  }
   const out = new Set<string>(extraSymbols.map((s) => s.toUpperCase()));
   const lower = text.toLowerCase();
   // Allow larger batches for research / conversation-context follow-ups (was hard-capped at 4).
@@ -238,6 +249,7 @@ const WORD_NUMBER_TO_SYM = new Set([
 /** Strip quantity/context false positives before conversation follow-up routing. */
 export function filterLikelyFalsePositiveTickers(symbols: string[], text: string): string[] {
   if (!symbols.length) return symbols;
+  if (isConversationAck(text)) return [];
   const lower = text.toLowerCase();
   const colonList = text.match(/:\s*([A-Z][A-Z0-9.,\s-]+)/i)?.[1]?.toUpperCase() ?? "";
 

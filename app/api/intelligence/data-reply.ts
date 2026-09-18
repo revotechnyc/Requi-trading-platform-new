@@ -34,6 +34,7 @@ export {
 import { fetchImpliedMove } from "../intelligence-data/providers/massive-options";
 import { fetchFredMacroBackdrop, formatFredMacroBrief } from "../intelligence-data/providers/fred";
 import { tryMarketIntelligenceReply } from "./general-market";
+import { isConversationAck } from "./market-intent";
 
 const DATA_QUERY_RE =
   /\b(price|prices?|quote|trading|rsi|macd|sma|ema|earnings|filing|filings|sec|edgar|sentiment|news|indicator|overbought|oversold|compare|current|latest|worth|momentum|macro)\b/i;
@@ -805,6 +806,8 @@ export async function tryDeterministicDataReply(
   userId: string,
   text: string,
 ): Promise<DeterministicPriceResult | null> {
+  if (isConversationAck(text)) return null;
+
   // NL screener — never resolve ABOVE/SECTOR as tickers (Phase 0: P0-TECH-005).
   if (isNlScreenerQuery(text)) {
     return {

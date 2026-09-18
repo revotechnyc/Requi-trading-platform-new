@@ -41,9 +41,19 @@ const nextId = () => ++mid;
 const seed: Msg[] = [];
 
 const quickPrompts = [
-  'Portfolio status',
-  'Buy 25 ALPHA at 150 limit',
-  'What filled in the last hour?',
+  {
+    label: 'Find an Opportunity',
+    prompt: 'Help me find a trading opportunity and explain it simply.',
+  },
+  {
+    label: 'Scan the Market',
+    prompt: 'Analyze the market and show me the strongest opportunities based on current data.',
+  },
+  {
+    label: 'Run Quant Analysis',
+    prompt:
+      'Run a full quantitative market scan and rank the highest-quality setups by probability, expected value, risk, and evidence reliability.',
+  },
 ];
 
 /* ─── small pieces ──────────────────────────────────────────────────────── */
@@ -377,7 +387,9 @@ export default function Intelligence() {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-900">Trading Console</p>
-              <p className="text-[11px] text-slate-500">Paste a text strategy, or type a command</p>
+              <p className="text-[11px] text-slate-500">
+                Research uses Requi market data — a brokerage is only needed to trade
+              </p>
             </div>
             {(gwSource || marketMeta) && (
               <div
@@ -399,8 +411,8 @@ export default function Intelligence() {
             {messages.length === 0 && !thinking && (
               <div className="flex h-full items-center justify-center">
                 <p className="max-w-xs text-center text-xs leading-relaxed text-slate-400">
-                  No intelligence yet. Paste a text strategy or ask about your portfolio —
-                  every response here comes from your real account data.
+                  No intelligence yet. Ask a research question or use a quick action below —
+                  market research does not require a connected brokerage or portfolio.
                 </p>
               </div>
             )}
@@ -416,12 +428,15 @@ export default function Intelligence() {
             <div className="mb-3 flex flex-wrap gap-2">
               {quickPrompts.map((q) => (
                 <button
-                  key={q}
-                  onClick={() => send(q)}
+                  key={q.label}
+                  type="button"
+                  title={q.prompt}
+                  aria-label={q.label}
+                  onClick={() => send(q.prompt)}
                   disabled={thinking}
                   className="rounded-full border border-slate-900/8 bg-slate-900/[0.03] px-3 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-sky-600/40 hover:text-sky-600 disabled:opacity-40"
                 >
-                  {q}
+                  {q.label}
                 </button>
               ))}
             </div>

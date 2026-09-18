@@ -16,6 +16,7 @@ import {
   isDiscoveryFollowUpQuery,
   isDiscoveryRankExplainQuery,
   isDiscoveryRiskiestQuery,
+  isFreshMarketIntelligenceAsk,
 } from "./market-intent";
 
 export type WorkingEntity = {
@@ -581,6 +582,10 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
     return { intent: "passthrough", confidence: 0 };
   }
 
+  if (isFreshMarketIntelligenceAsk(text)) {
+    return { intent: "passthrough", confidence: 0 };
+  }
+
   const selectionSignals =
     (/\b(which|what|pick|select|show|give|take|focus|name|identify|keep|want|narrow)\b/.test(lower) ? 1 : 0) +
     (/\b(strongest|best|top|promising|stand\s+out|focus)\b/.test(lower) ? 1 : 0) +
@@ -771,6 +776,11 @@ export function planFromConversationContext(
   // Phase 0 honesty gates — never rewrite into earnings research / scope-compare templates.
   // (Fixes: margin-trend compare collapsed to AAPL price dump; risk/reward → research on stale scope.)
   if (shouldPassthroughGapGateAsk(text)) {
+    return { kind: "passthrough", text };
+  }
+
+  // Console chips + fresh market scans — never cached Rev-1 ranks or earnings rewrites.
+  if (isFreshMarketIntelligenceAsk(text)) {
     return { kind: "passthrough", text };
   }
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyMarketIntelligenceIntent,
+  classifyConsoleResearchDepth,
+  CONSOLE_RESEARCH_PROMPTS,
+  isConversationAck,
+  isBriefGreeting,
+  isConversationalTurn,
+  isFreshMarketIntelligenceAsk,
   isDiscoveryFollowUpQuery,
   isGeneralMarketQuery,
   isIndexDepthQuery,
@@ -36,6 +42,22 @@ describe("market-intent (Client Rev 9/14)", () => {
     expect(isGeneralMarketQuery("Is the market good today?")).toBe(true);
   });
 
+  it("classifies Trading Console research chips as STOCK_DISCOVERY (no ticker required)", () => {
+    expect(
+      classifyMarketIntelligenceIntent("Help me find a trading opportunity and explain it simply."),
+    ).toBe("STOCK_DISCOVERY");
+    expect(
+      classifyMarketIntelligenceIntent(
+        "Analyze the market and show me the strongest opportunities based on current data.",
+      ),
+    ).toBe("STOCK_DISCOVERY");
+    expect(
+      classifyMarketIntelligenceIntent(
+        "Run a full quantitative market scan and rank the highest-quality setups by probability, expected value, risk, and evidence reliability.",
+      ),
+    ).toBe("STOCK_DISCOVERY");
+  });
+
   it("classifies stock discovery without requiring a ticker", () => {
     expect(classifyMarketIntelligenceIntent("What should I buy today?")).toBe("STOCK_DISCOVERY");
     expect(classifyMarketIntelligenceIntent("What should I buy today")).toBe("STOCK_DISCOVERY");
@@ -46,6 +68,29 @@ describe("market-intent (Client Rev 9/14)", () => {
   it("classifies market movers", () => {
     expect(classifyMarketIntelligenceIntent("What's moving?")).toBe("MARKET_MOVERS");
     expect(isMarketMoversQuery("What's hot today?")).toBe(true);
+  });
+
+  it("detects conversation acks and clarifications (Step 3)", () => {
+    expect(isConversationAck("ok")).toBe(true);
+    expect(isConversationAck("gotcha")).toBe(true);
+    expect(isConversationAck("gotcha is not a stock. i was saying ok")).toBe(true);
+    expect(isBriefGreeting("Hi")).toBe(true);
+    expect(isConversationalTurn("Hi")).toBe(true);
+    expect(isConversationAck("What is NVDA RSI?")).toBe(false);
+  });
+
+  it("treats Console chips as fresh market scans even when rank/analyze verbs appear", () => {
+    expect(isFreshMarketIntelligenceAsk(CONSOLE_RESEARCH_PROMPTS.quant)).toBe(true);
+    expect(isFreshMarketIntelligenceAsk(CONSOLE_RESEARCH_PROMPTS.standard)).toBe(true);
+    expect(isFreshMarketIntelligenceAsk("Rank them by score")).toBe(false);
+    expect(isFreshMarketIntelligenceAsk("Analyze those tickers")).toBe(false);
+  });
+
+  it("maps Console chips to simple / standard / quant depth", () => {
+    expect(classifyConsoleResearchDepth(CONSOLE_RESEARCH_PROMPTS.simple)).toBe("simple");
+    expect(classifyConsoleResearchDepth(CONSOLE_RESEARCH_PROMPTS.standard)).toBe("standard");
+    expect(classifyConsoleResearchDepth(CONSOLE_RESEARCH_PROMPTS.quant)).toBe("quant");
+    expect(classifyConsoleResearchDepth("How's the market today?")).toBeNull();
   });
 
   it("prefers discovery when buy + movers combined", () => {

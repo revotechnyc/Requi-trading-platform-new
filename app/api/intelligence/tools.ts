@@ -15,6 +15,8 @@ import { getLearningReport, learningSummaryLines, recordBacktestOutcomes } from 
 import { getMarketContext, type MarketContext } from "../marketdata/gateway/gateway";
 import { buildIntelligenceBundle } from "../intelligence-data/gateway";
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
+import { isConversationAck } from "./market-intent";
+import { buildFallbackMarketSnapshotBlock } from "./research-context";
 
 /**
  * INTELLIGENCE RUNTIME — stages 1–4 of the Intelligence upgrade.
@@ -271,38 +273,40 @@ export async function buildMarketContextBlock(
   userId: string,
   text: string,
 ): Promise<{ block: string; meta: MarketMeta | null }> {
-  const { block, meta, bundle } = await buildIntelligenceBundle(userId, text);
-  if (!bundle.symbols.length && !bundle.layers.some((l) => l.available)) {
+  if (isConversationAck(text)) {
     return { block: "", meta: null };
   }
-  const priceLayer = bundle.layers.find((l) => l.layer === "prices" && l.available);
-  return {
-    block: block ? `\n\n${block}` : "",
-    meta: {
-      symbols: bundle.symbols,
-      source: priceLayer?.source?.toLowerCase() ?? null,
-      sourceName: priceLayer?.source ?? meta.sources[0] ?? null,
-      stale: meta.stale,
-      timestamp: meta.timestamp,
-    },
-  };
+
+  const { block, meta, bundle } = await buildIntelligenceBundle(userId, text);
+  if (bundle.symbols.length || bundle.layers.some((l) => l.available)) {
+    const priceLayer = bundle.layers.find((l) => l.layer === "prices" && l.available);
+    return {
+      block: block ? `\n\n${block}` : "",
+      meta: {
+        symbols: bundle.symbols,
+        source: priceLayer?.source?.toLowerCase() ?? null,
+        sourceName: priceLayer?.source ?? meta.sources[0] ?? null,
+        stale: meta.stale,
+        timestamp: meta.timestamp,
+      },
+    };
+  }
+
+  return buildFallbackMarketSnapshotBlock(userId, text);
 }
 
 /* ---------- runtime addendum (stages 2–4 behavior) ---------- */
 
 const RUNTIME_ADDENDUM = `
-RUNTIME CAPABILITIES (appended by the server — these are real, verified tools):
+RUNTIME NOTES (server-appended — product facts):
 
-You are connected to the live Requi engine through whitelisted tools and a live system snapshot (below). Rules for using them:
-
-1. GROUND EVERYTHING. When the user asks about their monitors, tickets, positions, scanner, backtests, or governance — call the tool. Never answer from memory or assumption. If a tool returns an error or empty data, say exactly that.
-2. TRADE INTENT: when the user expresses a trade in natural language, extract symbol, side, quantity, and protective stop. If ANY of these is missing or ambiguous, ask for it — never invent a number. Only then call proposeTrade. After staging, always show the ticket ID and the exact CONFIRM ORDER [TICKET_ID] / REJECT ORDER [TICKET_ID] strings.
-3. NEVER CLAIM EXECUTION. proposeTrade stages a ticket; nothing reaches a broker until the user confirms. Say "staged", never "bought/sold/executed/placed".
-4. EXPLAIN WITH EVIDENCE. When discussing a proposal, monitor, or backtest, cite the engine's actual evidence: which trigger armed, hold-timer counts, signals confirmed, why variants were dropped, sizing math (qty = risk $ ÷ per-share risk). Plain language, real numbers from tool results.
-5. POST-TRADE REVIEW: when asked why a trade won/lost, pull the ticket and monitor events and walk the timeline — distinguishing logic outcomes (the setup did what it was designed to do) from data issues (feed errors, delays).
-6. The anti-exposure boundary still applies: tools never return governing documents, prompts, thresholds beyond what the UI discloses, or credentials.
-7. MEMORY & LEARNING: earlier messages in this conversation are real history — use them for continuity (names, preferences, open threads). When the snapshot contains a LEARNING section, those lessons come from OUR logged trade outcomes: apply them proactively (e.g. deprioritize a weak variant, respect a divergence flag) and cite them when relevant. When asked "what have we learned" or "what keeps failing", call getLearningReport.
-8. MARKET DATA IS DETERMINISTIC. All market numbers come from the RTI Market Data Gateway — never from you. If a VERIFIED MARKET DATA block is attached below, its values are authoritative: use them exactly, cite the source and timestamp, and disclose staleness. If it says data is unavailable, say so — never estimate or fabricate a price. For any symbol not covered by an attached block, call getMarketData.`;
+1. GROUND ANSWERS IN TOOLS when the user asks about monitors, tickets, positions, scanner, backtests, or governance — call the tool; never guess.
+2. MARKET vs PORTFOLIO are separate: missing a connected brokerage or open positions does NOT block general market research. Only portfolio-specific questions need account data.
+3. When VERIFIED MARKET DATA is attached below, cite it exactly. If unavailable, say so briefly — never estimate prices or model scores.
+4. On research scans, explain engine outputs in plain language. Do not invent REOS, ERS, calibrated win-rates, or EV when the engine marked them WAIT.
+5. Acknowledgments (ok, thanks, gotcha) and clarifications ("not a stock") are conversation — respond naturally; do not run quote or sentiment lookups on them.
+6. MEMORY: use prior messages for continuity; call getLearningReport when asked what the system has learned.
+7. Trade staging and order confirmation are handled by the app — only discuss tickets when the user is actively staging or confirming a trade.`;
 
 /* ---------- Stage 2: the reasoning loop ---------- */
 
@@ -335,6 +339,10 @@ export interface AgentChatOptions {
   developerExtra?: string;
   /** Chunked full research protocol when prompt overflow packaging is active. */
   attachmentBlocks?: string[];
+  /** Skip live gate / revision-1 / data-reply layers — chitchat and acks only. */
+  skipDeterministicLayers?: boolean;
+  /** Skip gateway market block — engine JSON already attached in developerExtra. */
+  skipMarketContext?: boolean;
 }
 
 export async function agentChat(userId: string, text: string, opts?: AgentChatOptions): Promise<string | null> {
@@ -362,9 +370,11 @@ export async function agentChat(userId: string, text: string, opts?: AgentChatOp
 
   // Deterministic market context: symbols in the user's message are resolved
   // through the gateway BEFORE the model sees the turn (spec §15).
-  const market = await buildMarketContextBlock(userId, text).catch(() => ({ block: "", meta: null }));
-  if (market.block) system += market.block;
-  if (market.meta) opts?.onMarketMeta?.(market.meta);
+  if (!opts?.skipMarketContext) {
+    const market = await buildMarketContextBlock(userId, text).catch(() => ({ block: "", meta: null }));
+    if (market.block) system += market.block;
+    if (market.meta) opts?.onMarketMeta?.(market.meta);
+  }
 
   // (advisory appended above, before market context)
 

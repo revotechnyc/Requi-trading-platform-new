@@ -34,6 +34,10 @@ export class TtlCache {
     this.store.clear();
   }
 
+  delete(key: string): void {
+    this.store.delete(key);
+  }
+
   set<T>(key: string, value: T, ttlMs: number): void {
     // Bound the cache; evict oldest on overflow.
     if (this.store.size > 2_000) {

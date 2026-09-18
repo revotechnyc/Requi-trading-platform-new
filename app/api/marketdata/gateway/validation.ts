@@ -7,13 +7,14 @@ import type { MarketSession, Freshness, RawQuote, ValidationResult } from "./typ
  */
 
 /** Configurable freshness thresholds (seconds) by asset class and session. */
+/** PDF §16 session-aware freshness gates (seconds). */
 const FRESHNESS: Record<string, { fresh: number; aging: number }> = {
-  "equity:REGULAR": { fresh: 15, aging: 60 },
-  "equity:PREMARKET": { fresh: 30, aging: 120 },
-  "equity:AFTER_HOURS": { fresh: 30, aging: 120 },
-  "equity:CLOSED": { fresh: 86_400, aging: 172_800 }, // closed market: last print stays usable
-  "crypto:REGULAR": { fresh: 15, aging: 60 },
-  default: { fresh: 15, aging: 60 },
+  "equity:REGULAR": { fresh: 60, aging: 300 },
+  "equity:PREMARKET": { fresh: 300, aging: 600 },
+  "equity:AFTER_HOURS": { fresh: 300, aging: 600 },
+  "equity:CLOSED": { fresh: 86_400, aging: 172_800 },
+  "crypto:REGULAR": { fresh: 60, aging: 300 },
+  default: { fresh: 60, aging: 300 },
 };
 
 export function freshnessThresholds(assetType: string, session: MarketSession): { fresh: number; aging: number } {
@@ -47,6 +48,14 @@ export function validateMarketData(raw: RawQuote, requestedSymbol: string, sessi
   if (l != null && raw.price < l * 0.999 && session === "REGULAR") reasons.push("price below day low");
   if (o != null && o <= 0) reasons.push("open not positive");
   if (raw.volume != null && raw.volume < 0) reasons.push("negative volume");
+
+  const prev = raw.previousClose;
+  if (prev != null && prev > 0 && raw.price != null && Number.isFinite(raw.price)) {
+    const ratio = raw.price / prev;
+    if (ratio > 3 || ratio < 0.33) {
+      reasons.push("price inconsistent with previous close (likely bad tick or adjustment)");
+    }
+  }
 
   const ageSeconds = Number.isFinite(ts) ? Math.max(0, Math.round((now - ts) / 1000)) : Number.MAX_SAFE_INTEGER;
   const freshness = classifyFreshness(ageSeconds, "equity", session);

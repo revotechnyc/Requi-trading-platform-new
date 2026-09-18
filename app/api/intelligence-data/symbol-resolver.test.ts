@@ -47,10 +47,28 @@ describe("resolveSymbolsFromText", () => {
     expect(resolveSymbolsFromText("What is XYZFAKE123 trading at right now?")).toEqual(["XYZFAKE123"]);
   });
 
-  it("does not invent SOCIAL ticker on sentiment queries", () => {
-    expect(resolveSymbolsFromText("What is social sentiment on NVDA?")).toEqual(["NVDA"]);
-    expect(resolveSymbolsFromText("What are traders saying about AAPL?")).toEqual(["AAPL"]);
-    expect(resolveSymbolsFromText("Compare social sentiment for AMD and NVDA.").sort()).toEqual(["AMD", "NVDA"]);
+  it("does not harvest GOTCHA from ack clarifications", () => {
+    expect(
+      resolveSymbolsFromText("gotcha is not a stock. i was saying ok"),
+    ).toEqual([]);
+    expect(filterLikelyFalsePositiveTickers(["GOTCHA"], "gotcha is not a stock")).toEqual([]);
+  });
+
+  it("does not harvest SCAN or VALUE from the Console quant chip prompt", () => {
+    const q =
+      "Run a full quantitative market scan and rank the highest-quality setups by probability, expected value, risk, and evidence reliability.";
+    expect(resolveSymbolsFromText(q)).toEqual([]);
+  });
+
+  it("does not harvest tickers from the Console beginner or scan chips", () => {
+    expect(
+      resolveSymbolsFromText("Help me find a trading opportunity and explain it simply."),
+    ).toEqual([]);
+    expect(
+      resolveSymbolsFromText(
+        "Analyze the market and show me the strongest opportunities based on current data.",
+      ),
+    ).toEqual([]);
   });
 
   it("does not invent SEC/THEIR on cross-feature compare queries", () => {

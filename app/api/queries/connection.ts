@@ -12,21 +12,30 @@ import * as schema from "@db/schema";
  *
  * Node 22 happy-eyeballs tries NAT64 IPv6 first; the Supabase pooler then
  * ETIMEDOUT. Force IPv4. Port 6543 does not support prepared statements.
+ *
+ * Vite HMR re-evaluates this module; keep the client on globalThis so reloads
+ * do not open a second pool and exhaust the Supabase pooler (which hangs
+ * /app on "Loading your workspace…").
  */
 if (typeof net.setDefaultAutoSelectFamily === "function") {
   net.setDefaultAutoSelectFamily(false);
 }
 
-let sqlClient: ReturnType<typeof postgres> | undefined;
+type PgGlobal = typeof globalThis & {
+  __requiSql?: ReturnType<typeof postgres>;
+  __requiDb?: ReturnType<typeof drizzle<typeof schema>>;
+};
+
+const g = globalThis as PgGlobal;
 
 export function getSql() {
-  if (!sqlClient) {
-    sqlClient = env.databaseUrl
+  if (!g.__requiSql) {
+    g.__requiSql = env.databaseUrl
       ? postgres(env.databaseUrl, {
           prepare: false,
           max: 10,
           idle_timeout: 20,
-          connect_timeout: 30,
+          connect_timeout: 15,
           ssl: "require",
         })
       : postgres({
@@ -37,16 +46,14 @@ export function getSql() {
           idle_timeout: 20,
         });
   }
-  return sqlClient;
+  return g.__requiSql;
 }
 
-let instance: ReturnType<typeof drizzle<typeof schema>> | undefined;
-
 export function getDb() {
-  if (!instance) {
-    instance = drizzle(getSql(), { schema });
+  if (!g.__requiDb) {
+    g.__requiDb = drizzle(getSql(), { schema });
   }
-  return instance;
+  return g.__requiDb;
 }
 
 /**

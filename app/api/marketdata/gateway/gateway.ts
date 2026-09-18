@@ -3,8 +3,8 @@ import { computeGatewayIndicators, type GatewayIndicators } from "./indicators";
 import { recordEvent, recordSnapshot } from "./persistence";
 import { activeProviderFor, routedHistory, routedQuote } from "./router";
 import { currentMarketSession } from "./sessions";
-import { validateMarketData } from "./validation";
-import type { MarketDataUnavailable, OhlcvBar, SnapshotResult, UnifiedMarketSnapshot } from "./types";
+import { classifyFreshness, validateMarketData } from "./validation";
+import type { MarketDataUnavailable, OhlcvBar, ProviderCode, SnapshotResult, UnifiedMarketSnapshot } from "./types";
 
 /**
  * RTI MARKET DATA GATEWAY — the single entry point for all market data.
@@ -33,32 +33,61 @@ function normalizeQuote(routed: Awaited<ReturnType<typeof routedQuote>>, symbol:
     previous_close: routed.raw.previousClose ?? null,
     volume: routed.raw.volume ?? null,
     source: routed.provider.code,
-    source_name: routed.provider.sourceName,
+    source_name: routed.fromCache ? `${routed.provider.sourceName} (cached)` : routed.provider.sourceName,
     timestamp: new Date(routed.raw.timestamp).toISOString(),
     received_at: new Date(now).toISOString(),
     market_session: session,
     asset_type: "equity",
     exchange: routed.raw.exchange ?? null,
     is_delayed: routed.raw.isDelayed ?? false,
-    stale: validation.stale,
-    freshness: validation.stale ? "STALE" : validation.age_seconds <= 15 ? "FRESH" : "AGING",
+    stale: routed.fromCache ? true : validation.stale,
+    freshness: routed.fromCache
+      ? "STALE"
+      : classifyFreshness(validation.age_seconds, "equity", session),
     age_seconds: validation.age_seconds,
     validation,
   };
 }
 
-function unavailable(symbol: string, brokerAttempted: boolean, brokerStatus: RoutedBrokerStatus, yahooFailed: boolean): MarketDataUnavailable {
+function unavailable(
+  symbol: string,
+  brokerAttempted: boolean,
+  brokerStatus: RoutedBrokerStatus,
+  opts: {
+    yfinanceAttempted: boolean;
+    yfinanceStatus: MarketDataUnavailable["yfinance_status"];
+    secondaryAttempted: boolean;
+    secondaryStatus: MarketDataUnavailable["secondary_status"];
+    cacheAttempted: boolean;
+    providersAttempted: MarketDataUnavailable["providers_attempted"];
+  },
+): MarketDataUnavailable {
   return {
     market_data_available: false,
     symbol: symbol.toUpperCase(),
     broker_attempted: brokerAttempted,
     broker_status: brokerStatus,
-    yfinance_attempted: true,
-    yfinance_status: yahooFailed ? "failed" : "ok",
-    reason: "No valid market data source available.",
+    yfinance_attempted: opts.yfinanceAttempted,
+    yfinance_status: opts.yfinanceStatus,
+    secondary_attempted: opts.secondaryAttempted,
+    secondary_status: opts.secondaryStatus,
+    cache_attempted: opts.cacheAttempted,
+    cache_status: "miss",
+    providers_attempted: opts.providersAttempted,
+    reason:
+      "No verified market data after broker, Yahoo, secondary provider, and cached quote fallbacks — nothing was invented.",
   };
 }
 type RoutedBrokerStatus = "ok" | "failed" | "not_connected" | "unsupported";
+
+function buildUnavailableTrace(brokerAttempted: boolean): ProviderCode[] {
+  const trace: ProviderCode[] = [];
+  if (brokerAttempted) trace.push("BROKER");
+  trace.push("YFINANCE");
+  if (process.env.ALPHA_VANTAGE_API_KEY?.trim()) trace.push("ALPHA_VANTAGE");
+  trace.push("CACHE");
+  return trace;
+}
 
 /** Unified market snapshot for one symbol (spec §7/§8). Never throws. */
 export async function getSnapshot(userId: string, rawSymbol: string): Promise<SnapshotResult> {
@@ -70,7 +99,12 @@ export async function getSnapshot(userId: string, rawSymbol: string): Promise<Sn
       broker_attempted: false,
       broker_status: "not_connected",
       yfinance_attempted: false,
-      yfinance_status: "failed",
+      yfinance_status: "not_configured",
+      secondary_attempted: false,
+      secondary_status: "not_configured",
+      cache_attempted: false,
+      cache_status: "miss",
+      providers_attempted: [],
       reason: `Invalid symbol "${rawSymbol}".`,
     };
   }
@@ -88,7 +122,15 @@ export async function getSnapshot(userId: string, rawSymbol: string): Promise<Sn
     if (!snapshot.validation.valid) {
       // Both layers failed validation — structured unavailable, no fabrication.
       await recordEvent("UNAVAILABLE", { userId, provider: routed.provider.code, symbol, detail: snapshot.validation.reasons });
-      const out = unavailable(symbol, brokerAttempted, brokerStatus, true);
+      const secondaryConfigured = Boolean(process.env.ALPHA_VANTAGE_API_KEY?.trim());
+      const out = unavailable(symbol, brokerAttempted, brokerStatus, {
+        yfinanceAttempted: true,
+        yfinanceStatus: "failed",
+        secondaryAttempted: secondaryConfigured,
+        secondaryStatus: secondaryConfigured ? "failed" : "not_configured",
+        cacheAttempted: true,
+        providersAttempted: buildUnavailableTrace(brokerAttempted),
+      });
       gatewayCache.set(cacheKey, out, CACHE_TTL.quoteMs);
       return out;
     }
@@ -97,7 +139,15 @@ export async function getSnapshot(userId: string, rawSymbol: string): Promise<Sn
     return out;
   } catch (err) {
     await recordEvent("UNAVAILABLE", { userId, provider: "YFINANCE", symbol, detail: { error: (err as Error).message } });
-    const out = unavailable(symbol, brokerAttempted, brokerAttempted ? "failed" : brokerStatus, true);
+    const secondaryConfigured = Boolean(process.env.ALPHA_VANTAGE_API_KEY?.trim());
+    const out = unavailable(symbol, brokerAttempted, brokerAttempted ? "failed" : brokerStatus, {
+      yfinanceAttempted: true,
+      yfinanceStatus: "failed",
+      secondaryAttempted: secondaryConfigured,
+      secondaryStatus: secondaryConfigured ? "failed" : "not_configured",
+      cacheAttempted: true,
+      providersAttempted: buildUnavailableTrace(brokerAttempted),
+    });
     gatewayCache.set(cacheKey, out, CACHE_TTL.quoteMs);
     return out;
   }

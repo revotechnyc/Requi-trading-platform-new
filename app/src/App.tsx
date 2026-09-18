@@ -31,6 +31,7 @@ import { ConsentGate } from '@/components/ConsentGate';
 import { CookieConsent } from '@/components/CookieConsent';
 import { getSupabase } from '@/lib/supabase';
 import { trpc } from '@/providers/trpc';
+import { intelligenceOnlyMode } from '@/lib/app-access';
 
 function SupabaseSessionBridge() {
   const config = trpc.auth.config.useQuery(undefined, { staleTime: 60_000 });
@@ -61,6 +62,12 @@ function Protected({ children }: { children: ReactNode }) {
   return <ConsentGate>{children}</ConsentGate>;
 }
 
+/** Test-user preview: block direct URL access to locked sections. */
+function IntelligenceOnly({ children }: { children: ReactNode }) {
+  if (intelligenceOnlyMode) return <Navigate to="/app" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <>
@@ -81,23 +88,23 @@ export default function App() {
         }
       >
         <Route index element={<Intelligence />} />
-        <Route path="strategies" element={<Strategies />} />
-        <Route path="autonomous" element={<Autonomous />} />
-        <Route path="financials" element={<Financials />} />
-        <Route path="signals" element={<Signals />} />
-        <Route path="accounts" element={<Accounts />} />
-        <Route path="marketplace" element={<Marketplace />} />
-        <Route path="library" element={<Library />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="privacy" element={<Privacy />} />
-        <Route path="owner" element={<OwnerOverview />} />
-        <Route path="owner/users" element={<OwnerUsers />} />
-        <Route path="owner/billing" element={<OwnerBilling />} />
-        <Route path="owner/connectors" element={<OwnerConnectors />} />
-        <Route path="owner/governance" element={<OwnerGovernance />} />
-        <Route path="owner/system-check" element={<OwnerSystemCheck />} />
-        <Route path="owner/compliance" element={<OwnerCompliance />} />
-        <Route path="owner/support" element={<OwnerSupport />} />
+        <Route path="strategies" element={<IntelligenceOnly><Strategies /></IntelligenceOnly>} />
+        <Route path="autonomous" element={<IntelligenceOnly><Autonomous /></IntelligenceOnly>} />
+        <Route path="financials" element={<IntelligenceOnly><Financials /></IntelligenceOnly>} />
+        <Route path="signals" element={<IntelligenceOnly><Signals /></IntelligenceOnly>} />
+        <Route path="accounts" element={<IntelligenceOnly><Accounts /></IntelligenceOnly>} />
+        <Route path="marketplace" element={<IntelligenceOnly><Marketplace /></IntelligenceOnly>} />
+        <Route path="library" element={<IntelligenceOnly><Library /></IntelligenceOnly>} />
+        <Route path="settings" element={<IntelligenceOnly><Settings /></IntelligenceOnly>} />
+        <Route path="privacy" element={<IntelligenceOnly><Privacy /></IntelligenceOnly>} />
+        <Route path="owner" element={<IntelligenceOnly><OwnerOverview /></IntelligenceOnly>} />
+        <Route path="owner/users" element={<IntelligenceOnly><OwnerUsers /></IntelligenceOnly>} />
+        <Route path="owner/billing" element={<IntelligenceOnly><OwnerBilling /></IntelligenceOnly>} />
+        <Route path="owner/connectors" element={<IntelligenceOnly><OwnerConnectors /></IntelligenceOnly>} />
+        <Route path="owner/governance" element={<IntelligenceOnly><OwnerGovernance /></IntelligenceOnly>} />
+        <Route path="owner/system-check" element={<IntelligenceOnly><OwnerSystemCheck /></IntelligenceOnly>} />
+        <Route path="owner/compliance" element={<IntelligenceOnly><OwnerCompliance /></IntelligenceOnly>} />
+        <Route path="owner/support" element={<IntelligenceOnly><OwnerSupport /></IntelligenceOnly>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

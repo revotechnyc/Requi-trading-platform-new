@@ -134,6 +134,16 @@ export class YahooMarketDataProvider implements MarketDataProvider {
     }
     if (price === undefined || at === undefined) throw new Error(`No market data returned for ${sym}`);
 
+    const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+    if (prevClose != null && prevClose > 0 && Math.abs(price / prevClose - 1) > 0.5) {
+      const metaPx = meta.regularMarketPrice;
+      const metaAt = meta.regularMarketTime;
+      if (metaPx != null && metaPx > 0 && Math.abs(metaPx / prevClose - 1) <= 0.5) {
+        price = metaPx;
+        at = metaAt ?? at;
+      }
+    }
+
     const first = (arr: (number | null)[]) => arr.find((x) => x != null) ?? null;
     const max = (arr: (number | null)[]) => {
       const v = arr.filter((x): x is number => x != null);

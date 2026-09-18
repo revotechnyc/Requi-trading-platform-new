@@ -50,4 +50,21 @@ describe("classifyIntent trade flow", () => {
     expect(intent.mode).toBe("CHAT");
     expect(intent.symbol).toBeNull();
   });
+
+  it("routes Trading Console research chips to CHAT, not TRADE_INTENT", () => {
+    const beginner = classifyIntent(
+      "Help me find a trading opportunity and explain it simply.",
+      emptyThread,
+    );
+    expect(beginner.mode).toBe("CHAT");
+    expect(beginner.symbol).toBeNull();
+    expect(beginner.side).toBeNull();
+
+    const expert = classifyIntent(
+      "Run a full quantitative market scan and rank the highest-quality setups by probability, expected value, risk, and evidence reliability.",
+      emptyThread,
+    );
+    expect(expert.mode).toBe("CHAT");
+    expect(expert.symbol).toBeNull();
+  });
 });

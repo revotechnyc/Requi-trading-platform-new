@@ -83,6 +83,7 @@ vi.mock("./persistence", () => ({
 }));
 
 import { getMarketContext, getSnapshot } from "./gateway";
+import { routedQuote } from "./router";
 import { gatewayCache, CACHE_TTL } from "./cache";
 import { classifyFreshness, validateMarketData } from "./validation";
 import { computeGatewayIndicators } from "./indicators";
@@ -130,6 +131,7 @@ beforeEach(() => {
   yahooState.quote = goodQuote();
   yahooState.history = dailyBars();
   yahooState.throwOnQuote = null;
+  delete process.env.ALPHA_VANTAGE_API_KEY;
   brokerState.present = false;
   brokerState.available = true;
   brokerState.quote = null;
@@ -188,9 +190,68 @@ describe("deterministic provider routing", () => {
     const snap = await getSnapshot(USER, "MSFT");
     expect(snap.market_data_available).toBe(false);
     if (!snap.market_data_available) {
-      expect(snap.reason).toMatch(/no valid market data source/i);
+      expect(snap.reason).toMatch(/nothing was invented/i);
       expect(snap.symbol).toBe("MSFT");
+      expect(snap.providers_attempted).toContain("YFINANCE");
       expect(snap).not.toHaveProperty("price");
+    }
+  });
+
+  it("falls back to Alpha Vantage when Yahoo fails", async () => {
+    process.env.ALPHA_VANTAGE_API_KEY = "test-key";
+    yahooState.throwOnQuote = new Error("yahoo down");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          "Global Quote": {
+            "01. symbol": "MSFT",
+            "02. open": "410.00",
+            "03. high": "415.00",
+            "04. low": "408.00",
+            "05. price": "412.50",
+            "06. volume": "12000000",
+            "07. latest trading day": "2026-09-18",
+            "08. previous close": "409.00",
+          },
+        }),
+      })),
+    );
+    const routed = await routedQuote(USER, "MSFT");
+    expect(routed.provider.code).toBe("ALPHA_VANTAGE");
+    const snap = await getSnapshot(USER, "MSFT");
+    expect(snap.market_data_available).toBe(true);
+    if (snap.market_data_available) {
+      expect(snap.source).toBe("ALPHA_VANTAGE");
+      expect(snap.price).toBe(412.5);
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it("serves last-good cached quote when live providers fail", async () => {
+    yahooState.quote = {
+      symbol: "NVDA",
+      price: 888.25,
+      open: 880,
+      high: 895,
+      low: 875,
+      previousClose: 870,
+      volume: 1_000_000,
+      timestamp: nowIso(),
+      exchange: "NASDAQ",
+      isDelayed: true,
+    };
+    const seeded = await getSnapshot(USER, "NVDA");
+    expect(seeded.market_data_available).toBe(true);
+    yahooState.throwOnQuote = new Error("yahoo down");
+    gatewayCache.delete(`quote:${USER}:NVDA`);
+    const snap = await getSnapshot(USER, "NVDA");
+    expect(snap.market_data_available).toBe(true);
+    if (snap.market_data_available) {
+      expect(snap.source).toBe("CACHE");
+      expect(snap.stale).toBe(true);
+      expect(snap.source_name).toMatch(/cached/i);
     }
   });
 
@@ -248,11 +309,17 @@ describe("validation", () => {
   });
 
   it("classifies freshness within configurable thresholds", () => {
-    expect(classifyFreshness(5, "equity", "REGULAR")).toBe("FRESH");
-    expect(classifyFreshness(30, "equity", "REGULAR")).toBe("AGING");
-    expect(classifyFreshness(120, "equity", "REGULAR")).toBe("STALE");
-    expect(classifyFreshness(90, "equity", "PREMARKET")).toBe("AGING");
+    expect(classifyFreshness(30, "equity", "REGULAR")).toBe("FRESH");
+    expect(classifyFreshness(120, "equity", "REGULAR")).toBe("AGING");
+    expect(classifyFreshness(400, "equity", "REGULAR")).toBe("STALE");
+    expect(classifyFreshness(90, "equity", "PREMARKET")).toBe("FRESH");
     expect(classifyFreshness(90_000, "equity", "CLOSED")).toBe("AGING");
+  });
+
+  it("rejects quotes whose price diverges wildly from previous close", () => {
+    const v = validateMarketData({ ...goodQuote(1000), previousClose: 100 }, "MU", "REGULAR");
+    expect(v.valid).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/previous close/i);
   });
 
   it("marks a gateway snapshot stale when the quote is stale", async () => {

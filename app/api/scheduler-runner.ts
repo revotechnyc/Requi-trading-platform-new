@@ -15,6 +15,15 @@ import { runIntelligenceChat } from "./intelligence-router";
 
 const TICK_MS = 60_000;
 
+/** Survive Vite HMR so reloads don't multiply 60s tickers against the same DB pool. */
+type SchedulerGlobal = typeof globalThis & {
+  __requiTaskScheduler?: { started: boolean; ticking: boolean; timer?: ReturnType<typeof setInterval> };
+};
+const schedulerState = ((globalThis as SchedulerGlobal).__requiTaskScheduler ??= {
+  started: false,
+  ticking: false,
+});
+
 function nowInZone(tz: string): { day: number; hh: number; mm: number } {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -137,10 +146,26 @@ async function tick(): Promise<void> {
 }
 
 export function startTaskScheduler(): void {
-  const timer = setInterval(() => {
-    tick().catch((err) => console.error("[scheduler] tick failed:", err instanceof Error ? err.message : err));
+  if (schedulerState.started) return;
+  schedulerState.started = true;
+  schedulerState.timer = setInterval(() => {
+    if (schedulerState.ticking) return;
+    schedulerState.ticking = true;
+    tick()
+      .catch((err) => console.error("[scheduler] tick failed:", err instanceof Error ? err.message : err))
+      .finally(() => {
+        schedulerState.ticking = false;
+      });
   }, TICK_MS);
-  timer.unref();
-  setTimeout(() => tick().catch(() => undefined), 20_000).unref();
+  schedulerState.timer.unref();
+  setTimeout(() => {
+    if (schedulerState.ticking) return;
+    schedulerState.ticking = true;
+    tick()
+      .catch(() => undefined)
+      .finally(() => {
+        schedulerState.ticking = false;
+      });
+  }, 20_000).unref();
   console.log("[scheduler] Intelligence task runner started (60s tick)");
 }

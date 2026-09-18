@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import { CONSOLE_RESEARCH_PROMPTS } from "./market-intent";
 import {
   applyActiveSubset,
   clearWorkingSet,
@@ -540,5 +541,22 @@ describe("conversation context orchestrator", () => {
       expect(select.reply).toMatch(/LEN/);
       expect(select.reply).not.toMatch(/\bSPY\b/);
     }
+  });
+
+  it("passthrough Console quant chip instead of cached partial-score rank table", () => {
+    seedRankedResearch();
+    const ws = getWorkingSet(userId, conversationId);
+    const plan = planFromConversationContext(CONSOLE_RESEARCH_PROMPTS.quant, ws);
+    expect(plan.kind).toBe("passthrough");
+    if (plan.kind === "passthrough") {
+      expect(plan.text).toBe(CONSOLE_RESEARCH_PROMPTS.quant);
+    }
+  });
+
+  it("passthrough standard Console chip instead of Rev-1 earnings rewrite", () => {
+    seedRankedResearch();
+    const ws = getWorkingSet(userId, conversationId);
+    const plan = planFromConversationContext(CONSOLE_RESEARCH_PROMPTS.standard, ws);
+    expect(plan.kind).toBe("passthrough");
   });
 });

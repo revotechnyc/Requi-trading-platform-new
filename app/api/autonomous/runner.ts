@@ -31,6 +31,15 @@ const LIVE_HEALTH_MS = 10_000;
 
 const TICK_MS = 2500;
 
+/** Survive Vite HMR so we don't spawn duplicate 2.5s tickers that exhaust the DB pool. */
+type RunnerGlobal = typeof globalThis & {
+  __requiAutonomousRunner?: { started: boolean; ticking: boolean; timer?: ReturnType<typeof setInterval> };
+};
+const runnerState = ((globalThis as RunnerGlobal).__requiAutonomousRunner ??= {
+  started: false,
+  ticking: false,
+});
+
 const UNIVERSE = [
   { symbol: "ALPHA", base: 189 },
   { symbol: "BRAVO", base: 248 },
@@ -373,9 +382,17 @@ async function tick(): Promise<void> {
 }
 
 export function startAutonomousRunner(): void {
-  const timer = setInterval(() => {
-    tick().catch((err) => console.error("[autonomous] tick failed:", err instanceof Error ? err.message : err));
+  if (runnerState.started) return;
+  runnerState.started = true;
+  runnerState.timer = setInterval(() => {
+    if (runnerState.ticking) return;
+    runnerState.ticking = true;
+    tick()
+      .catch((err) => console.error("[autonomous] tick failed:", err instanceof Error ? err.message : err))
+      .finally(() => {
+        runnerState.ticking = false;
+      });
   }, TICK_MS);
-  timer.unref();
+  runnerState.timer.unref();
   console.log("[autonomous] session runner started (2.5s tick)");
 }

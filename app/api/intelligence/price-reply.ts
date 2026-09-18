@@ -3,6 +3,7 @@ import { bundleMeta } from "../intelligence-data/normalizer";
 import type { IntelligenceBundle, LayerEnvelope } from "../intelligence-data/types";
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
 import type { MarketMeta } from "./tools";
+import type { EngineNarrationPayload } from "./engine-narration";
 import { isHistoricalPriceQuery } from "./gap-intents";
 
 export { isHistoricalPriceQuery } from "./gap-intents";
@@ -172,6 +173,8 @@ export interface DeterministicPriceResult {
   reply: string;
   meta: MarketMeta;
   rankedResults?: Array<{ symbol: string; rawScore?: number | null; classification?: string | null }>;
+  /** Structured engine JSON for Step 4 Lucia narration. */
+  enginePayload?: EngineNarrationPayload;
 }
 
 /** Server-side quote formatter — bypasses the LLM so prices cannot be invented. */

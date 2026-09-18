@@ -18,6 +18,8 @@ import {
   isDiscoveryRankExplainQuery,
   isInternationalMarketQuery,
   isMemoryBypassProbe,
+  isConversationalTurn,
+  isFreshMarketIntelligenceAsk,
 } from "./intelligence/market-intent";
 import { runRevision1Research } from "./intelligence/research/earnings-candidate";
 import { runLivePriceConfirmationGate } from "./intelligence/research/live-price-gate";
@@ -269,6 +271,32 @@ export async function runIntelligenceChat(
     return { kind: "text" as const, reply };
   }
 
+  const chitchatTurn = isConversationalTurn(text);
+
+  // Console chips + fresh market scans — run engine before Rev-1 context can hijack.
+  if (isFreshMarketIntelligenceAsk(text)) {
+    const marketFresh = await tryMarketIntelligenceReply(user.id, text).catch(() => null);
+    if (marketFresh) {
+      if (contextEnabled && marketFresh.rankedResults?.length) {
+        const isDiscovery = /stock-discovery/i.test(marketFresh.meta.sourceName ?? "");
+        const isMovers = /market-movers/i.test(marketFresh.meta.sourceName ?? "");
+        if (isDiscovery || isMovers) {
+          recordResearchResults(
+            workingSet,
+            marketFresh.rankedResults.map((r) => ({
+              symbol: r.symbol,
+              rawScore: r.rawScore,
+              classification: r.classification ?? undefined,
+            })),
+            { groupLabel: isDiscovery ? "stock_discovery" : "market_movers" },
+          );
+        }
+      }
+      if (conversationId) await saveMessage(user.id, "assistant", marketFresh.reply, conversationId);
+      return { kind: "text" as const, reply: marketFresh.reply, marketMeta: marketFresh.meta };
+    }
+  }
+
   // Referential market follow-ups — resolve topic before select/research context runs.
   if (contextEnabled) {
     const resolved = resolveReferentialUniverse(text, workingSet);
@@ -492,7 +520,7 @@ export async function runIntelligenceChat(
     }
 
     // Revision 1 research protocols — deterministic retrieve/calc/gap report first.
-    if (!options.advisory && !options.developerExtra) {
+    if (!options.skipDeterministicLayers && !options.advisory && !options.developerExtra) {
       const liveGate = await runLivePriceConfirmationGate(ctx.user.id, userText).catch((e) => {
         console.error("[intelligence] live price gate failed", e);
         return null;
@@ -747,6 +775,7 @@ export async function runIntelligenceChat(
           const reply = await conversationalReply(effectiveText, {
             allowTradeTool: false,
             conversationId,
+            skipDeterministicLayers: chitchatTurn,
           });
           if (reply && watchlistReply) {
             return { kind: "text" as const, reply: `${reply}\n\n${watchlistReply}` };
@@ -813,6 +842,7 @@ export async function runIntelligenceChat(
       const swarmReply = await conversationalReply(effectiveText, {
         allowTradeTool: routerOn ? false : undefined,
         conversationId,
+        skipDeterministicLayers: chitchatTurn,
       });
       if (swarmReply) return { kind: "text" as const, reply: swarmReply };
 

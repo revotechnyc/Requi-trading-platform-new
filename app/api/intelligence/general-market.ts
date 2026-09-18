@@ -8,6 +8,7 @@ import type { GatewayIndicators } from "../marketdata/gateway/indicators";
 import { fetchFredMacroBackdrop, formatFredMacroBrief } from "../intelligence-data/providers/fred";
 import {
   classifyMarketIntelligenceIntent,
+  classifyConsoleResearchDepth,
   US_MARKET_DEFAULT,
   isDiscoveryFollowUpQuery,
   isDiscoveryRankExplainQuery,
@@ -27,11 +28,19 @@ import {
   discoveryToRankedResults,
   moversToRankedResults,
   formatDiscoveryRankExplain,
+  formatDiscoverySymbolExplain,
   type MarketBreadthResult,
   type BreadthClassification,
 } from "./stock-discovery";
 import type { DeterministicPriceResult } from "./price-reply";
 import type { MarketMeta } from "./tools";
+import {
+  buildDiscoveryNarrationPayload,
+  buildGeneralMarketNarrationPayload,
+  buildMoversNarrationPayload,
+  engineNarrationEnabled,
+  narrateEngineOutput,
+} from "./engine-narration";
 
 export const US_INDEX_SYMBOLS = ["SPY", "QQQ", "DIA", "IWM"] as const;
 export const US_SECTOR_ETFS = [
@@ -885,18 +894,28 @@ export async function tryDiscoveryFollowUpReply(
 
   const analysis = await runGeneralMarketAnalysis(userId);
   const discovery = await runStockDiscovery(userId, analysis);
-  const order = ranked.map((r) => r.symbol.toUpperCase());
-  const fromWs = order
-    .map((sym) => discovery.candidates.find((c) => c.symbol === sym))
-    .filter((c): c is NonNullable<typeof c> => Boolean(c));
-  const pool = fromWs.length ? fromWs : discovery.candidates;
-  if (!pool.length) return null;
+  const freshSorted = [...discovery.candidates];
+  if (!freshSorted.length) return null;
+
+  const symMatch = text.match(/\bwhy\s+(?:is|was)\s+([A-Za-z]{1,5})\b/i);
+  const explicitSym = symMatch?.[1]?.toUpperCase();
+  if (explicitSym && isDiscoveryRankExplainQuery(text)) {
+    const idx = freshSorted.findIndex((c) => c.symbol === explicitSym);
+    if (idx >= 0) {
+      const c = freshSorted[idx]!;
+      return {
+        reply: formatDiscoverySymbolExplain(c, idx + 1, freshSorted),
+        meta: marketMeta(analysis, "stock-discovery-followup", freshSorted.map((x) => x.symbol)),
+        rankedResults: discoveryToRankedResults(discovery),
+      };
+    }
+  }
 
   const which = isDiscoveryRiskiestQuery(text) ? "riskiest" : "top";
   return {
-    reply: formatDiscoveryRankExplain(pool, which),
-    meta: marketMeta(analysis, "stock-discovery-followup", pool.map((c) => c.symbol)),
-    rankedResults: discoveryToRankedResults({ ...discovery, candidates: pool }),
+    reply: formatDiscoveryRankExplain(freshSorted, which),
+    meta: marketMeta(analysis, "stock-discovery-followup", freshSorted.map((c) => c.symbol)),
+    rankedResults: discoveryToRankedResults(discovery),
   };
 }
 
@@ -917,9 +936,9 @@ export async function tryMarketIntelligenceReply(
         "",
         `_Default market assumed: ${US_MARKET_DEFAULT.exchanges.join(" / ")} · ${US_MARKET_DEFAULT.currency}_`,
         "",
-        "Index quotes (SPY/QQQ/DIA/IWM) did not return verified data after provider fallback.",
+        "Index quotes (SPY/QQQ/DIA/IWM) did not return verified data after the full provider chain (broker → Yahoo → Alpha Vantage → cached quote).",
         "",
-        "Status: **WAIT** — broker/Yahoo quotes required before a market snapshot.",
+        "Status: **WAIT** — all configured market-data sources failed; nothing was invented.",
         "",
         "I will **not** guess today's market direction from memory.",
       ].join("\n"),
@@ -931,6 +950,7 @@ export async function tryMarketIntelligenceReply(
   let sourceName: string;
   let rankedResults: DeterministicPriceResult["rankedResults"];
   let meta: MarketMeta;
+  let enginePayload: DeterministicPriceResult["enginePayload"];
 
   switch (intent) {
     case "GENERAL_MARKET":
@@ -951,14 +971,23 @@ export async function tryMarketIntelligenceReply(
         sourceName = isExtendedMarketSnapshotQuery(text)
           ? "general-market-extended-v1"
           : "general-market-v1";
+        enginePayload = buildGeneralMarketNarrationPayload(text, analysis, sourceName);
       }
       meta = marketMeta(analysis, sourceName);
       break;
     case "STOCK_DISCOVERY": {
       const discovery = await runStockDiscovery(userId, analysis);
-      reply = formatStockDiscoveryReply(analysis, discovery);
-      sourceName = "stock-discovery-v2";
+      const depth = classifyConsoleResearchDepth(text) ?? undefined;
+      reply = formatStockDiscoveryReply(analysis, discovery, depth ? { depth } : undefined);
+      sourceName = depth ? `stock-discovery-console-${depth}` : "stock-discovery-v2";
       rankedResults = discoveryToRankedResults(discovery);
+      enginePayload = buildDiscoveryNarrationPayload(
+        text,
+        analysis,
+        discovery,
+        sourceName,
+        depth,
+      );
       meta = marketMeta(
         analysis,
         sourceName,
@@ -971,6 +1000,7 @@ export async function tryMarketIntelligenceReply(
       reply = formatMarketMoversReply(analysis, movers);
       sourceName = "market-movers-v2";
       rankedResults = moversToRankedResults(movers);
+      enginePayload = buildMoversNarrationPayload(text, analysis, movers, sourceName);
       meta = marketMeta(
         analysis,
         sourceName,
@@ -982,7 +1012,13 @@ export async function tryMarketIntelligenceReply(
       return null;
   }
 
-  return { reply, meta, rankedResults };
+  const result: DeterministicPriceResult = { reply, meta, rankedResults, enginePayload };
+
+  if (enginePayload && engineNarrationEnabled()) {
+    result.reply = await narrateEngineOutput(userId, text, result);
+  }
+
+  return result;
 }
 
 export type { MarketIntelligenceIntent };

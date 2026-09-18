@@ -7,6 +7,7 @@ import { getSnapshot, getIndicators } from "../marketdata/gateway/gateway";
 import type { SnapshotResult } from "../marketdata/gateway/types";
 import type { GeneralMarketAnalysis, MarketRegime, SectorSnapshot } from "./general-market";
 import { US_SECTOR_ETFS } from "./general-market";
+import type { ConsoleResearchDepth } from "./market-intent";
 
 export type DiscoveryRisk = "LOW" | "MODERATE" | "HIGH";
 
@@ -471,15 +472,67 @@ function fmtPrice(price: number | null): string {
 export function formatStockDiscoveryReply(
   analysis: GeneralMarketAnalysis,
   discovery: StockDiscoveryResult,
+  opts?: { depth?: ConsoleResearchDepth },
 ): string {
+  const depth = opts?.depth;
+  const top = discovery.candidates[0];
+  const sourceHint =
+    top?.source ??
+    analysis.indexes.find((i) => i.available)?.source ??
+    "Requi market data";
+
+  if (depth === "simple") {
+    const lines: string[] = [
+      "**A simple look at today's US tape**",
+      "",
+      `_NYSE / NASDAQ · ${discovery.regime.replace(/_/g, " ")} · health ${discovery.marketHealth}/100_`,
+      "",
+      `_Data: ${sourceHint} — a brokerage account is not required for this research._`,
+      "",
+    ];
+    if (!top) {
+      lines.push(
+        "The live scan did not return a name that passed filters.",
+        "",
+        "Status: **WAIT** — quotes on the liquid universe did not qualify anyone this pass. Nothing was invented.",
+      );
+      return lines.join("\n");
+    }
+    lines.push(
+      `One name that stands out: **${top.symbol}** at ${fmtPrice(top.price)} (${fmtPct(top.dailyChangePct)}).`,
+      "",
+      `Score **${top.score}/100** · risk **${top.risk}**` +
+        (top.rsi14 !== null ? ` · RSI ${top.rsi14.toFixed(1)}` : "") +
+        (top.relativeVolume !== null ? ` · RVOL ${top.relativeVolume.toFixed(2)}x` : "") +
+        ".",
+    );
+    if (top.reasons.length) {
+      lines.push("", `Why it showed up: ${top.reasons.slice(0, 2).join("; ")}.`);
+    }
+    if (discovery.candidates[1]) {
+      const b = discovery.candidates[1];
+      lines.push("", `Backup if you want a second look: **${b.symbol}** (${fmtPct(b.dailyChangePct)}, score ${b.score}/100).`);
+    }
+    lines.push(
+      "",
+      "This is research, not a buy order. Ask if you want more names or a deeper scan.",
+    );
+    if (top.source) lines.push("", `_Source: ${top.source}${top.timestamp ? ` · ${top.timestamp}` : ""}_`);
+    return lines.join("\n");
+  }
+
   const lines: string[] = [
-    "**Stock discovery — US equities (engine ranked)**",
+    depth === "quant"
+      ? "**Quantitative US scan — engine ranked**"
+      : "**Stock discovery — US equities (engine ranked)**",
     "",
     `_Default market: NYSE / NASDAQ · USD · America/New_York_`,
     "",
     `**Regime:** ${discovery.regime.replace(/_/g, " ")} · **Market Health:** ${discovery.marketHealth}/100`,
     "",
-    "Ranked from a **code-versioned liquid universe** inside today's focus sectors — momentum, relative strength vs SPY, and volume. **Not a trade authorization.**",
+    depth === "standard"
+      ? "Strongest names from a **code-versioned liquid universe** using live quotes — momentum, relative strength vs SPY, and volume. No brokerage or portfolio required."
+      : "Ranked from a **code-versioned liquid universe** inside today's focus sectors — momentum, relative strength vs SPY, and volume. **Not a trade authorization.**",
     "",
     "### Focus sectors (from live sector ETFs)",
   ];
@@ -513,12 +566,29 @@ export function formatStockDiscoveryReply(
     });
   }
 
-  lines.push(
-    "",
-    "**PARTIAL / WAIT on full desk card:** forward valuation, earnings catalyst confirmation, and portfolio-level risk sizing are not wired here.",
-    "",
-    "**Decision: RESEARCH ONLY / NO TRADE** — explain or compare names from this list only; I will not invent tickers outside the engine output.",
-  );
+  if (depth === "quant") {
+    lines.push(
+      "",
+      "### Model fields on this scan",
+      "- **Rank score / risk / evidence:** from the versioned discovery engine (quotes + RSI + RVOL + vs-SPY).",
+      "- **Calibrated probability:** **WAIT** — this scan does not output a win-rate or probability of profit.",
+      "- **Expected value (post-cost):** **WAIT** — the EV model was not executed on this pass.",
+      "- **REOS / ERS:** **WAIT** — those named models are not attached to this scan.",
+      "- **Portfolio / broker L1:** not required for this research ranking.",
+    );
+  } else if (!depth) {
+    lines.push(
+      "",
+      "**PARTIAL / WAIT on full desk card:** forward valuation, earnings catalyst confirmation, and portfolio-level risk sizing are not wired here.",
+      "",
+      "**Decision: RESEARCH ONLY / NO TRADE** — explain or compare names from this list only; I will not invent tickers outside the engine output.",
+    );
+  } else {
+    lines.push(
+      "",
+      "Research ranking only — not a trade authorization. Names come from the engine list above, not from memory.",
+    );
+  }
 
   if (discovery.missingFields.length) {
     lines.push("", `_Partial scan:_ ${discovery.missingFields.join("; ")}`);
@@ -618,6 +688,35 @@ export function formatMoversTopExplain(
     "",
     "_This refers to the **movers scan**, not stock-discovery candidates._",
   ].join("\n");
+}
+
+export function formatDiscoverySymbolExplain(
+  c: StockCandidate,
+  rank: number,
+  sorted: StockCandidate[],
+): string {
+  const top = sorted[0];
+  return [
+    `**Why ${c.symbol} is ranked #${rank} in the discovery scan**`,
+    "",
+    `- Engine score: **${c.score}/100** · risk **${c.risk}**`,
+    `- Price: ${fmtPrice(c.price)} (${fmtPct(c.dailyChangePct)})`,
+    c.relativeStrengthVsSpy !== null
+      ? `- vs SPY: ${c.relativeStrengthVsSpy >= 0 ? "+" : ""}${c.relativeStrengthVsSpy.toFixed(2)}%`
+      : null,
+    c.rsi14 !== null ? `- RSI ${c.rsi14.toFixed(1)}` : null,
+    c.relativeVolume !== null ? `- Relative volume ${c.relativeVolume.toFixed(2)}x` : null,
+    c.reasons.length ? `- Drivers: ${c.reasons.join("; ")}` : null,
+    rank === 1
+      ? `- _${c.symbol} is the top-ranked name on this fresh engine scan._`
+      : top && top.symbol !== c.symbol
+        ? `- _#1 on this scan is **${top.symbol}** (${top.score}/100); ${c.symbol} follows at #${rank}._`
+        : null,
+    "",
+    "_Ranked from verified quotes/indicators only — not LLM memory._",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function formatDiscoveryRankExplain(
