@@ -326,6 +326,8 @@ export const conversations = pgTable("conversations", {
   lastMessageAt: timestamp("lastMessageAt", { withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deletedAt", { withTimezone: true }),
+  /** Working set + trade thread for referential follow-ups in this chat. */
+  sessionState: jsonb("sessionState").notNull().default({}),
 });
 
 /* ---------- Intelligence: scheduled tasks ---------- */

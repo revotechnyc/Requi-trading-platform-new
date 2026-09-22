@@ -36,6 +36,8 @@ describe("earnings day calendar intent", () => {
   it("does not steal single-ticker next-earnings questions", () => {
     expect(isEarningsDayCalendarQuery("When is Apple's next earnings?")).toBe(false);
     expect(isEarningsDayCalendarQuery("When does Tesla report earnings?")).toBe(false);
+    expect(isEarningsDayCalendarQuery("What are the earnings of Apple today?")).toBe(false);
+    expect(isEarningsDayCalendarQuery("What are the earnings of today")).toBe(true);
   });
 
   it("resolves weekday names to YYYY-MM-DD", () => {
@@ -518,6 +520,18 @@ describe("earnings day calendar intent", () => {
     expect(reply).toContain("consensus EPS");
     expect(reply).toContain("will not invent");
     expect(reply).toContain("not** an expected-surprise ranking");
+  });
+
+  it("maps post-market to AMC session filter", () => {
+    const p = parseEarningsCalendarIntent("Just the post-market reporters from that board");
+    expect(p).not.toBeNull();
+    expect(p!.sessionFilter).toBe("AMC");
+  });
+
+  it("maps after the bell to AMC session filter", () => {
+    const p = parseEarningsCalendarIntent("Only the ones reporting after the bell today");
+    expect(p).not.toBeNull();
+    expect(p!.sessionFilter).toBe("AMC");
   });
 
   it("maps plain after close / before open to AMC / BMO (Pack F1)", () => {

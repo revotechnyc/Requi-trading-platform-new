@@ -706,6 +706,41 @@ function fmtNum(n: number | null, dp = 2): string {
   return n.toFixed(dp);
 }
 
+/** Pack B6 — human-readable session / freshness banner (not raw enum alone). */
+export function formatSessionBanner(
+  session: GeneralMarketAnalysis["session"],
+  opts?: { stale?: boolean; asOf?: string },
+): string {
+  let sessionLine: string;
+  switch (session) {
+    case "CLOSED":
+      sessionLine =
+        "**Session:** US cash session **closed** — quotes may be last sale / prior close.";
+      break;
+    case "AFTER_HOURS":
+      sessionLine =
+        "**Session:** **After-hours** / extended trading — not the regular cash session.";
+      break;
+    case "PREMARKET":
+      sessionLine =
+        "**Session:** **Pre-market** — regular cash session has not opened yet.";
+      break;
+    case "REGULAR":
+      sessionLine = "**Session:** Regular US cash session **open**.";
+      break;
+    default:
+      sessionLine = "**Session:** Unknown — treat quotes carefully.";
+  }
+  const bits = [sessionLine];
+  if (opts?.asOf) bits.push(`**As of:** ${opts.asOf}`);
+  if (opts?.stale) bits.push("_Data marked stale/delayed — not a live guaranteed tape._");
+  return bits.join(" · ");
+}
+
+function analysisSessionStale(analysis: GeneralMarketAnalysis): boolean {
+  return analysis.indexes.some((i) => i.available && i.stale);
+}
+
 /** Shared volatility block — spot VIX bands + VIXY fallback (PDF §8). */
 export function formatVolatilitySectionLines(analysis: GeneralMarketAnalysis): string[] {
   const lines: string[] = [];
@@ -751,7 +786,10 @@ export function formatIndexDepthReply(
     "",
     `_Default market: ${US_MARKET_DEFAULT.exchanges.join(" / ")} · ${US_MARKET_DEFAULT.currency} · ${US_MARKET_DEFAULT.timezone}_`,
     "",
-    `**Session:** ${analysis.session} · **As of:** ${analysis.asOf}`,
+    formatSessionBanner(analysis.session, {
+      asOf: analysis.asOf,
+      stale: analysisSessionStale(analysis) || depths.some((d) => d.available && d.stale),
+    }),
     `**Market Health:** ${analysis.marketHealth}/100 · **Regime:** ${analysis.regime.replace(/_/g, " ")}`,
     "",
     regimePlainEnglish(analysis.regime),
@@ -802,7 +840,10 @@ export function formatGeneralMarketReply(
     "",
     `_Default market: ${US_MARKET_DEFAULT.exchanges.join(" / ")} · ${US_MARKET_DEFAULT.currency} · ${US_MARKET_DEFAULT.timezone}_`,
     "",
-    `**Session:** ${analysis.session} · **As of:** ${analysis.asOf}`,
+    formatSessionBanner(analysis.session, {
+      asOf: analysis.asOf,
+      stale: analysisSessionStale(analysis),
+    }),
     `**Market Health:** ${analysis.marketHealth}/100 · **Regime:** ${analysis.regime.replace(/_/g, " ")}`,
     `**Analysis confidence:** ${analysis.analysisConfidence}% (data coverage / freshness — not a directional forecast)`,
     "",

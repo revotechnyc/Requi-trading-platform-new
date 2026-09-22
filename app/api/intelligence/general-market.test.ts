@@ -29,6 +29,7 @@ import {
   formatIndexDepthReply,
   formatInternationalWaitReply,
   formatMemoryBypassRefusal,
+  formatSessionBanner,
   type GeneralMarketAnalysis,
   type IndexDepthSnapshot,
 } from "./general-market";
@@ -39,6 +40,8 @@ describe("market-intent (Client Rev 9/14)", () => {
   it("classifies general market beginner asks", () => {
     expect(classifyMarketIntelligenceIntent("How's the market today?")).toBe("GENERAL_MARKET");
     expect(classifyMarketIntelligenceIntent("How is the market?")).toBe("GENERAL_MARKET");
+    expect(classifyMarketIntelligenceIntent("What's the market doing today?")).toBe("GENERAL_MARKET");
+    expect(isGeneralMarketQuery("What's the market doing today?")).toBe(true);
     expect(isGeneralMarketQuery("Is the market good today?")).toBe(true);
   });
 
@@ -120,6 +123,29 @@ describe("market-intent (Client Rev 9/14)", () => {
     expect(classifyMarketIntelligenceIntent("What's leading?")).toBe("GENERAL_MARKET");
     expect(isSectorLeadingQuery("What's leading?")).toBe(true);
     expect(isRiskTodayQuery("Is it risky today?")).toBe(true);
+  });
+
+  it("routes real-life paraphrases to market intelligence (not free-form Lucia)", () => {
+    expect(isSectorLeadingQuery("Which sectors are strong today?")).toBe(true);
+    expect(classifyMarketIntelligenceIntent("Which sectors are strong today?")).toBe("GENERAL_MARKET");
+    expect(isRiskTodayQuery("Is it risky to buy today?")).toBe(true);
+    expect(classifyMarketIntelligenceIntent("Is it risky to buy today?")).toBe("GENERAL_MARKET");
+    expect(classifyMarketIntelligenceIntent("What's the vibe in the market right now?")).toBe(
+      "GENERAL_MARKET",
+    );
+    expect(classifyMarketIntelligenceIntent("Is today a good day to trade?")).toBe("GENERAL_MARKET");
+    expect(classifyMarketIntelligenceIntent("I have $500 — what stock should I look at?")).toBe(
+      "STOCK_DISCOVERY",
+    );
+    expect(
+      classifyMarketIntelligenceIntent("I'm new to trading. What's one simple opportunity today?"),
+    ).toBe("STOCK_DISCOVERY");
+    expect(classifyMarketIntelligenceIntent("Anything worth watching before the close?")).toBe(
+      "STOCK_DISCOVERY",
+    );
+    expect(
+      classifyMarketIntelligenceIntent("What would you research if you were me today?"),
+    ).toBe("STOCK_DISCOVERY");
   });
 
   it("detects Pack B3 extended market snapshot prompts", () => {
@@ -305,6 +331,44 @@ function fixtureAnalysis(overrides: Partial<GeneralMarketAnalysis> = {}): Genera
 }
 
 describe("general-market formatters", () => {
+  it("Pack B6 — session banner labels closed / after-hours / stale", () => {
+    expect(formatSessionBanner("CLOSED")).toMatch(/closed/i);
+    expect(formatSessionBanner("AFTER_HOURS")).toMatch(/after-hours|extended/i);
+    expect(formatSessionBanner("PREMARKET")).toMatch(/pre-market/i);
+    expect(formatSessionBanner("REGULAR")).toMatch(/open/i);
+    expect(formatSessionBanner("REGULAR", { stale: true })).toMatch(/stale|delayed/i);
+    expect(formatSessionBanner("UNKNOWN", { asOf: "2026-09-15T20:00:00.000Z" })).toMatch(
+      /Unknown|As of/i,
+    );
+  });
+
+  it("Pack B6 — index drill-down uses closed session banner", () => {
+    const reply = formatIndexDepthReply(fixtureAnalysis({ session: "CLOSED" }), [
+      {
+        symbol: "SPY",
+        price: 560.12,
+        dailyChangePct: 0.65,
+        source: "Yahoo Finance",
+        timestamp: "2026-09-15T20:00:00.000Z",
+        session: "CLOSED",
+        stale: false,
+        available: true,
+        rsi14: 55,
+        relativeVolume: 1.05,
+        sma20: 555.0,
+        sma50: 540.0,
+        sma200: 520.0,
+        return5d: 1.2,
+        return20d: 3.4,
+        volume: 45_000_000,
+        averageVolume: 42_000_000,
+      },
+    ]);
+    expect(reply).toMatch(/closed/i);
+    expect(reply).toMatch(/### SPY/);
+    expect(reply).toMatch(/SMA 20/i);
+  });
+
   it("formats Pack A2 international WAIT without US snapshot", () => {
     const reply = formatInternationalWaitReply("How is Japan doing?");
     expect(reply).toMatch(/Japan.*WAIT/i);

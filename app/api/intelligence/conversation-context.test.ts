@@ -3,6 +3,7 @@ import { CONSOLE_RESEARCH_PROMPTS } from "./market-intent";
 import {
   applyActiveSubset,
   clearWorkingSet,
+  commitDisplayScope,
   formatSelectAfterRankReply,
   getReferentialTarget,
   getWorkingSet,
@@ -11,6 +12,7 @@ import {
   pickRankedSlice,
   planFromConversationContext,
   recordResearchResults,
+  resolveExplicitForContextTurn,
   resolveReferentialUniverse,
   resolveSelectSide,
   setActiveEntities,
@@ -37,6 +39,26 @@ describe("conversation context orchestrator", () => {
 
   beforeEach(() => {
     clearWorkingSet(userId, conversationId);
+  });
+
+  it("resolveExplicitForContextTurn drops prose symbols on referential research", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "BNTC", rawScore: 2, classification: "EARNINGS" },
+        { symbol: "PTN", rawScore: 1, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    expect(
+      resolveExplicitForContextTurn("Okay so do a quant research on those two", ws),
+    ).toEqual([]);
+  });
+
+  it("parseQuantity ignores Rev-1 protocol token", () => {
+    expect(parseQuantity("Run Rev-1 style analysis on both of them")).toBe(2);
+    expect(parseQuantity("Run Rev-1 style analysis on both of them")).not.toBe(1);
   });
 
   it("parseQuantity handles natural phrasing", () => {
@@ -558,5 +580,244 @@ describe("conversation context orchestrator", () => {
     const ws = getWorkingSet(userId, conversationId);
     const plan = planFromConversationContext(CONSOLE_RESEARCH_PROMPTS.standard, ws);
     expect(plan.kind).toBe("passthrough");
+  });
+
+  it("filter above table to AMC timing rewrites to session calendar", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 8, classification: "EARNINGS" },
+        { symbol: "AZO", rawScore: 7, classification: "EARNINGS" },
+        { symbol: "KBH", rawScore: 6, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext("Filter the above table to AMC timing only.", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.action).toBe("calendar");
+      expect(plan.text).toMatch(/after the market close/i);
+    }
+  });
+
+  it("quant research on those two narrows AMC scope to two symbols", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "KBH", rawScore: 53, classification: "REJECT" },
+        { symbol: "WOR", rawScore: 50, classification: "REJECT" },
+        { symbol: "AYTU", rawScore: 35, classification: "REJECT" },
+      ],
+      { groupLabel: "today_amc", lastHandler: "earnings_day" },
+    );
+    commitDisplayScope(ws, ["KBH", "WOR", "AYTU"], "earnings_session_slice");
+    const plan = planFromConversationContext("Okay, do a quant research on those two.", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols?.length).toBe(2);
+      expect(plan.targetSymbols).toContain("KBH");
+      expect(plan.targetSymbols).toContain("WOR");
+      expect(plan.targetSymbols).not.toContain("AYTU");
+    }
+  });
+
+  it("Rev-1 on the one with better beat history narrows to single top-ranked symbol", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "KBH", rawScore: 53, classification: "REJECT" },
+        { symbol: "WOR", rawScore: 50, classification: "REJECT" },
+        { symbol: "AYTU", rawScore: 35, classification: "REJECT" },
+      ],
+      { lastHandler: "research" },
+    );
+    commitDisplayScope(ws, ["KBH", "WOR", "AYTU"], "research");
+    const plan = planFromConversationContext(
+      "Rev-1 style on the one with the better beat history in that set.",
+      ws,
+    );
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols).toEqual(["KBH"]);
+    }
+  });
+
+  it("which weakest on partial score returns cached reply not full research rewrite", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "KBH", rawScore: 53, classification: "REJECT" },
+        { symbol: "WOR", rawScore: 50, classification: "REJECT" },
+        { symbol: "AYTU", rawScore: 35, classification: "REJECT" },
+      ],
+      { groupLabel: "today_amc", lastHandler: "research" },
+    );
+    commitDisplayScope(ws, ["KBH", "WOR", "AYTU"], "research");
+    const plan = planFromConversationContext(
+      "Which of the remaining AMC names looks weakest on partial score?",
+      ws,
+    );
+    expect(plan.kind).toBe("reply");
+    if (plan.kind === "reply") {
+      expect(plan.reply).toMatch(/AYTU/);
+      expect(plan.reply).toMatch(/Weakest evidence/i);
+      expect(plan.reply).not.toMatch(/Revision 1 — Earnings candidate research report/);
+    }
+  });
+
+  it("earnings-candidate on every ticker in focus uses AMC scope not prose ENDS EVERY STILL", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 35, classification: "REJECT" },
+        { symbol: "KBH", rawScore: 53, classification: "REJECT" },
+        { symbol: "WOR", rawScore: 50, classification: "REJECT" },
+      ],
+      { groupLabel: "today_amc", lastHandler: "earnings_day" },
+    );
+    commitDisplayScope(ws, ["AYTU", "KBH", "WOR"], "earnings_session_slice");
+    const plan = planFromConversationContext(
+      "Run earnings-candidate research with gap registers on every ticker still in focus.",
+      ws,
+    );
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols?.sort()).toEqual(["AYTU", "KBH", "WOR"]);
+      expect(plan.text).toMatch(/KBH/);
+      expect(plan.text).not.toMatch(/\bENDS\b/);
+    }
+  });
+
+  it("Dig into the remaining tickers uses today_amc scope when present", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 3, classification: "EARNINGS" },
+        { symbol: "AZO", rawScore: 8, classification: "EARNINGS" },
+        { symbol: "KBH", rawScore: 2, classification: "EARNINGS" },
+        { symbol: "WOR", rawScore: 1, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    ws.groups.today_amc = [
+      { symbol: "AYTU", score: 3, classification: "EARNINGS", rank: 1 },
+      { symbol: "KBH", score: 2, classification: "EARNINGS", rank: 2 },
+      { symbol: "WOR", score: 1, classification: "EARNINGS", rank: 3 },
+    ];
+    const plan = planFromConversationContext("Dig into the remaining tickers", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols?.sort()).toEqual(["AYTU", "KBH", "WOR"]);
+      expect(plan.text).not.toMatch(/AZO/);
+    }
+  });
+
+  it("narrow after the bell from that lineup rewrites to AMC calendar", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [{ symbol: "AZO", rawScore: 8, classification: "EARNINGS" }],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext(
+      "Narrow it: who prints after the bell out of that lineup?",
+      ws,
+    );
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.action).toBe("calendar");
+      expect(plan.text).toMatch(/after the market close/i);
+    }
+  });
+
+  it("post-market from that board rewrites to AMC earnings calendar query", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 8, classification: "EARNINGS" },
+        { symbol: "AZO", rawScore: 7, classification: "EARNINGS" },
+        { symbol: "KBH", rawScore: 6, classification: "EARNINGS" },
+        { symbol: "WOR", rawScore: 5, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext("Just the post-market reporters from that board", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.action).toBe("calendar");
+      expect(plan.text).toMatch(/after the market close/i);
+    }
+  });
+
+  it("Dig into them with Rev 1 uses AMC session scope when present", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 3, classification: "EARNINGS" },
+        { symbol: "KBH", rawScore: 2, classification: "EARNINGS" },
+        { symbol: "WOR", rawScore: 1, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today_amc", lastHandler: "earnings_day" },
+    );
+    ws.groups.today_amc = [...ws.active];
+    const plan = planFromConversationContext("Dig into them with Rev 1", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.text).toMatch(/Run earnings candidate research on/i);
+      expect(plan.text).toMatch(/AYTU/);
+      expect(plan.text).toMatch(/KBH/);
+      expect(plan.text).toMatch(/WOR/);
+      expect(plan.text).not.toMatch(/AZO/);
+      expect(plan.targetSymbols?.sort()).toEqual(["AYTU", "KBH", "WOR"]);
+    }
+  });
+
+  it("Rev-1 analysis on both of them narrows to two highest-ranked symbols", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AYTU", rawScore: 3, classification: "EARNINGS" },
+        { symbol: "KBH", rawScore: 2, classification: "EARNINGS" },
+        { symbol: "WOR", rawScore: 1, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext("Run Rev-1 style analysis on both of them", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.text).toMatch(/Run earnings candidate research on/i);
+      expect(plan.text).not.toMatch(/Selection — top/i);
+      expect(plan.targetSymbols?.sort()).toEqual(["AYTU", "KBH"]);
+    }
+  });
+
+  it("quant research on those two uses AMC earnings scope, not ticker QUANT", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "BNTC", rawScore: 2, classification: "EARNINGS" },
+        { symbol: "PTN", rawScore: 1, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext("Okay so do a quant research on those two", ws);
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.text).toMatch(/Run earnings candidate research on/i);
+      expect(plan.text).toMatch(/BNTC/);
+      expect(plan.text).toMatch(/PTN/);
+      expect(plan.text).not.toMatch(/QUANT/);
+      expect(plan.targetSymbols?.sort()).toEqual(["BNTC", "PTN"]);
+    }
   });
 });

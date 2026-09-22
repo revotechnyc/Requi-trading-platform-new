@@ -13,6 +13,7 @@ import {
 } from "./intelligence/general-market";
 import { formatMoversTopExplain } from "./intelligence/stock-discovery";
 import {
+  classifyConsoleResearchDepth,
   classifyMarketIntelligenceIntent,
   isDiscoveryFollowUpQuery,
   isDiscoveryRankExplainQuery,
@@ -32,6 +33,12 @@ import { addWatchlistSymbol } from "./intelligence-data/watchlist";
 import { resolveSymbolsFromText, filterLikelyFalsePositiveTickers } from "./intelligence-data/symbol-resolver";
 import { getSnapshot } from "./marketdata/gateway/gateway";
 import { clearHistory, loadHistory, saveMessage } from "./intelligence/memory";
+import {
+  ensureSessionStateColumn,
+  hydrateConversationSession,
+  persistConversationSession,
+} from "./intelligence/conversation-session";
+import { extractEarningsSessionFilter } from "./intelligence-data/earnings-day";
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations } from "@db/schema";
 import { getDb } from "./queries/connection";
@@ -43,6 +50,11 @@ import {
   setThreadState,
 } from "./intelligence/intent";
 import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
+import {
+  clarificationAskSharesOrDollars,
+  parseTradeNotional,
+  parseTradeQuantity,
+} from "./intelligence/trade-symbol";
 import { resolveIntelligenceBroker } from "./queries/autonomous-exec-policy";
 import {
   applyPlanScopeUpdate,
@@ -54,8 +66,13 @@ import {
   resolveReferentialUniverse,
   setActiveEntities,
   withContextNote,
+  commitDisplayScope,
   type ContextPlan,
 } from "./intelligence/conversation-context";
+import {
+  inferDisplayScopeFromAssistantReply,
+  type DisplayScopeKind,
+} from "./intelligence/conversation-scope";
 import { tryEarningsDayCalendarReply } from "./intelligence-data/earnings-day";
 
 const KNOWN_LABELS = ["ENTRY", "EXIT", "SIZING", "FILTER", "STRUCTURE", "GRID"];
@@ -220,6 +237,7 @@ export const intelligenceRouter = createRouter({
  * not belong to the caller is rejected (never write across users).
  */
 export async function ensureConversation(userId: string, conversationId: string | undefined, firstText: string): Promise<string> {
+  await ensureSessionStateColumn();
   const db = getDb();
   if (conversationId) {
     const owned = await db
@@ -230,7 +248,7 @@ export async function ensureConversation(userId: string, conversationId: string 
     if (owned[0]) return conversationId;
   }
   const title = firstText.replace(/\s+/g, " ").trim().slice(0, 80) || "Conversation";
-  const [row] = await db.insert(conversations).values({ userId, title }).returning();
+  const [row] = await db.insert(conversations).values({ userId, title }).returning({ id: conversations.id });
   return row.id;
 }
 
@@ -248,10 +266,16 @@ export async function runIntelligenceChat(
   const text = rawText.trim();
   const contextEnabled =
     process.env.CONVERSATION_CONTEXT !== "off" && Boolean(conversationId?.trim());
+  if (contextEnabled && conversationId) {
+    await hydrateConversationSession(user.id, conversationId).catch((e) => {
+      console.error("[intelligence] hydrateConversationSession", e);
+    });
+  }
   const workingSet = contextEnabled ? getWorkingSet(user.id, conversationId) : getWorkingSet(user.id, undefined);
   let contextNote: string | undefined;
   let pendingScope: ContextPlan | null = null;
 
+  try {
   // Persist every turn to the conversation (deterministic paths bypass
   // agentChat, which no longer saves — persistence is centralized here so
   // Recent Conversations always has the full thread).
@@ -418,6 +442,14 @@ export async function runIntelligenceChat(
         workingSet.lastUniverseLabel);
 
     if (handler === "earnings_day") {
+      const session = extractEarningsSessionFilter(effectiveText);
+      const baseLabel =
+        label ??
+        effectiveText.match(
+          /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b/i,
+        )?.[1]?.toLowerCase() ??
+        "earnings";
+      const groupLabel = session ? `${baseLabel}_${session.toLowerCase()}` : baseLabel;
       recordResearchResults(
         workingSet,
         cleaned.map((symbol, i) => ({
@@ -425,7 +457,7 @@ export async function runIntelligenceChat(
           rawScore: cleaned.length - i,
           classification: "EARNINGS",
         })),
-        { groupLabel: label ?? "earnings", lastHandler: "earnings_day" },
+        { groupLabel, lastHandler: "earnings_day" },
       );
       return;
     }
@@ -666,6 +698,22 @@ export async function runIntelligenceChat(
             reply: withContextNote(marketEarly.reply, contextNote),
           };
         }
+        // Console chips must never fall through to free-form Lucia (portfolio/chart refusals).
+        const consoleDepth = classifyConsoleResearchDepth(effectiveText);
+        if (consoleDepth) {
+          return {
+            kind: "text" as const,
+            reply: withContextNote(
+              [
+                "I tried to run the live US opportunity scan, but market data did not come back cleanly on this pass.",
+                "",
+                "Status: **WAIT** — I will not invent tickers, probabilities, or expected value without verified quotes.",
+                "Please try the chip again in a moment; no portfolio or chart upload is required for this research.",
+              ].join("\n"),
+              contextNote,
+            ),
+          };
+        }
       }
 
       // 1) confirmation-gate commands — CONFIRM/REJECT ORDER [TICKET_ID]
@@ -692,8 +740,99 @@ export async function runIntelligenceChat(
       const routerOn = process.env.INTENT_ROUTER !== "off";
 
       if (routerOn) {
-        const thread = getThreadState(ctx.user.id);
-        const intent = classifyIntent(text, thread);
+        const thread = getThreadState(ctx.user.id, conversationId);
+        const intent = classifyIntent(effectiveText, thread);
+
+        // Size-clarification reply after "Buy Apple" (Message 2) — may be CHAT mode ("100 shares").
+        if (thread.awaitingQuantityFor && intent.mode !== "TRADE_INTENT") {
+          const awaiting = thread.awaitingQuantityFor;
+          const qtyParsed = parseTradeQuantity(text);
+          const notionalParsed = parseTradeNotional(text);
+          if (qtyParsed.error) return { kind: "text" as const, reply: qtyParsed.error };
+          if (notionalParsed.error) return { kind: "text" as const, reply: notionalParsed.error };
+
+          let resolvedQty = qtyParsed.quantity;
+          if (resolvedQty == null && notionalParsed.notional != null) {
+            const snapForSize = await getSnapshot(ctx.user.id, awaiting.symbol).catch(() => null);
+            const px =
+              snapForSize?.market_data_available && snapForSize.price > 0 ? snapForSize.price : null;
+            if (px == null) {
+              return {
+                kind: "text" as const,
+                reply:
+                  `I heard **$${notionalParsed.notional.toLocaleString()}** for **${awaiting.symbol}**, but I don't have a verified last price to convert dollars → shares.\n\n` +
+                  `Please reply with a **share count** (e.g. \`100 shares\`). Nothing was staged.`,
+              };
+            }
+            resolvedQty = Math.max(1, Math.floor(notionalParsed.notional / px));
+          }
+
+          if (resolvedQty == null) {
+            return {
+              kind: "text" as const,
+              reply: clarificationAskSharesOrDollars(awaiting.symbol, awaiting.side),
+            };
+          }
+
+          // Run advisory with clarified size (same path as sized TRADE_INTENT).
+          const snap = await getSnapshot(ctx.user.id, awaiting.symbol).catch(() => null);
+          if (!snap?.market_data_available) {
+            const reason = snap && "reason" in snap ? snap.reason : "no market data available";
+            return {
+              kind: "text" as const,
+              reply:
+                `I can't verify **${awaiting.symbol}** as a tradable symbol — ${reason ?? "invalid ticker"}.\n\nNothing was staged.`,
+            };
+          }
+          try {
+            const advisory = await composeAdvisory(ctx.user.id, awaiting.symbol, awaiting.side);
+            setThreadState(
+              ctx.user.id,
+              {
+                advisory,
+                pendingQuantity: resolvedQty,
+                awaitingQuantityFor: null,
+              },
+              conversationId,
+            );
+            const stageHint =
+              advisory.verdict === "FAVORABLE"
+                ? `If you want to proceed, say "stage it" and I'll prepare a ticket — nothing trades without your CONFIRM.`
+                : advisory.verdict === "WAIT"
+                  ? `Verdict is **WAIT** — I will not stage a ticket until the setup is **FAVORABLE**. Nothing was staged.`
+                  : `Nothing was staged.`;
+            const narrated =
+              advisory.verdict === "FAVORABLE"
+                ? await conversationalReply(text, {
+                    allowTradeTool: false,
+                    advisory,
+                    conversationId,
+                    developerExtra:
+                      `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n` +
+                      `${JSON.stringify(advisory)}\nUser-requested quantity: ${resolvedQty} shares.\n` +
+                      `Tell the user they can say "stage it" to prepare a ticket. Nothing trades without CONFIRM.`,
+                  })
+                : null;
+            if (narrated) return { kind: "text" as const, reply: narrated };
+            return {
+              kind: "text" as const,
+              reply:
+                `**${advisory.symbol} ${advisory.side} — verdict: ${advisory.verdict}** · size **${resolvedQty}** shares\n\n` +
+                advisory.reasons.map((r) => `· ${r}`).join("\n") +
+                (advisory.proposed?.lastPrice != null
+                  ? `\n\nLast price: $${advisory.proposed.lastPrice}` +
+                    (advisory.proposed.note ? ` · ${advisory.proposed.note}` : "")
+                  : "") +
+                (advisory.watchFor ? `\n\nWatch for: ${advisory.watchFor}` : "") +
+                `\n\n${stageHint}`,
+            };
+          } catch (e) {
+            return {
+              kind: "text" as const,
+              reply: `I couldn't complete the market check for ${awaiting.symbol}: ${(e as Error).message}. Nothing was staged.`,
+            };
+          }
+        }
 
         if (intent.mode === "TRADE_INTENT") {
           if (intent.quantityError) {
@@ -701,21 +840,40 @@ export async function runIntelligenceChat(
           }
 
           // 2a) "stage it" on a FRESH advisory → deterministic proposeTicket
-          //     (venue from resolveIntelligenceBroker). No LLM write-tool.
           if (intent.followUp && advisoryFresh(thread.advisory)) {
             const staged = await stageTicketFromAdvisory(ctx.user.id, thread.advisory!, {
               quantity: intent.quantity ?? thread.pendingQuantity ?? undefined,
+              conversationId,
             });
             return { kind: "text" as const, reply: staged.reply };
           }
 
-          // 2b) fresh imperative ("buy apple") → deterministic advisory FIRST.
-          //     No ticket is created on this turn; Lucia (or fallback) narrates.
           if (!intent.symbol) {
             return {
               kind: "text" as const,
               reply:
                 "Which symbol? Tell me the ticker (e.g. \"buy AAPL\") and I'll run it through market analysis and our protocol before anything is staged.",
+            };
+          }
+
+          // Message 2: bare "Buy Apple" / "Buy AAPL" with no size → ask shares vs dollars
+          const notionalSameTurn = parseTradeNotional(text);
+          if (notionalSameTurn.error) {
+            return { kind: "text" as const, reply: notionalSameTurn.error };
+          }
+          if (intent.quantity == null && notionalSameTurn.notional == null && !intent.followUp) {
+            setThreadState(
+              ctx.user.id,
+              {
+                awaitingQuantityFor: { symbol: intent.symbol, side: intent.side ?? "BUY" },
+                pendingQuantity: null,
+                advisory: null,
+              },
+              conversationId,
+            );
+            return {
+              kind: "text" as const,
+              reply: clarificationAskSharesOrDollars(intent.symbol, intent.side ?? "BUY"),
             };
           }
 
@@ -729,26 +887,73 @@ export async function runIntelligenceChat(
             };
           }
 
+          let tradeQty = intent.quantity;
+          if (tradeQty == null && notionalSameTurn.notional != null) {
+            if (!(snap.price > 0)) {
+              setThreadState(
+                ctx.user.id,
+                {
+                  awaitingQuantityFor: { symbol: intent.symbol, side: intent.side ?? "BUY" },
+                  pendingQuantity: null,
+                },
+                conversationId,
+              );
+              return {
+                kind: "text" as const,
+                reply:
+                  `I heard **$${notionalSameTurn.notional.toLocaleString()}** for **${intent.symbol}**, but I don't have a verified last price to convert dollars → shares.\n\n` +
+                  clarificationAskSharesOrDollars(intent.symbol, intent.side ?? "BUY"),
+              };
+            }
+            tradeQty = Math.max(1, Math.floor(notionalSameTurn.notional / snap.price));
+          }
+
           try {
             const advisory = await composeAdvisory(ctx.user.id, intent.symbol, intent.side ?? "BUY");
-            setThreadState(ctx.user.id, { advisory, pendingQuantity: intent.quantity });
-            const narrated = await conversationalReply(text, {
-              allowTradeTool: false,
-              advisory,
+            setThreadState(
+              ctx.user.id,
+              {
+                advisory,
+                pendingQuantity: tradeQty,
+                awaitingQuantityFor: null,
+              },
               conversationId,
-              developerExtra: `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n${JSON.stringify(advisory)}\nIf verdict is FAVORABLE or WAIT, tell the user they can say "stage it" to prepare a ticket. If UNFAVORABLE or BLOCKED, do not invite staging.`,
-            });
-            if (narrated) return { kind: "text" as const, reply: narrated };
+            );
+            const stageHint =
+              advisory.verdict === "FAVORABLE"
+                ? `If you want to proceed, say "stage it" and I'll prepare a ticket — nothing trades without your CONFIRM.`
+                : advisory.verdict === "WAIT"
+                  ? `Verdict is **WAIT** — I will not stage a ticket until the setup is **FAVORABLE**. Nothing was staged.`
+                  : `Nothing was staged.`;
+            // Only FAVORABLE may be narrated by Lucia with a stage invite; WAIT/others stay deterministic
+            // so the model cannot invite "stage it" against client rules.
+            if (advisory.verdict === "FAVORABLE") {
+              const narrated = await conversationalReply(text, {
+                allowTradeTool: false,
+                advisory,
+                conversationId,
+                developerExtra:
+                  `=== ADVISORY (deterministic engine verdict — narrate it faithfully, never invent or alter its numbers) ===\n` +
+                  `${JSON.stringify(advisory)}\n` +
+                  (tradeQty != null ? `User-requested quantity: ${tradeQty} shares.\n` : "") +
+                  `Tell the user they can say "stage it" to prepare a ticket. Nothing trades without CONFIRM.`,
+              });
+              if (narrated) return { kind: "text" as const, reply: narrated };
+            }
             const a = advisory;
             return {
               kind: "text" as const,
               reply:
-                `**${a.symbol} ${a.side} — verdict: ${a.verdict}**\n\n` +
+                `**${a.symbol} ${a.side} — verdict: ${a.verdict}**` +
+                (tradeQty != null ? ` · size **${tradeQty}** shares` : "") +
+                `\n\n` +
                 a.reasons.map((r) => `· ${r}`).join("\n") +
+                (a.proposed?.lastPrice != null
+                  ? `\n\nLast price: $${a.proposed.lastPrice}` +
+                    (a.proposed.note ? ` · ${a.proposed.note}` : "")
+                  : "") +
                 (a.watchFor ? `\n\nWatch for: ${a.watchFor}` : "") +
-                (a.verdict === "FAVORABLE" || a.verdict === "WAIT"
-                  ? "\n\nIf you want to proceed, say \"stage it\" and I'll prepare a ticket — nothing trades without your CONFIRM."
-                  : "\n\nNothing was staged."),
+                `\n\n${stageHint}`,
             };
           } catch (e) {
             return {
@@ -857,7 +1062,35 @@ export async function runIntelligenceChat(
     const assistantText =
       result.reply ??
       (result.kind === "parsed" ? "Strategy parsed and saved to your Strategies library as Paper." : undefined);
-    if (assistantText) await saveMessage(user.id, "assistant", assistantText, conversationId);
+    if (assistantText) {
+      await saveMessage(user.id, "assistant", assistantText, conversationId);
+      if (contextEnabled) {
+        if (marketMeta?.symbols?.length) {
+          const session = extractEarningsSessionFilter(effectiveText);
+          let kind: DisplayScopeKind = "data_reply";
+          if (/finnhub|quarterly earnings|earnings calendar/i.test(assistantText)) {
+            kind = session ? "earnings_session_slice" : "earnings_calendar";
+          } else if (/Revision 1|Earnings candidate research/i.test(assistantText)) {
+            kind = "research";
+          }
+          commitDisplayScope(workingSet, marketMeta.symbols, kind);
+        } else {
+          const inferred = inferDisplayScopeFromAssistantReply(text, assistantText, workingSet);
+          if (inferred?.length) {
+            commitDisplayScope(
+              workingSet,
+              inferred.map((e) => e.symbol),
+              "inferred_reply",
+            );
+          }
+        }
+      }
+    }
   }
   return marketMeta ? { ...result, market: marketMeta } : result;
+  } finally {
+    if (contextEnabled && conversationId) {
+      await persistConversationSession(user.id, conversationId).catch(() => undefined);
+    }
+  }
 }

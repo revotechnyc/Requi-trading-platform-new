@@ -38,22 +38,59 @@ export interface ThreadState {
   stagedTicketId: string | null;
   stagedExpiresAt: number | null;
   pendingQuantity: number | null;
+  /** Client Message 2: bare "Buy Apple" waits for shares vs dollar size before advisory. */
+  awaitingQuantityFor: { symbol: string; side: "BUY" | "SELL" } | null;
 }
 
 const threads = new Map<string, ThreadState>();
 
-export function getThreadState(userId: string): ThreadState {
-  return threads.get(userId) ?? { advisory: null, stagedTicketId: null, stagedExpiresAt: null, pendingQuantity: null };
+const defaultThread = (): ThreadState => ({
+  advisory: null,
+  stagedTicketId: null,
+  stagedExpiresAt: null,
+  pendingQuantity: null,
+  awaitingQuantityFor: null,
+});
+
+function threadKey(userId: string, conversationId?: string): string {
+  return conversationId?.trim() ? `c:${conversationId}` : `u:${userId}`;
 }
 
-export function setThreadState(userId: string, s: Partial<ThreadState>): ThreadState {
-  const next = { ...getThreadState(userId), ...s };
-  threads.set(userId, next);
+export function getThreadState(userId: string, conversationId?: string): ThreadState {
+  return threads.get(threadKey(userId, conversationId)) ?? defaultThread();
+}
+
+export function setThreadState(
+  userId: string,
+  s: Partial<ThreadState>,
+  conversationId?: string,
+): ThreadState {
+  const key = threadKey(userId, conversationId);
+  const next = { ...getThreadState(userId, conversationId), ...s };
+  threads.set(key, next);
   return next;
 }
 
-export function clearThreadState(userId: string): void {
-  threads.delete(userId);
+export function clearThreadState(userId: string, conversationId?: string): void {
+  threads.delete(threadKey(userId, conversationId));
+}
+
+export function replaceThreadState(userId: string, conversationId: string, state: ThreadState): void {
+  threads.set(threadKey(userId, conversationId), { ...state });
+}
+
+export function threadStateSnapshot(userId: string, conversationId: string): ThreadState | undefined {
+  const t = threads.get(threadKey(userId, conversationId));
+  if (!t) return undefined;
+  if (
+    !t.advisory &&
+    !t.stagedTicketId &&
+    !t.pendingQuantity &&
+    !t.awaitingQuantityFor
+  ) {
+    return undefined;
+  }
+  return t;
 }
 
 /* ---------- lexicon (versioned constants — changing a trigger is a code edit) ---------- */
@@ -61,7 +98,9 @@ export function clearThreadState(userId: string): void {
 export const ORDER_COMMAND_RE = /^\s*(confirm|reject)\s+order\s+[a-z0-9-]+\s*$/i;
 export const STATUS_TRIGGERS = /\b(p&l|pnl|profit|loss|positions?|orders?|tickets?|monitors?|watchlist|what'?s open|how am i doing|portfolio|balance)\b/i;
 export const STRATEGIZE_TRIGGERS = /\b(strategi[sz]e|build (me )?a strategy|create (a )?strategy|design (a )?strategy|write (a )?strategy|backtest|game ?plan|trade plan)\b/i;
-export const TRADE_TRIGGERS = /\b(buy|sell|long|short|flatten|exit|close (my |the )?position|add to)\b/i;
+/** Bare "short" excluded — "short list" is research scope, not short-selling. */
+export const TRADE_TRIGGERS =
+  /\b(buy|sell|long|flatten|exit|close (my |the )?position|add to|go short|short the)\b|\bshort\s+(?:\d+|[A-Za-z$]{1,6}\b)/i;
 export const STAGE_FOLLOWUP_RE = /\b(stage|stage it|do it|go ahead|place it|send it|buy it|sell it|execute|proceed|let'?s do it|confirmed?)\b/i;
 const QUESTION_OR_NEGATION =
   /(\?|^\s*what\s+should\s+i\s+buy\b|^\s*what\s+(?:stock\s+)?should\s+i\b|^\s*(should|would|could|is it|what if|what happens|why did|when (to|should)|how about)|\b(don'?t|do not|hold off|not yet|wait)\b)/i;
@@ -84,11 +123,40 @@ function extractQuantity(text: string): { quantity: number | null; error: string
   return parseTradeQuantity(text);
 }
 
+/** Rev-1 / earnings research — never imperative trade (e.g. "short list" + "Rev-1 style"). */
+export function isNonImperativeResearchAsk(text: string): boolean {
+  if (/^Run earnings candidate research on /i.test(text.trim())) return true;
+  if (/\bearnings\s+candidate\b/i.test(text) && /\b(research|analy[sz]e|run|rev-?\s*1)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(rev-?\s*1|revision\s*1)\b/i.test(text) && /\b(style|research|analy[sz]e|protocol|candidate)\b/i.test(text)) {
+    return true;
+  }
+  if (
+    /\b(analy[sz]e|run|dig)\b/i.test(text) &&
+    /\b(short\s+list|that\s+lineup|that\s+short\s+list|those\s+tickers|in\s+current\s+scope)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function inferTradeSide(text: string): "BUY" | "SELL" | null {
+  if (/\b(sell|flatten|exit)\b/i.test(text)) return "SELL";
+  if (/\bclose\s+(my\s+)?(the\s+)?position\b/i.test(text)) return "SELL";
+  if (/\b(go\s+short|short\s+the|\bshort\s+\d+)\b/i.test(text)) return "SELL";
+  if (/\bshort\s+[A-Za-z$]{1,6}\b/i.test(text) && !/\bshort\s+(list|lineup|set|group|table|universe)\b/i.test(text)) {
+    return "SELL";
+  }
+  if (/\b(buy|long|add to)\b/i.test(text)) return "BUY";
+  return null;
+}
+
 export function classifyIntent(text: string, thread: ThreadState): IntentResult {
   const qty = extractQuantity(text);
   const base: Omit<IntentResult, "mode" | "reason"> = {
     symbol: extractSymbol(text, thread),
-    side: /\b(sell|short|flatten|exit|close)\b/i.test(text) ? "SELL" : /\b(buy|long|add to)\b/i.test(text) ? "BUY" : null,
+    side: inferTradeSide(text),
     quantity: qty.quantity,
     quantityError: qty.error,
     followUp: false,
@@ -102,6 +170,16 @@ export function classifyIntent(text: string, thread: ThreadState): IntentResult 
       side: null,
       mode: "CHAT",
       reason: "market intelligence pipeline — not an imperative trade",
+    };
+  }
+
+  if (isNonImperativeResearchAsk(text)) {
+    return {
+      ...base,
+      symbol: null,
+      side: null,
+      mode: "CHAT",
+      reason: "earnings / Rev-1 research ask — not an imperative trade",
     };
   }
 
@@ -291,7 +369,7 @@ export async function composeAdvisory(userId: string, symbol: string, side: "BUY
     // full FAVORABLE still requires engine bars + setup.
     verdict = "WAIT";
     watchFor = !fresh
-      ? "intraday bar feed incomplete — gateway quote available; staging allowed after you say stage it (CONFIRM still required)"
+      ? "intraday bar feed incomplete — gateway quote available; do not stage until FAVORABLE"
       : "regular session / bar indicators not ready — ask me to watch it";
   } else if (!setup) {
     verdict = "WAIT";

@@ -238,14 +238,14 @@ export function formatConversationalEngineReply(payload: EngineNarrationPayload)
     if (payload.depth === "simple") {
       const backup = payload.candidates?.[1];
       const lines = [
-        `Today's US tape looks ${regime} (health ${payload.marketHealth}/100). One name the engine liked is ${candidateLine(top)}.`,
+        `Here's a simple read on today's US tape — it looks ${regime} (health ${payload.marketHealth}/100). One name that stood out on this pass is ${candidateLine(top)}.`,
       ];
       if (top.reasons.length) lines.push(`Why it showed up: ${top.reasons.slice(0, 2).join("; ")}.`);
       if (sectors) lines.push(`Sector context: ${sectors}.`);
       if (backup) lines.push(`If you want a second look, ${candidateLine(backup, true)} is next on the list.`);
       lines.push(
         "",
-        "This is research, not a buy order — no brokerage account is required for this scan.",
+        "This is research only — not a buy order, and you don't need a connected brokerage just to run this scan.",
         sourceLine,
       );
       return lines.filter(Boolean).join("\n");
@@ -256,7 +256,7 @@ export function formatConversationalEngineReply(payload: EngineNarrationPayload)
     const rest = names.slice(1).map((c) => candidateLine(c, true)).join("; ");
 
     const lines = [
-      `The US market is in a ${regime} regime today (health ${payload.marketHealth}/100). I scanned ${payload.scanned ?? names.length} liquid names${sectors ? ` with ${sectors} leading` : ""}.`,
+      `I ran a live US scan while the tape is ${regime} (health ${payload.marketHealth}/100)${sectors ? `, with ${sectors} leading` : ""}. Scanned ${payload.scanned ?? names.length} liquid names.`,
       "",
       `Top setup on this pass: ${candidateLine(lead)}.${top.reasons.length ? ` ${top.reasons[0]}.` : ""}`,
     ];
@@ -264,7 +264,7 @@ export function formatConversationalEngineReply(payload: EngineNarrationPayload)
     if (payload.depth === "quant") {
       lines.push(
         "",
-        "This is an engine research ranking, not a trade signal. Calibrated win-rate, expected value, and REOS/ERS were **not** run on this pass — only the discovery score, risk band, RSI, volume, and vs-SPY fields above.",
+        "Honest note: calibrated win-rate, expected value, and REOS/ERS were **not** calculated on this pass — only discovery score, risk band, RSI, volume, and vs-SPY above. I won't invent those fields.",
       );
     } else {
       lines.push("", "Research ranking only — not a trade authorization.");
@@ -314,8 +314,25 @@ export function formatConversationalEngineReply(payload: EngineNarrationPayload)
 const PROTOCOL_DUMP_RE =
   /^(#{1,3}\s|###\s|\*\*Quantitative US scan|\*\*Stock discovery|\*\*US market snapshot|Ranked candidates \(top|Model fields on this scan|RESEARCH ONLY \/ NO TRADE|BLOCKED|UNVERIFIED)/im;
 
+/** Client Friday feedback — Lucia must not stall research for portfolio/charts when engine JSON exists. */
+const RESEARCH_REFUSAL_RE =
+  /\b(attach(ment| a chart| charts?| market[- ]data)|need (current )?data before|don'?t have (current )?market data|verified portfolio|connected (brokerage|account|portfolio)|portfolio information|option chain would allow|naming a ticker would risk inventing|without.{0,40}(live prices|portfolio)|can'?t responsibly rank)\b/i;
+
 export function looksLikeProtocolDump(text: string): boolean {
   return PROTOCOL_DUMP_RE.test(text.trim());
+}
+
+export function looksLikeResearchDataRefusal(text: string): boolean {
+  return RESEARCH_REFUSAL_RE.test(text);
+}
+
+/** True when narration should be discarded in favor of deterministic prose. */
+export function shouldRejectEngineNarration(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (looksLikeProtocolDump(t)) return true;
+  if (looksLikeResearchDataRefusal(t)) return true;
+  return false;
 }
 
 function buildNarrationDeveloperBlock(payload: EngineNarrationPayload): string {
@@ -326,11 +343,14 @@ function buildNarrationDeveloperBlock(payload: EngineNarrationPayload): string {
     "",
     "NARRATION RULES:",
     "- Speak as Lucia in a warm, colleague tone — 2–4 short paragraphs unless the user asked for quant detail.",
-    "- Use ONLY symbols and numbers from the JSON above.",
+    "- Use ONLY symbols and numbers from the JSON above. If candidates[] is non-empty, lead with those names.",
     "- Do NOT output markdown tables, ### headers, numbered gate checklists, or BLOCKED/UNVERIFIED templates.",
     "- Say this is research context, not a trade authorization.",
-    "- For WAIT model fields, state honestly that probability / EV / REOS / ERS were not calculated on this pass.",
-    "- Mention the data source once at the end; do not ask for portfolio, charts, or broker L1 for general research.",
+    "- For WAIT model fields, state honestly that probability / EV / REOS / ERS were not calculated on this pass — do not invent them.",
+    "- CRITICAL: General market / opportunity research does NOT require a portfolio, brokerage, chart upload, or option chain.",
+    "- Do NOT ask the user to attach data, charts, or L1 quotes. The engine scan above IS the current market data.",
+    "- Do NOT say you lack market data when candidates or indexes are present in the JSON.",
+    "- Mention the data source once at the end.",
   ].join("\n");
 }
 
@@ -345,6 +365,12 @@ export async function narrateEngineOutput(
 
   const codeFallback = () => formatConversationalEngineReply(payload);
 
+  // Console chips (Beginner / Novice / Expert) — always use deterministic colleague prose.
+  // LLM narration was over-refusing (portfolio/charts) and inventing model fields.
+  if (payload.depth === "simple" || payload.depth === "standard" || payload.depth === "quant") {
+    return codeFallback();
+  }
+
   if (!llmNarrationEnabled()) return codeFallback();
 
   const developerExtra = buildNarrationDeveloperBlock(payload);
@@ -355,7 +381,7 @@ export async function narrateEngineOutput(
     developerExtra,
   }).catch(() => null);
 
-  if (lucia?.reply && !looksLikeProtocolDump(lucia.reply)) {
+  if (lucia?.reply && !shouldRejectEngineNarration(lucia.reply)) {
     return lucia.reply.trim();
   }
 
@@ -366,7 +392,7 @@ export async function narrateEngineOutput(
     conversationId: opts?.conversationId,
   }).catch(() => null);
 
-  if (swarm && !looksLikeProtocolDump(swarm)) {
+  if (swarm && !shouldRejectEngineNarration(swarm)) {
     return swarm.trim();
   }
 

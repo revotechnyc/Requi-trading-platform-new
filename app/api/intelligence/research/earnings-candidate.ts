@@ -212,6 +212,15 @@ const PEER_READ_THROUGH_RE =
 const RUN_RESEARCH_RE =
   /\b(run|execute|perform|start)\b[\s\S]{0,40}\b(research|protocol|candidate\s+selection|earnings\s+screen)\b/i;
 
+/** True when "research" is casual NL ("what would you research"), not a protocol kickoff. */
+function isCasualResearchAsk(text: string): boolean {
+  return (
+    /\bwhat would you research\b/i.test(text) ||
+    /\bif you were me\b/i.test(text) ||
+    /\bwhat would you (?:look at|buy|watch)\b/i.test(text)
+  );
+}
+
 /** True when the user is asking for peer read-through. */
 export function isPeerReadThroughRequest(text: string): boolean {
   return PEER_READ_THROUGH_RE.test(text);
@@ -229,6 +238,8 @@ function resolvedResearchSymbols(text: string): string[] {
 export function isEarningsResearchProtocol(text: string): boolean {
   // Multi-factor desk compares must never enter the earnings swarm.
   if (isDeskCompareQuery(text)) return false;
+  // Casual NL ("what would you research if you were me") is stock discovery — not Rev1.
+  if (isCasualResearchAsk(text)) return false;
   if (EARNINGS_PROTOCOL_MARKERS.test(text)) return true;
   if (RUN_RESEARCH_RE.test(text) && resolvedResearchSymbols(text).length > 0) return true;
   if (

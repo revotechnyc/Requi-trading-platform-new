@@ -11,15 +11,25 @@ export type StageFromAdvisoryResult =
   | { ok: false; reply: string };
 
 /**
- * Stage a ticket from a fresh advisory. Blocks UNFAVORABLE / BLOCKED so the
- * new setup does not silently open tickets against a failed protocol check.
- * FAVORABLE / WAIT may stage (WAIT still needs human CONFIRM).
+ * Stage a ticket from a fresh advisory. Only FAVORABLE may stage.
+ * WAIT / UNFAVORABLE / BLOCKED refuse so thin data or failed protocol
+ * never opens a ticket (CONFIRM still required after a successful stage).
  */
 export async function stageTicketFromAdvisory(
   userId: string,
   advisory: Advisory,
-  opts?: { quantity?: number },
+  opts?: { quantity?: number; conversationId?: string },
 ): Promise<StageFromAdvisoryResult> {
+  if (advisory.verdict === "WAIT") {
+    return {
+      ok: false,
+      reply:
+        `I won't stage **${advisory.symbol}** — advisory is **WAIT** (data or setup not ready for a ticket).\n\n` +
+        advisory.reasons.map((r) => `· ${r}`).join("\n") +
+        (advisory.watchFor ? `\n\nWatch for: ${advisory.watchFor}` : "") +
+        `\n\nNothing was staged. When the next advisory is **FAVORABLE**, say **"stage it"** again (or run a fresh \`buy ${advisory.symbol}\`).`,
+    };
+  }
   if (advisory.verdict === "UNFAVORABLE" || advisory.verdict === "BLOCKED") {
     return {
       ok: false,
@@ -57,11 +67,15 @@ export async function stageTicketFromAdvisory(
       origin: "INTELLIGENCE",
     });
     const t = res.ticket;
-    clearThreadState(userId);
-    setThreadState(userId, {
-      stagedTicketId: t.ticketId,
-      stagedExpiresAt: Date.now() + 5 * 60_000,
-    });
+    clearThreadState(userId, opts?.conversationId);
+    setThreadState(
+      userId,
+      {
+        stagedTicketId: t.ticketId,
+        stagedExpiresAt: Date.now() + 5 * 60_000,
+      },
+      opts?.conversationId,
+    );
 
     return {
       ok: true,

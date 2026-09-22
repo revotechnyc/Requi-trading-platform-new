@@ -50,24 +50,33 @@ export function classifyConsoleResearchDepth(text: string): ConsoleResearchDepth
 const GENERAL_MARKET_PATTERNS = [
   /\bhow(?:'s|\s+is|\s+are)\s+the\s+market\b/i,
   /\bhow\s+is\s+the\s+market\b/i,
-  /\bwhat\s+is\s+the\s+market\s+doing\b/i,
+  /\bwhat(?:'s|\s+is)\s+the\s+market\s+doing\b/i,
+  /\bwhat(?:'s|\s+is)\s+the\s+market\s+like\s+today\b/i,
   /\bwhat(?:'s|\s+is)\s+happening\s+in\s+the\s+market\b/i,
-  /\bis\s+today\s+a\s+good\s+trading\s+day\b/i,
+  /\bis\s+today\s+a\s+good\s+(?:trading\s+)?day\b/i,
+  /\bis\s+today\s+a\s+good\s+day\s+to\s+trade\b/i,
   /\bis\s+the\s+market\s+good\s+today\b/i,
   /\bmarket\s+today\b/i,
   /\bhow\s+are\s+us\s+equities\b/i,
   /\bhow\s+are\s+stocks\s+doing\b/i,
-  /\bis\s+it\s+risky\s+today\b/i,
+  /\bis\s+it\s+risky(?:\s+to\s+buy)?\s+today\b/i,
   /\bmarket\s+health\b/i,
   /\bwhat(?:'s|\s+is)\s+leading\b/i,
   /\bwhat\s+sectors?\s+(?:are\s+)?leading\b/i,
+  /\bwhich\s+sectors?\s+(?:are\s+)?(?:strong|leading|hot)\b/i,
+  /\bsectors?\s+(?:that\s+are\s+)?(?:strong|leading)\s+today\b/i,
   /\bwho(?:'s|\s+is)\s+leading\b/i,
+  /\b(?:what(?:'s|\s+is)\s+)?(?:the\s+)?vibe\s+(?:in\s+)?(?:the\s+)?market\b/i,
+  /\bmarket\s+vibe\b/i,
+  /\bquick\s+market\s+snapshot\b/i,
+  /\bare\s+stocks\s+(?:up|down)\s+today\b/i,
 ];
 
 const STOCK_DISCOVERY_PATTERNS = [
   /\bwhat\s+(?:stock\s+)?should\s+i\s+buy\b/i,
   /\bwhat\s+should\s+i\s+buy\s+today\b/i,
   /\bwhat\s+stock\s+should\s+i\s+buy\b/i,
+  /\bwhat\s+stock\s+should\s+i\s+look\s+at\b/i,
   /\bgive\s+me\s+stocks?\s+to\s+watch\b/i,
   /\bwhat\s+looks\s+good\b/i,
   /\bfind\s+me\s+a\s+stock\b/i,
@@ -78,6 +87,17 @@ const STOCK_DISCOVERY_PATTERNS = [
   /\bstrongest opportunities based on current data\b/i,
   /\bquantitative market scan\b/i,
   /\brank the highest-quality setups\b/i,
+  /\b\$?\d{2,6}\b.*\b(?:stock|buy|look at|invest)\b/i,
+  /\bi have \$?\d+/i,
+  /\bone simple opportunity\b/i,
+  /\bsimple opportunity\s+today\b/i,
+  /\bi'?m new to trading\b/i,
+  /\banything worth watching\b/i,
+  /\bworth watching\b.*\b(?:close|today|now)\b/i,
+  /\bbefore the close\b/i,
+  /\bwhat would you (?:research|look at|buy|watch)\b/i,
+  /\bif you were me\b/i,
+  /\bwhat would you research\b/i,
 ];
 
 const MARKET_MOVERS_PATTERNS = [
@@ -88,6 +108,8 @@ const MARKET_MOVERS_PATTERNS = [
   /\bwhat(?:'s|\s+is)\s+crashing\b/i,
   /\bwhat\s+is\s+going\s+up\b/i,
   /\bwhat\s+is\s+going\s+down\b/i,
+  /\bstocks?\s+(?:are\s+)?running\s+(?:the\s+)?hardest\b/i,
+  /\bbiggest\s+(?:gainers?|losers?)\b/i,
 ];
 
 /** Named international override — not US default. */
@@ -194,13 +216,15 @@ export function isDiscoveryRankExplainQuery(text: string): boolean {
 }
 
 export function isRiskTodayQuery(text: string): boolean {
-  return /\bis\s+it\s+risky\s+today\b/i.test(text);
+  return /\bis\s+it\s+risky(?:\s+to\s+buy)?\s+today\b/i.test(text);
 }
 
 export function isSectorLeadingQuery(text: string): boolean {
   return (
     /\bwhat(?:'s|\s+is)\s+leading\b/i.test(text) ||
     /\bwhat\s+sectors?\s+(?:are\s+)?leading\b/i.test(text) ||
+    /\bwhich\s+sectors?\s+(?:are\s+)?(?:strong|leading|hot)\b/i.test(text) ||
+    /\bsectors?\s+(?:that\s+are\s+)?(?:strong|leading)\s+today\b/i.test(text) ||
     /\bwho(?:'s|\s+is)\s+leading\b/i.test(text)
   );
 }

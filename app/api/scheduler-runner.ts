@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, lte } from "drizzle-orm";
 import { getDb } from "./queries/connection";
 import { conversations, scheduledTaskRuns, scheduledTasks } from "@db/schema";
 import { runIntelligenceChat } from "./intelligence-router";
+import { ensureSessionStateColumn } from "./intelligence/conversation-session";
 
 /**
  * Scheduled Intelligence tasks — the runner executes a due task's prompt
@@ -103,10 +104,11 @@ export async function runTaskNow(taskId: string, trigger: "SCHEDULED" | "MANUAL"
     // Each run opens its own conversation so the full result is reviewable
     // under Recent Conversations, titled with the task name and run time.
     const stamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    await ensureSessionStateColumn();
     const [convo] = await db
       .insert(conversations)
       .values({ userId: task.userId, organizationId: task.organizationId, title: `${task.name} — ${stamp}` })
-      .returning();
+      .returning({ id: conversations.id });
     const result = await runIntelligenceChat({ id: task.userId }, task.prompt, convo.id);
     const excerpt = (result.reply ?? (result.kind === "parsed" ? "Strategy parsed and saved." : JSON.stringify(result).slice(0, 400))).slice(0, 500);
     await db

@@ -54,6 +54,25 @@ describe("resolveSymbolsFromText", () => {
     expect(filterLikelyFalsePositiveTickers(["GOTCHA"], "gotcha is not a stock")).toEqual([]);
   });
 
+  it("does not harvest WOULD/WERE/BEFORE from casual English", () => {
+    expect(
+      filterLikelyFalsePositiveTickers(
+        ["WOULD", "WERE"],
+        "What would you research if you were me today?",
+      ),
+    ).toEqual([]);
+    expect(
+      filterLikelyFalsePositiveTickers(["BEFORE"], "Anything worth watching before the close?"),
+    ).toEqual([]);
+    expect(
+      filterLikelyFalsePositiveTickers(
+        ["ENDS", "EVERY", "STILL"],
+        "Run earnings-candidate research with gap registers on every ticker still in focus.",
+      ),
+    ).toEqual([]);
+    expect(resolveSymbolsFromText("What would you research if you were me today?")).toEqual([]);
+  });
+
   it("does not harvest SCAN or VALUE from the Console quant chip prompt", () => {
     const q =
       "Run a full quantitative market scan and rank the highest-quality setups by probability, expected value, risk, and evidence reliability.";
@@ -135,6 +154,17 @@ Use verified data only. If guidance or event-study is incomplete, classify WAIT 
     expect(resolveSymbolsFromText(q)).not.toContain("BASED");
     expect(resolveContextSymbolsFromText(q)).toEqual([]);
     expect(filterLikelyFalsePositiveTickers(["FIVE", "BASED"], q)).toEqual([]);
+  });
+
+  it("does not treat quant research as ticker QUANT", () => {
+    const q = "Okay so do a quant research on those two";
+    expect(resolveContextSymbolsFromText(q)).toEqual([]);
+    expect(resolveSymbolsFromText(q)).not.toContain("QUANT");
+  });
+
+  it("still resolves QUANT when explicitly requested as a ticker", () => {
+    expect(resolveSymbolsFromText("What is $QUANT trading at right now?")).toEqual(["QUANT"]);
+    expect(resolveSymbolsFromText("Run earnings candidate research on QUANT")).toEqual(["QUANT"]);
   });
 
   it("does not treat risk/reward/buying as tickers (Phase 0 working-set poison)", () => {

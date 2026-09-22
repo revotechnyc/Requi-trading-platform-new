@@ -3,6 +3,7 @@ import {
   buildDiscoveryNarrationPayload,
   formatConversationalEngineReply,
   looksLikeProtocolDump,
+  shouldRejectEngineNarration,
 } from "./engine-narration";
 import type { GeneralMarketAnalysis } from "./general-market";
 import type { StockDiscoveryResult } from "./stock-discovery";
@@ -104,7 +105,7 @@ describe("formatConversationalEngineReply", () => {
     expect(reply).toMatch(/MU/);
     expect(reply).toMatch(/89\/100/);
     expect(reply).toMatch(/AMD/);
-    expect(reply).toMatch(/REOS\/ERS were \*\*not\*\* run/i);
+    expect(reply).toMatch(/REOS\/ERS were \*\*not\*\* calculated/i);
     expect(reply).not.toMatch(/^###/m);
     expect(reply).not.toMatch(/Ranked candidates \(top/i);
     expect(reply).not.toMatch(/Quantitative US scan — engine ranked/i);
@@ -119,7 +120,7 @@ describe("formatConversationalEngineReply", () => {
       "simple",
     );
     const reply = formatConversationalEngineReply(payload);
-    expect(reply).toMatch(/One name the engine liked is \*\*MU\*\*/);
+    expect(reply).toMatch(/One name that stood out on this pass is \*\*MU\*\*/);
     expect(reply).toMatch(/second look.*AMD/i);
     expect(reply).not.toMatch(/Ranked candidates/i);
   });
@@ -130,5 +131,25 @@ describe("looksLikeProtocolDump", () => {
     expect(looksLikeProtocolDump("### Ranked candidates (top 5)")).toBe(true);
     expect(looksLikeProtocolDump("**Quantitative US scan — engine ranked**")).toBe(true);
     expect(looksLikeProtocolDump("The top name is MU at $999 — research only.")).toBe(false);
+  });
+});
+
+describe("shouldRejectEngineNarration", () => {
+  it("rejects portfolio / chart / attachment stalls", () => {
+    expect(
+      shouldRejectEngineNarration(
+        "I don't have current market data or a verified portfolio. Naming a ticker would risk inventing.",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRejectEngineNarration(
+        "If you can attach a chart or option chain, I can rank setups more carefully.",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRejectEngineNarration(
+        "Here's a simple read — **MU** at $999.28 (+2.23%). Research only.",
+      ),
+    ).toBe(false);
   });
 });

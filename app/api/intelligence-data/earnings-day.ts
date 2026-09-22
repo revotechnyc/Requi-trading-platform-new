@@ -10,6 +10,7 @@ import {
   fetchHistoricalEarnings,
   summarizeBeatHistory,
 } from "./providers/earnings-history";
+import { resolveContextSymbolsFromText } from "./symbol-resolver";
 
 const UA = "Mozilla/5.0 (compatible; RequiTrading/1.0)";
 const ET = "America/New_York";
@@ -323,8 +324,8 @@ export function resolveEarningsCalendarDate(text: string): string | null {
   // Accept common misspelling "quaterly" from client test prompts.
   // Also accept trader shorthand: ER, BMO/AMC/PM/AH.
   if (
-    !/\bearnings?\b|\bquart?erly\b|\breport(?:s|ing)?\b|\bcalendar\b|\ber\b/i.test(lower) &&
-    !/\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours)\b/i.test(lower) &&
+    !/\bearnings?\b|\bquart?erly\b|\breport(?:s|ing|ers?)?\b|\bcalendar\b|\ber\b/i.test(lower) &&
+    !/\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours|post[-\s]?market)\b/i.test(lower) &&
     !/\btrading\s+days?\b/i.test(lower)
   ) {
     return null;
@@ -500,12 +501,27 @@ export function resolveEarningsCalendarDateRange(text: string): EarningsCalendar
   return null;
 }
 
+/** Named company (e.g. Apple) — not a full-day earnings board. */
+export function isSingleCompanyEarningsQuery(text: string): boolean {
+  if (!/\bearnings?\b/i.test(text)) return false;
+  const lower = text.toLowerCase();
+  if (/\bearnings\s+of\s+today\b/i.test(lower) || /\btoday'?s\s+earnings\s+(lineup|calendar|board)\b/i.test(lower)) {
+    return false;
+  }
+  const symbols = resolveContextSymbolsFromText(text);
+  if (symbols.length !== 1) return false;
+  if (/\bearnings\s+of\s+(?!today\b)/i.test(text)) return true;
+  if (/\b(companies|who)\s+reports?\b/i.test(lower)) return false;
+  return false;
+}
+
 /** True when the user wants a day board, not a single-ticker next-earnings answer. */
 export function isEarningsDayCalendarQuery(text: string): boolean {
+  if (isSingleCompanyEarningsQuery(text)) return false;
   const lower = normalizeTraderSlang(text).toLowerCase();
   const looksLikeEarningsDomain =
-    /\bearnings?\b|\bquart?erly\b|\breport(?:s|ing)?\b|\bcalendar\b|\ber\b/i.test(lower) ||
-    /\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours)\b/i.test(lower) ||
+    /\bearnings?\b|\bquart?erly\b|\breport(?:s|ing|ers?)?\b|\bcalendar\b|\ber\b/i.test(lower) ||
+    /\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours|post[-\s]?market)\b/i.test(lower) ||
     /\btrading\s+days?\b/i.test(lower) ||
     hasEarningsScreenIntent(lower);
 
@@ -572,14 +588,15 @@ export function wantsSessionSplit(text: string): boolean {
   return false;
 }
 
-function extractEarningsSessionFilter(text: string): EarningsDayRow["reportTime"] | null {
+export function extractEarningsSessionFilter(text: string): EarningsDayRow["reportTime"] | null {
   if (wantsSessionSplit(text)) return null;
   const lower = normalizeTraderSlang(text).toLowerCase();
   if (/\b(dmh|during\s+market\s+hours)\b/i.test(lower)) return "DMH";
   // premarket → before open
   if (/\b(premarket|\bpm\b)\b/i.test(lower)) return "BMO";
-  // after-hours → after close
+  // after-hours / post-market → after close
   if (/\b(after[-\s]?hours|\bah\b)\b/i.test(lower)) return "AMC";
+  if (/\bpost[-\s]?market\b/i.test(lower)) return "AMC";
   // Plain English: "before the market opens", "before market open"
   if (/\bbefore\s+(?:the\s+)?market\s+opens?\b/i.test(lower)) return "BMO";
   if (/\b(bmo|before\s+market\s+open|before\s+the\s+open)\b/i.test(lower)) return "BMO";
@@ -590,6 +607,10 @@ function extractEarningsSessionFilter(text: string): EarningsDayRow["reportTime"
   if (/\b(amc|after\s+market\s+close|after\s+the\s+close)\b/i.test(lower)) return "AMC";
   // Pack F1 shorthand: "after close tomorrow" (no "market")
   if (/\bafter\s+close\b/i.test(lower)) return "AMC";
+  // "after the bell", "reporting after the bell today"
+  if (/\bafter\s+(?:the\s+)?(?:closing\s+)?bell\b/i.test(lower)) return "AMC";
+  if (/\b(?:reporting|reports?|report)\s+after\s+(?:the\s+)?bell\b/i.test(lower)) return "AMC";
+  if (/\bbefore\s+(?:the\s+)?(?:opening\s+)?bell\b/i.test(lower)) return "BMO";
   return null;
 }
 
@@ -728,12 +749,13 @@ function defaultScreenDateRange(): EarningsCalendarDateRange {
  * to the same internal intent shape before we call deterministic handlers.
  */
 export function parseEarningsCalendarIntent(text: string): ParsedEarningsCalendarIntent | null {
+  if (isSingleCompanyEarningsQuery(text)) return null;
   const lower = normalizeTraderSlang(text).toLowerCase();
 
   // Domain gate (earnings calendar intent, including trader shorthand + screens).
   if (
-    !/\bearnings?\b|\bquart?erly\b|\breport(?:s|ing)?\b|\bcalendar\b|\ber\b/i.test(lower) &&
-    !/\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours)\b/i.test(lower) &&
+    !/\bearnings?\b|\bquart?erly\b|\breport(?:s|ing|ers?)?\b|\bcalendar\b|\ber\b/i.test(lower) &&
+    !/\b(bmo|amc|dmh|pm|premarket|ah|after[-\s]?hours|post[-\s]?market)\b/i.test(lower) &&
     !/\btrading\s+days?\b/i.test(lower) &&
     !hasEarningsScreenIntent(lower)
   ) {
@@ -829,6 +851,29 @@ export function parseEarningsCalendarIntent(text: string): ParsedEarningsCalenda
       requireNegativeConsensusEps,
       requirePositiveHistSurprise,
       rankBy: rankBy ?? (strictBeatRateRanking ? "beat_rate" : "surprise"),
+      strictBeatRateRanking,
+      splitBySession,
+    };
+  }
+
+  // Session slice on prior board ("post-market reporters from that board") — default to today ET.
+  if (
+    sessionFilter &&
+    (/\b(that board|from that board|the board|that list|that calendar)\b/i.test(lower) ||
+      /\breporters?\b/i.test(lower))
+  ) {
+    return {
+      domain: "earnings_calendar",
+      timeScope: "single_date",
+      date: ymdFromEtParts(etParts()),
+      sessionFilter,
+      rankBySurprise,
+      focusSymbols,
+      minSurprisePct,
+      minBeatRate,
+      requireNegativeConsensusEps,
+      requirePositiveHistSurprise,
+      rankBy,
       strictBeatRateRanking,
       splitBySession,
     };
@@ -1505,6 +1550,50 @@ function enumerateRangeDays(from: string, to: string, maxDays = 30): string[] {
     days.push(cursor);
   }
   return days;
+}
+
+/** Follow-up: narrow the prior earnings board (e.g. post-market only from that board). */
+export function isEarningsBoardSubsetFollowUp(
+  text: string,
+  lastHandler?: string,
+  rankedCount = 0,
+): boolean {
+  if (lastHandler !== "earnings_day" && rankedCount === 0) return false;
+  const lower = text.toLowerCase();
+  const refersToBoard =
+    /\b(that board|from that board|the board|that list|that calendar|on that board|from that)\b/i.test(
+      text,
+    ) ||
+    /\b(that lineup|from that lineup|out of that lineup|the lineup|from what you (?:just )?listed)\b/i.test(
+      lower,
+    ) ||
+    /\b(above table|the table above|that table|prior table|the above)\b/i.test(lower) ||
+    /\b(reporters?\s+from)\b/i.test(lower);
+  const session = extractEarningsSessionFilter(text);
+  const wantsSlice = /\b(just|only|filter|limit|narrow)\b/i.test(lower);
+  const sessionTimingOnly =
+    /\b(amc|bmo|dmh)\s+timing\b/i.test(lower) || /\btiming\s+only\b/i.test(lower);
+  return Boolean(
+    refersToBoard && (session || wantsSlice || sessionTimingOnly || /\bpost[-\s]?market\b/i.test(lower)),
+  );
+}
+
+export function buildEarningsSubsetCalendarQuery(
+  text: string,
+  lastUniverseLabel?: string,
+): string {
+  const dayMatch = lastUniverseLabel?.match(
+    /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow)$/i,
+  );
+  const day = dayMatch?.[1]?.toLowerCase() ?? (/\btoday\b/i.test(text) ? "today" : "today");
+  const session = extractEarningsSessionFilter(text) ?? "AMC";
+  if (session === "BMO") {
+    return `Which companies report earnings before the market open on ${day}?`;
+  }
+  if (session === "DMH") {
+    return `Which companies report earnings during market hours on ${day}?`;
+  }
+  return `Which companies report earnings after the market close on ${day}?`;
 }
 
 export async function tryEarningsDayCalendarReply(

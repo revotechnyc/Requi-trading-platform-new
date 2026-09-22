@@ -4,6 +4,8 @@ import { TRPCError } from "@trpc/server";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { chatMessages, conversations } from "@db/schema";
+import { clearWorkingSet } from "./intelligence/conversation-context";
+import { clearConversationSession } from "./intelligence/conversation-session";
 
 /**
  * Recent Conversations — every chat turn already persists to chat_messages
@@ -65,6 +67,8 @@ export const conversationsRouter = createRouter({
         .where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, ctx.user.id), isNull(conversations.deletedAt)))
         .returning({ id: conversations.id });
       if (!updated[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Conversation not found." });
+      clearWorkingSet(ctx.user.id, input.conversationId);
+      await clearConversationSession(ctx.user.id, input.conversationId);
       return { ok: true };
     }),
 });

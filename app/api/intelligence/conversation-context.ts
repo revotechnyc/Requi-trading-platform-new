@@ -7,7 +7,19 @@
  */
 
 import {
+  buildEarningsSubsetCalendarQuery,
+  extractEarningsSessionFilter,
+  isEarningsBoardSubsetFollowUp,
+} from "../intelligence-data/earnings-day";
+import {
+  commitDisplayScope,
+  isEarningsSessionNarrowAsk,
+  isOperationalFollowUp,
+  resolveOperationalScope,
+} from "./conversation-scope";
+import {
   filterLikelyFalsePositiveTickers,
+  isExplicitlyNamedTicker,
   resolveContextSymbolsFromText,
   resolveSymbolsFromText,
 } from "../intelligence-data/symbol-resolver";
@@ -49,6 +61,9 @@ export type ConversationWorkingSet = {
   lastIntent?: FollowUpIntentType;
   lastHandler?: "earnings_day" | "research" | "data_reply" | "live_gate" | "other";
   lastUniverseLabel?: string;
+  /** Tickers from the last assistant message (authoritative for vague follow-ups). */
+  displayScope?: WorkingEntity[];
+  displayScopeKind?: import("./conversation-scope").DisplayScopeKind;
   updatedAt: number;
 };
 
@@ -107,6 +122,55 @@ function keyFor(userId: string, conversationId?: string): string {
   return conversationId?.trim() ? `c:${conversationId}` : `u:${userId}`;
 }
 
+export function conversationIdFromKey(key: string): string | undefined {
+  return key.startsWith("c:") ? key.slice(2) : undefined;
+}
+
+function commitWorkingSet(ws: ConversationWorkingSet): void {
+  ws.updatedAt = Date.now();
+  store.set(ws.key, ws);
+}
+
+/** Restore from DB (hydrate) — overwrites in-memory entry for this conversation. */
+export function replaceWorkingSet(ws: ConversationWorkingSet): void {
+  commitWorkingSet(ws);
+}
+
+/** Snapshot for persistence (undefined if empty default). */
+export function workingSetSnapshot(
+  userId: string,
+  conversationId: string,
+): ConversationWorkingSet | undefined {
+  const ws = store.get(keyFor(userId, conversationId));
+  if (!ws) return undefined;
+  if (
+    !ws.active.length &&
+    !ws.ranked.length &&
+    !Object.keys(ws.groups).length &&
+    !(ws.displayScope?.length ?? 0)
+  ) {
+    return undefined;
+  }
+  return ws;
+}
+
+/**
+ * Referential turn: only keep symbols the user clearly named — not prose harvest.
+ */
+export function resolveExplicitForContextTurn(text: string, ws: ConversationWorkingSet): string[] {
+  const raw = resolveContextSymbolsFromText(text);
+  if (!raw.length) return raw;
+  const referential = hasReferentialLanguage(text);
+  const hasScope = ws.active.length > 0 || ws.ranked.length > 0;
+  const scopedResearch = wantsScopedResearchFollowUp(text);
+  const useScope =
+    hasScope && (referential || isOperationalFollowUp(text, ws) || scopedResearch);
+  if (!useScope) return raw;
+  const named = raw.filter((sym) => isExplicitlyNamedTicker(sym, text));
+  if (scopedResearch && !named.length) return [];
+  return named;
+}
+
 export function getWorkingSet(userId: string, conversationId?: string): ConversationWorkingSet {
   const key = keyFor(userId, conversationId);
   const existing = store.get(key);
@@ -119,7 +183,7 @@ export function getWorkingSet(userId: string, conversationId?: string): Conversa
     groups: {},
     updatedAt: Date.now(),
   };
-  store.set(key, fresh);
+  commitWorkingSet(fresh);
   return fresh;
 }
 
@@ -159,7 +223,17 @@ export function getRankedUniverse(ws: ConversationWorkingSet): WorkingEntity[] {
 export function getReferentialTarget(ws: ConversationWorkingSet): WorkingEntity[] {
   if (ws.active.length) return ws.active;
   if (ws.groups.focus?.length) return ws.groups.focus;
-  return ws.ranked;
+  const display = ws.displayScope ?? [];
+  if (
+    display.length &&
+    (ws.displayScopeKind === "selection" ||
+      ws.displayScopeKind === "earnings_session_slice" ||
+      ws.displayScopeKind === "inferred_reply" ||
+      (ws.ranked.length > 0 && display.length < ws.ranked.length))
+  ) {
+    return display;
+  }
+  return ws.ranked.length ? ws.ranked : display;
 }
 
 const GROUP_DISPLAY: Record<string, string> = {
@@ -209,6 +283,13 @@ function scoreReferentialGroup(text: string, groupKey: string, ws: ConversationW
   if (/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)$/.test(groupKey)) {
     if (new RegExp(`\\b${groupKey}\\b`, "i").test(lower)) score += 90;
     if (/\b(earnings|report|amc|bmo|calendar)\b/i.test(lower)) score += 35;
+  }
+
+  if (/_(amc|bmo|dmh)$/i.test(groupKey)) {
+    if (/\b(earnings|remaining|dig|deeper|research|rev-?1|amc|bmo|tickers?)\b/i.test(lower)) {
+      score += 90;
+    }
+    if (ws.lastHandler === "earnings_day") score += 25;
   }
 
   if (groupKey === "universe") {
@@ -321,8 +402,7 @@ export function setActiveEntities(
     ws.lastUniverseLabel = opts.groupLabel;
   }
   if (opts?.handler) ws.lastHandler = opts.handler;
-  ws.updatedAt = Date.now();
-  store.set(ws.key, ws);
+  commitWorkingSet(ws);
   return ws;
 }
 
@@ -338,8 +418,12 @@ export function applyActiveSubset(
     ws.groups.last_selection = [...ws.active];
   }
   ws.lastIntent = intent;
-  ws.updatedAt = Date.now();
-  store.set(ws.key, ws);
+  commitDisplayScope(
+    ws,
+    ws.active.map((e) => e.symbol),
+    "selection",
+  );
+  commitWorkingSet(ws);
   return ws;
 }
 
@@ -367,8 +451,14 @@ export function recordResearchResults(
   }
   ws.lastHandler = opts?.lastHandler ?? "research";
   ws.lastIntent = "research";
-  ws.updatedAt = Date.now();
-  store.set(ws.key, ws);
+  const slice =
+    opts?.groupLabel && /_(amc|bmo|dmh)$/i.test(opts.groupLabel)
+      ? "earnings_session_slice"
+      : opts?.lastHandler === "earnings_day"
+        ? "earnings_calendar"
+        : "research";
+  commitDisplayScope(ws, ranked.map((e) => e.symbol), slice);
+  commitWorkingSet(ws);
   return ws;
 }
 
@@ -380,8 +470,17 @@ function quantityTokenToNumber(token: string): number | null {
   return null;
 }
 
+/** Strip protocol tokens so "Rev-1" is not parsed as quantity 1. */
+function textForQuantityParse(text: string): string {
+  return text
+    .replace(/\brev-?\s*1\b/gi, " ")
+    .replace(/\bphase\s+\d+\b/gi, " ");
+}
+
+export { commitDisplayScope } from "./conversation-scope";
+
 export function parseQuantity(text: string): number | null {
-  const lower = text.toLowerCase();
+  const lower = textForQuantityParse(text).toLowerCase();
 
   // "isolate the two", "pick the top 3", "keep only the three", "want only top 3"
   const verbQty = lower.match(
@@ -437,6 +536,8 @@ export function parseQuantity(text: string): number | null {
     if (n) return n;
   }
 
+  if (/\bboth\b/.test(lower) && /\b(them|those|these|of them)\b/.test(lower)) return 2;
+
   const digit = lower.match(/\b(\d{1,2})\b/);
   if (digit) return Math.min(10, Math.max(1, Number(digit[1])));
 
@@ -448,7 +549,11 @@ export function parseQuantity(text: string): number | null {
 export function hasReferentialLanguage(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    /\b(those|them|these|the\s+rest|the\s+others|the\s+remaining|all\s+of\s+them)\b/.test(t) ||
+    /\b(those|them|these|both|the\s+two|the\s+rest|the\s+others|the\s+remaining|all\s+of\s+them)\b/.test(t) ||
+    /\b(every\s+(ticker|symbol|name)|each\s+(ticker|symbol|name))\b/.test(t) ||
+    /\b(still\s+in\s+focus|in\s+focus|on\s+the\s+board|from\s+that\s+board)\b/.test(t) ||
+    /\b(that\s+short\s+list|short\s+list|that\s+lineup)\b/.test(t) ||
+    /\bon those (one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(t) ||
     /\b(the\s+companies?\s+(above|below|you\s+(just\s+)?(mentioned|listed|returned|analyzed|selected|ranked)))\b/.test(t) ||
     /\b(the\s+tickers?\s+(above|you\s+(just\s+)?(mentioned|listed|returned|selected)))\b/.test(t) ||
     /\b(the\s+ones?\s+you\s+(just\s+)?(mentioned|listed|returned|ranked|selected|picked))\b/.test(t) ||
@@ -456,7 +561,7 @@ export function hasReferentialLanguage(text: string): boolean {
     // "the three", "only the top three", "keep only top 3", "want only the three which is top"
     (/\b(only\s+)?(the\s+)?(top\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(t) &&
       /\b(keep|want|only|top|best|strongest)\b/.test(t)) ||
-    /\b(go\s+deeper|drill\s+down|more\s+detail|dig\s+deeper|expand\s+(the\s+)?analysis)\b/.test(t) ||
+    /\b(go\s+deeper|drill\s+down|more\s+detail|dig\s+(?:into|deeper)|expand\s+(the\s+)?analysis)\b/.test(t) ||
     /\b(rank\s+them|analyze\s+them|compare\s+them|remove\s+the\s+(weakest|riskiest|worst))\b/.test(t) ||
     /\b(which\s+ones?|which\s+(three|two|five|\d+)|look\s+strongest|strongest\s+ones?|best\s+ones?|focus\s+on)\b/.test(t) ||
     /\b(same\s+(thing|analysis|methodology|criteria)|do\s+the\s+same|apply\s+the\s+same|run\s+the\s+same)\b/.test(t) ||
@@ -481,10 +586,26 @@ function wantsUniverseResearch(text: string, explicit: string[]): boolean {
       return false;
     }
   }
-  if (hasNamedTickerList(text, explicit)) {
-    return /\b(analy[sz]e|research|run\s+(the\s+)?analysis|screen|identify)\b/i.test(text);
-  }
-  return /\b(analy[sz]e|research|run\s+(the\s+)?analysis|earnings\s+candidate)\b/i.test(text);
+  const researchVerb =
+    /\b(analy[sz]e|research|run\s+(the\s+)?analysis|earnings\s+candidate|rev-?1)\b/i.test(text) ||
+    /\bquant(?:itative)?\s+research\b/i.test(text) ||
+    /\bdo a quant\b/i.test(text);
+  if (!researchVerb) return false;
+  if (hasNamedTickerList(text, explicit)) return true;
+  // Single scraped token + referential scope → use conversation working set, not cold explicit.
+  if (explicit.length === 1 && hasReferentialLanguage(text)) return false;
+  if (explicit.length >= 1) return true;
+  return false;
+}
+
+/** Research / Rev-1 follow-up on symbols already in this chat (not a fresh ticker list). */
+function wantsScopedResearchFollowUp(text: string): boolean {
+  return (
+    /\b(research|analy[sz]e|earnings\s+candidate)\b/i.test(text) ||
+    (/\brev-?\s*1\b/i.test(text) && /\b(analy[sz]e|style|research|run|dig)\b/i.test(text)) ||
+    /\bquant(?:itative)?\s+research\b/i.test(text) ||
+    /\bdo a quant\b/i.test(text)
+  );
 }
 
 /** Follow-up verb with conversation state but no explicit tickers. */
@@ -494,6 +615,8 @@ function isContextualFollowUp(text: string, ws: ConversationWorkingSet, explicit
   if (explicit.length > 0) return false;
   return (
     hasReferentialLanguage(text) ||
+    isOperationalFollowUp(text, ws) ||
+    (wantsScopedResearchFollowUp(text) && (hasReferentialLanguage(text) || ws.active.length > 0)) ||
     /\b(rank|analyze|analyse|compare|remove|deeper|strongest|weakest|focus|pick|select|sort|keep|want|narrow|bottom)\b/.test(
       lower,
     ) ||
@@ -621,11 +744,18 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
   }
 
   if (
-    /\b(go\s+deeper|drill\s+down|deeper\s+analysis|more\s+detail|dig\s+deeper|expand\s+analysis|full\s+breakdown)\b/.test(
+    /\b(go\s+deeper|drill\s+down|deeper\s+analysis|more\s+detail|dig\s+(?:into|deeper)|expand\s+analysis|full\s+breakdown)\b/.test(
       lower,
     )
   ) {
     scores.go_deeper = 85;
+  }
+  if (/\bremaining\s+tickers?\b/i.test(lower) && ws.lastHandler === "earnings_day") {
+    scores.go_deeper = Math.max(scores.go_deeper ?? 0, 88);
+  }
+  if (/\bwhich\b/i.test(lower) && /\b(weakest|worst|lowest)\b/i.test(lower)) {
+    scores.select = Math.max(scores.select ?? 0, 98);
+    scores.research = Math.min(scores.research ?? 100, 40);
   }
 
   if (/\bremove\s+the\s+(weakest|riskiest|worst)\b/.test(lower)) scores.remove = 80;
@@ -636,6 +766,24 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
     /\b(those\s+tickers|these\s+companies|all\s+of\s+them)\b/.test(lower)
   ) {
     scores.research = 65;
+  }
+
+  if (/\bquant(?:itative)?\s+research\b/i.test(text) || /\bdo a quant research\b/i.test(text)) {
+    scores.research = Math.max(scores.research ?? 0, 92);
+  }
+  if (/\brev-?\s*1\b/i.test(text) && /\b(analy[sz]e|style|research|run|dig)\b/i.test(lower)) {
+    scores.research = Math.max(scores.research ?? 0, 96);
+  }
+  if (/\bresearch\b/i.test(lower) && /\b(those|them|these|both)\b/i.test(lower)) {
+    scores.research = Math.max(scores.research ?? 0, 88);
+  }
+  if (
+    scores.research &&
+    scores.research >= 88 &&
+    /\b(both|them|those|these)\b/i.test(lower) &&
+    (/\brev-?1\b/i.test(text) || /\banaly[sz]e\b/i.test(lower))
+  ) {
+    scores.select = Math.min(scores.select ?? 0, 40);
   }
 
   if (/\b(those|them|these)\b/.test(lower) && !scores.go_deeper && !scores.compare) {
@@ -762,6 +910,57 @@ function resolveRemainingPool(ws: ConversationWorkingSet): WorkingEntity[] {
   return parent.filter((e) => !current.has(e.symbol));
 }
 
+/** "Remaining" names when nothing was removed → whole current operational pool. */
+function poolForEvidenceQuestion(
+  text: string,
+  ws: ConversationWorkingSet,
+  target: WorkingEntity[],
+  universe: WorkingEntity[],
+): WorkingEntity[] {
+  if (/\bremaining\b/i.test(text)) {
+    const rem = resolveRemainingPool(ws);
+    if (rem.length) return rem;
+    return resolveOperationalScope(ws, text, target, universe);
+  }
+  return resolveOperationalScope(ws, text, target, universe);
+}
+
+function sortPoolByScore(pool: WorkingEntity[], side: "top" | "bottom"): WorkingEntity[] {
+  const sorted = [...pool].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  return side === "bottom" ? sorted.reverse() : sorted;
+}
+
+/** Referential "those two / the one" → slice operational pool before research rewrite. */
+function narrowScopeByUserCount(
+  text: string,
+  ws: ConversationWorkingSet,
+  pool: WorkingEntity[],
+): WorkingEntity[] {
+  const qty = parseQuantity(textForQuantityParse(text));
+  if (!qty || pool.length <= qty) return pool;
+  const referential = hasReferentialLanguage(text) || isOperationalFollowUp(text, ws);
+  if (!referential) return pool;
+  let side = resolveSelectSide(text);
+  if (/\b(beat history|beat rate|better beat|eps beat)\b/i.test(text)) {
+    side = "top";
+  }
+  if (/\b(weakest|worst|lowest)\b/i.test(text)) {
+    side = "bottom";
+  }
+  return pickRankedSlice(sortPoolByScore(pool, side), qty, side);
+}
+
+function wantsEvidenceAnswerWithoutFullResearch(text: string): boolean {
+  if (/\b(run|go deeper|dig into|rev-?1|revision\s*1|full report|research on all)\b/i.test(text)) {
+    return false;
+  }
+  return (
+    /\bwhich\b/i.test(text) &&
+    /\b(weakest|worst|lowest|strongest|best|top)\b/i.test(text) &&
+    /\b(partial score|score|evidence|candidate|looks)\b/i.test(text)
+  );
+}
+
 /**
  * Main orchestrator entry — intent → scope → plan.
  */
@@ -769,7 +968,7 @@ export function planFromConversationContext(
   text: string,
   ws: ConversationWorkingSet,
 ): ContextPlan {
-  const explicit = resolveContextSymbolsFromText(text);
+  const explicit = resolveExplicitForContextTurn(text, ws);
   const referential = hasReferentialLanguage(text);
   const contextual = isContextualFollowUp(text, ws, explicit);
 
@@ -810,8 +1009,29 @@ export function planFromConversationContext(
     return { kind: "passthrough", text };
   }
 
+  // Narrow prior earnings board by session — any phrasing with AMC/BMO + filter intent.
+  if (
+    isEarningsBoardSubsetFollowUp(text, ws.lastHandler, ws.ranked.length) ||
+    isEarningsSessionNarrowAsk(text, ws)
+  ) {
+    const calQuery = buildEarningsSubsetCalendarQuery(text, ws.lastUniverseLabel);
+    return {
+      kind: "rewrite",
+      text: calQuery,
+      intent: "research",
+      action: "calendar",
+      note: "Context: narrowing the prior earnings board by report session (BMO/AMC).",
+    };
+  }
+
+  const scopeAvailable = ws.active.length > 0 || ws.ranked.length > 0;
+  const deferExplicitToScope =
+    scopeAvailable &&
+    wantsScopedResearchFollowUp(text) &&
+    (referential || isOperationalFollowUp(text, ws));
+
   // Explicit named universe → earnings research (cold start or follow-up).
-  if (explicit.length >= 1 && wantsUniverseResearch(text, explicit)) {
+  if (!deferExplicitToScope && explicit.length >= 1 && wantsUniverseResearch(text, explicit)) {
     const line = symbolsLine(explicit.map((s) => ({ symbol: s })));
     return {
       kind: "rewrite",
@@ -870,7 +1090,9 @@ export function planFromConversationContext(
   let universe = getRankedUniverse(ws);
   let target = getReferentialTarget(ws);
   if (resolved && !("ambiguous" in resolved)) {
-    const subsetRef = /\b(those|them|these|from the|remaining)\b/i.test(text);
+    const subsetRef =
+      /\b(those|them|these|from the|remaining)\b/i.test(text) &&
+      classified.intent !== "rank";
     const useResolvedPool =
       subsetRef ||
       isDiscoveryFollowUpQuery(text) ||
@@ -931,21 +1153,22 @@ export function planFromConversationContext(
     };
   }
 
-  // --- WEAKEST EVIDENCE (remaining pool or current active) ---
+  // --- WEAKEST / WHICH (cached scores — no full Rev-1 rerun) ---
   if (
-    !classified.count &&
-    /\b(weakest|worst|lowest)\b/i.test(text) &&
-    (/\b(evidence|score|candidate)\b/i.test(text) || /\bwhich\b/i.test(text))
+    wantsEvidenceAnswerWithoutFullResearch(text) ||
+    (/\b(weakest|worst|lowest)\b/i.test(text) &&
+      (/\b(partial\s+score|evidence|score|candidate)\b/i.test(text) || /\bwhich\b/i.test(text)))
   ) {
-    const pool = /\bremaining\b/i.test(text) ? resolveRemainingPool(ws) : target.length ? target : universe;
-    if (pool.length) {
-      const weakest = pool[pool.length - 1]!;
+    const pool = poolForEvidenceQuestion(text, ws, target, universe);
+    if (pool.length && hasCachedScores(pool)) {
+      const sorted = sortPoolByScore(pool, "bottom");
+      const weakest = sorted[0]!;
       return {
         kind: "reply",
         reply: formatWeakestEvidenceReply(weakest, pool),
         intent: "select",
         applyActive: pool,
-        note: `Context: weakest evidence in pool → ${weakest.symbol}.`,
+        note: `Context: weakest partial score in current pool → ${weakest.symbol} (${weakest.score ?? "n/a"}).`,
       };
     }
   }
@@ -1011,10 +1234,11 @@ export function planFromConversationContext(
 
   // --- GO DEEPER (always current active / last selection) ---
   if (classified.intent === "go_deeper") {
-    let scope = target;
-    const count = parseQuantity(text);
-    if (count && universe.length) scope = universe.slice(0, count);
-    else if (ws.groups.focus?.length) scope = ws.groups.focus;
+    let scope = narrowScopeByUserCount(
+      text,
+      ws,
+      resolveOperationalScope(ws, text, target, universe),
+    );
     const line = symbolsLine(scope);
     return {
       kind: "rewrite",
@@ -1075,7 +1299,24 @@ export function planFromConversationContext(
 
   // --- RESEARCH (default for analyze them / those tickers) ---
   if (classified.intent === "research" || referential) {
-    const scope = target.length && ws.active.length < ws.ranked.length ? target : universe.length ? universe : target;
+    if (wantsEvidenceAnswerWithoutFullResearch(text)) {
+      const pool = poolForEvidenceQuestion(text, ws, target, universe);
+      if (pool.length && hasCachedScores(pool)) {
+        const weakest = sortPoolByScore(pool, "bottom")[0]!;
+        return {
+          kind: "reply",
+          reply: formatWeakestEvidenceReply(weakest, pool),
+          intent: "select",
+          applyActive: pool,
+          note: `Context: weakest partial score in current pool → ${weakest.symbol}.`,
+        };
+      }
+    }
+    const scope = narrowScopeByUserCount(
+      text,
+      ws,
+      resolveOperationalScope(ws, text, target, universe),
+    );
     const line = symbolsLine(scope);
     const truncated = scope.length > CONTEXT_RESEARCH_MAX;
     return {

@@ -79,6 +79,13 @@ const STOPWORDS = new Set([
   "LIKE", "DESK", "RISKS", "MONTH", "PING", "QUALITY", "GROWTH", "STORY", "CLEANER",
   "FACTOR", "FACTORS", "RELATIVE", "NARRATIVE", "BINARY", "DRIVERS", "DRIVER", "ASSUMPTIONS",
   "MEASURABLE", "OPERATING", "DIVERSIFIED", "VISIBILITY", "SPECULATIVE", "CONVEXITY",
+  // English auxiliaries / prepositions harvested from NL ("if you were me", "before the close")
+  "WOULD", "WERE", "WILL", "SHALL", "SHOULD", "COULD", "MIGHT", "MUST", "BEEN", "BEING",
+  "BEFORE", "AFTER", "UNDER", "ABOVE", "BELOW", "DURING", "UNTIL", "WHILE", "SINCE",
+  "VIBE", "LOOK", "LOOKS", "LOOKING", "SIMPLE", "ANYTHING", "WATCHING", "WORTH", "TODAY",
+  "RESEARCH", "OPPORTUNITY", "OPPORTUNITIES", "TRADING", "TRADER", "BEGINNER",
+  // "quantitative research" prose — not a ticker
+  "QUANTITATIVE",
 ]);
 
 /** Real tickers that are also common English — keep only when explicitly ticker-like. */
@@ -97,6 +104,29 @@ const INDICATOR_RE = /\b(rsi|macd|vwap|bollinger|ema|sma|atr|indicator|technical
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** "quant research", "do a quant analysis" — depth/methodology, not symbol QUANT. */
+export function isResearchMethodologyTicker(sym: string, text: string): boolean {
+  const upper = sym.toUpperCase();
+  if (upper === "STYLE") {
+    if (new RegExp(`\\$${upper}\\b`, "i").test(text)) return false;
+    return (
+      /\b(rev-?\s*1|revision\s*1)\s+style\b/i.test(text) ||
+      /\bstyle\s+research\b/i.test(text) ||
+      /\bstyle\s+analy[sz]e\b/i.test(text)
+    );
+  }
+  if (upper !== "QUANT" && upper !== "QUANTITATIVE") return false;
+  if (new RegExp(`\\$${upper}\\b`, "i").test(text)) return false;
+  if (/Run earnings candidate research on /i.test(text) && new RegExp(`\\b${upper}\\b`).test(text)) {
+    return false;
+  }
+  return (
+    /\bquant(?:itative)?\s+(?:research|analysis)\b/i.test(text) ||
+    /\b(?:do|run)\s+(?:a\s+)?quant(?:itative)?\s+(?:research|analysis)\b/i.test(text) ||
+    /\bquant\s+research\b/i.test(text)
+  );
 }
 
 /** True when KEY (etc.) appears as English, not as an explicit ticker. */
@@ -215,7 +245,10 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
   // Explicit uppercase tickers in the original text (AAPL, MSFT, BRK.B).
   for (const m of text.matchAll(/\b[A-Z][A-Z0-9]{0,4}(?:\.[A-Z])?\b/g)) {
     const upper = m[0].toUpperCase();
-    if (upper.length >= 2 && !STOPWORDS.has(upper)) out.add(upper);
+    if (upper.length >= 2 && !STOPWORDS.has(upper)) {
+      if (isResearchMethodologyTicker(upper, text)) continue;
+      out.add(upper);
+    }
   }
 
   // Lowercase tickers (aapl, nvda) — skip on long research-protocol prose so English
@@ -235,6 +268,7 @@ export function resolveSymbolsFromText(text: string, extraSymbols: string[] = []
       if (COMPANY_ALIAS_KEYS.has(raw)) continue;
       const upper = raw.toUpperCase();
       if (STOPWORDS.has(upper)) continue;
+      if (raw === "quant" && /\bresearch\b/i.test(text)) continue;
       if (raw.length >= 2 && raw.length <= 6) out.add(upper);
     }
   }
@@ -269,6 +303,11 @@ export function filterLikelyFalsePositiveTickers(symbols: string[], text: string
     if (upper === "AVAILABLE" && /\bavailable\b/i.test(lower)) return false;
     if (upper === "EVIDENCE" && /\bevidence\b/i.test(lower)) return false;
     if (upper === "CANDIDATES" && /\bcandidates?\b/i.test(lower)) return false;
+    if (upper === "EVERY" && /\bevery\s+(ticker|symbol|name|one)\b/i.test(lower)) return false;
+    if (upper === "STILL" && /\bstill\b/i.test(lower)) return false;
+    if (upper === "ENDS" && (!/\bENDS\b/.test(text) || /\bends?\b/i.test(lower))) return false;
+    if (upper === "TICKER" && /\bticker(s)?\b/i.test(lower)) return false;
+    if (isResearchMethodologyTicker(upper, text)) return false;
     return true;
   });
 }
@@ -276,6 +315,26 @@ export function filterLikelyFalsePositiveTickers(symbols: string[], text: string
 /** Conversation-context resolver — same as resolveSymbolsFromText but drops NL false positives. */
 export function resolveContextSymbolsFromText(text: string): string[] {
   return filterLikelyFalsePositiveTickers(resolveSymbolsFromText(text), text);
+}
+
+/**
+ * User clearly named a ticker (not scraped from prose). Used when referential
+ * follow-ups must not treat methodology words as explicit symbols.
+ */
+export function isExplicitlyNamedTicker(sym: string, text: string): boolean {
+  const upper = sym.toUpperCase();
+  if (new RegExp(`\\$${upper}\\b`, "i").test(text)) return true;
+  if (/:\s*[A-Z][A-Z0-9.,\s-]+/i.test(text) && text.toUpperCase().includes(upper)) return true;
+  if (/Run earnings candidate research on /i.test(text) && new RegExp(`\\b${upper}\\b`).test(text)) {
+    return true;
+  }
+  if (new RegExp(`\\b(?:on|for)\\s+${upper}\\b`, "i").test(text)) return true;
+  // Uppercase token in the original message (e.g. AAPL, not lowercased prose).
+  if (new RegExp(`\\b${upper}\\b`).test(text) && text.includes(upper)) return true;
+  for (const [name, alias] of Object.entries(COMPANY_ALIASES)) {
+    if (alias === upper && new RegExp(`\\b${escapeRegex(name)}\\b`, "i").test(text)) return true;
+  }
+  return false;
 }
 
 export type LayerRoute = {
