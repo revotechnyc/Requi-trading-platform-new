@@ -13,91 +13,91 @@ SET search_path TO ac, public;
 -- ============================================================
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'engine_mode') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'engine_mode' AND n.nspname = current_schema()) THEN
     CREATE TYPE engine_mode AS ENUM ('SHADOW', 'PAPER', 'LIVE');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'engine_status') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'engine_status' AND n.nspname = current_schema()) THEN
     CREATE TYPE engine_status AS ENUM ('ARMED', 'DISARMED', 'ERROR');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'event_state') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'event_state' AND n.nspname = current_schema()) THEN
     CREATE TYPE event_state AS ENUM ('DETECTED','RESEARCHING','ANALYZING','QUALIFIED','ORDER_READY','ORDER_SUBMITTED','PARTIAL_FILL','FILLED','HOLDING','EXITING','CLOSED','NO_ACTION');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_side') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'order_side' AND n.nspname = current_schema()) THEN
     CREATE TYPE order_side AS ENUM ('BUY','SELL');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_type') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'order_type' AND n.nspname = current_schema()) THEN
     CREATE TYPE order_type AS ENUM ('LIMIT','MARKET','STOP','STOP_LIMIT');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'order_status' AND n.nspname = current_schema()) THEN
     CREATE TYPE order_status AS ENUM ('OPEN','SUBMITTED','PARTIAL','FILLED','CANCELED','REJECTED','EXPIRED');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_status') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'risk_status' AND n.nspname = current_schema()) THEN
     CREATE TYPE risk_status AS ENUM ('PENDING','RISK_APPROVED','REJECTED','OVERRIDDEN');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'protection_state') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'protection_state' AND n.nspname = current_schema()) THEN
     CREATE TYPE protection_state AS ENUM ('NO_PROTECTION','BREAKEVEN','TRAILING_STOP','HARD_STOP','PROFIT_TARGET','TIME_EXIT');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'data_feed_status') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'data_feed_status' AND n.nspname = current_schema()) THEN
     CREATE TYPE data_feed_status AS ENUM ('CONNECTED','DEGRADED','DISCONNECTED','ERROR');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'data_feed_health') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'data_feed_health' AND n.nspname = current_schema()) THEN
     CREATE TYPE data_feed_health AS ENUM ('HEALTHY','DEGRADED','CRITICAL');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_level') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'audit_level' AND n.nspname = current_schema()) THEN
     CREATE TYPE audit_level AS ENUM ('INFO','SUCCESS','WARNING','ERROR','CRITICAL','START','PAUSE','KILL');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'decision_state') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'decision_state' AND n.nspname = current_schema()) THEN
     CREATE TYPE decision_state AS ENUM ('EVENT_DETECTED','RESEARCH_COMPLETE','FIS_QUALIFIED','FIS_DISQUALIFIED','PRE_EVENT_POSITION_OK','RCS_QUALIFIED','RCS_DISQUALIFIED','EVENT_POSITION_OK','ORDER_READY','REACTION_CONFIRMED','NO_ACTION','WAITING','ORDER_SUBMITTED','ORDER_FILLED','ORDER_PARTIAL','ORDER_REJECTED','POSITION_OPEN','POSITION_HOLDING','POSITION_EXITING','POSITION_CLOSED');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'strategy_type') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'strategy_type' AND n.nspname = current_schema()) THEN
     CREATE TYPE strategy_type AS ENUM ('Post-Earnings Momentum','Gap Continuation','Fade the Move','Contrarian Reversal');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'integration_status') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'integration_status' AND n.nspname = current_schema()) THEN
     CREATE TYPE integration_status AS ENUM ('HEALTHY','DEGRADED','DOWN','UNKNOWN');
   END IF;
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'circuit_state') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'circuit_state' AND n.nspname = current_schema()) THEN
     CREATE TYPE circuit_state AS ENUM ('CLOSED','OPEN','HALF_OPEN');
   END IF;
 END $$;

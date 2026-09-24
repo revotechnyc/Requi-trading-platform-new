@@ -249,9 +249,10 @@ VALUES
   ('CONSTITUTION_DISCLOSURE', 'Constitution Disclosure', 1, now(), 'sha256:constitution_v1', true, 'ALL', true, 12)
 ON CONFLICT DO NOTHING;
 
--- Seed E-SIGN consent
+-- Seed E-SIGN consent (only if seed user exists)
 INSERT INTO electronic_consent_records (user_id, account_id, consent_type, consent_version, consent_text, consent_hash, is_consent_given, consent_timestamp)
-VALUES (1, 1, 'E_SIGN', '1.0', 'I consent to receive all disclosures electronically in accordance with E-SIGN and UETA.', 'sha256:esign_v1', false, NULL)
+SELECT id, id, 'E_SIGN', '1.0', 'I consent to receive all disclosures electronically in accordance with E-SIGN and UETA.', 'sha256:esign_v1', false, NULL
+FROM users WHERE email = 'console-seed@requi.local'
 ON CONFLICT DO NOTHING;
 
 

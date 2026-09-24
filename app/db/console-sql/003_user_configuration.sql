@@ -301,8 +301,13 @@ SELECT
   s.version,
   s.is_active,
   s.is_default,
-  sv.contract_version,
-  sv.validation_status,
+  -- strategy_versions has contract_definition/is_live, not contract_version/validation_status
+  COALESCE(sv.contract_definition->>'version', sv.version) AS contract_version,
+  CASE
+    WHEN sv.is_live THEN 'VALIDATED'
+    WHEN sv.id IS NOT NULL THEN 'DRAFT'
+    ELSE NULL
+  END AS validation_status,
   CASE 
     WHEN s.status = 'LIVE' THEN 'PRODUCTION'
     WHEN s.status = 'PAPER' THEN 'PAPER'
@@ -387,35 +392,70 @@ WHERE pp.is_active = true;
 -- SEED DATA FOR CONFIGURATION SYSTEM
 -- ============================================================
 
+-- Seed user required by FK seed rows (idempotent)
+INSERT INTO users (email, name, role)
+VALUES ('console-seed@requi.local', 'Console Seed', 'admin')
+ON CONFLICT (email) DO NOTHING;
+
 -- Seed default risk profile
 INSERT INTO risk_profiles (user_id, account_id, profile_name, is_active, max_daily_loss, max_daily_loss_type, max_event_risk, max_event_risk_type, max_single_name_exposure, max_sector_exposure, max_gross_exposure, max_net_exposure, max_correlated_exposure, halt_on_consecutive_losses, max_open_positions, max_open_orders, max_daily_trades, version)
-VALUES (1, 1, 'BALANCED', true, 5000, 'USD', 2500, 'USD', 10.0, 25.0, 100.0, 100.0, 20.0, 3, 10, 20, 50, 1)
-ON CONFLICT DO NOTHING;
+SELECT id, id, 'BALANCED', true, 5000, 'USD', 2500, 'USD', 10.0, 25.0, 100.0, 100.0, 20.0, 3, 10, 20, 50, 1
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM risk_profiles rp
+  JOIN users u ON rp.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local' AND rp.profile_name = 'BALANCED'
+);
 
 -- Seed conservative profile
 INSERT INTO risk_profiles (user_id, account_id, profile_name, is_active, max_daily_loss, max_daily_loss_type, max_event_risk, max_event_risk_type, max_single_name_exposure, max_sector_exposure, max_gross_exposure, max_net_exposure, max_correlated_exposure, halt_on_consecutive_losses, max_open_positions, max_open_orders, max_daily_trades, version)
-VALUES (1, 1, 'CONSERVATIVE', false, 2500, 'USD', 1000, 'USD', 5.0, 15.0, 50.0, 50.0, 10.0, 2, 5, 10, 20, 1)
-ON CONFLICT DO NOTHING;
+SELECT id, id, 'CONSERVATIVE', false, 2500, 'USD', 1000, 'USD', 5.0, 15.0, 50.0, 50.0, 10.0, 2, 5, 10, 20, 1
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM risk_profiles rp
+  JOIN users u ON rp.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local' AND rp.profile_name = 'CONSERVATIVE'
+);
 
 -- Seed aggressive profile
 INSERT INTO risk_profiles (user_id, account_id, profile_name, is_active, max_daily_loss, max_daily_loss_type, max_event_risk, max_event_risk_type, max_single_name_exposure, max_sector_exposure, max_gross_exposure, max_net_exposure, max_correlated_exposure, halt_on_consecutive_losses, max_open_positions, max_open_orders, max_daily_trades, version)
-VALUES (1, 1, 'AGGRESSIVE', false, 10000, 'USD', 5000, 'USD', 20.0, 40.0, 150.0, 150.0, 35.0, 5, 20, 40, 100, 1)
-ON CONFLICT DO NOTHING;
+SELECT id, id, 'AGGRESSIVE', false, 10000, 'USD', 5000, 'USD', 20.0, 40.0, 150.0, 150.0, 35.0, 5, 20, 40, 100, 1
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM risk_profiles rp
+  JOIN users u ON rp.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local' AND rp.profile_name = 'AGGRESSIVE'
+);
 
 -- Seed default strategy selection profile
 INSERT INTO strategy_selection_profiles (user_id, account_id, selection_mode, allow_router_fallback, version)
-VALUES (1, 1, 'AUTO', true, 1)
-ON CONFLICT DO NOTHING;
+SELECT id, id, 'AUTO', true, 1
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM strategy_selection_profiles ssp
+  JOIN users u ON ssp.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local'
+);
 
 -- Seed default protection profile
 INSERT INTO protection_profiles (user_id, account_id, synthetic_stop_enabled, synthetic_trail_enabled, initial_stop_type, initial_stop_value, trail_type, trail_value, atr_multiplier, minimum_protection_distance, reprice_enabled, max_reprice_attempts, apma_enabled, version)
-VALUES (1, 1, true, false, 'PERCENTAGE', 2.0, 'PERCENTAGE', 1.5, 2.0, 0.10, false, 3, true, 1)
-ON CONFLICT DO NOTHING;
+SELECT id, id, true, false, 'PERCENTAGE', 2.0, 'PERCENTAGE', 1.5, 2.0, 0.10, false, 3, true, 1
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM protection_profiles pp
+  JOIN users u ON pp.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local'
+);
 
 -- Seed user permissions
 INSERT INTO user_permissions (user_id, role, scope, permissions)
-VALUES (1, 'TRADER', 'GLOBAL', '["read", "write", "trade", "configure_risk", "configure_strategies", "configure_protection"]'::jsonb)
-ON CONFLICT DO NOTHING;
+SELECT id, 'TRADER', 'GLOBAL', '["read", "write", "trade", "configure_risk", "configure_strategies", "configure_protection"]'::jsonb
+FROM users WHERE email = 'console-seed@requi.local'
+AND NOT EXISTS (
+  SELECT 1 FROM user_permissions up
+  JOIN users u ON up.user_id = u.id
+  WHERE u.email = 'console-seed@requi.local' AND up.role = 'TRADER' AND up.scope = 'GLOBAL'
+);
 
 
 SET search_path TO public;
