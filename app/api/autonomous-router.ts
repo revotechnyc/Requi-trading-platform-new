@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, t } from "./middleware";
+import { autonomousConsoleRouter } from "./autonomous-console-router";
 import {
   emergencyStop,
   getState,
@@ -19,12 +20,10 @@ import {
 import { writeAudit } from "./platform/audit";
 
 /**
- * Autonomous Trading control center — API surface.
- * All state is server-persisted (autonomous_configs / autonomous_sessions /
- * autonomous_events + canonical order_tickets / positions). Risk limits are
- * enforced in the service/runner layer, never trusted to the browser.
+ * Session runner API (autonomous_sessions / configs) — separate from
+ * the v3 console data router (Postgres schema `ac`).
  */
-export const autonomousRouter = createRouter({
+const autonomousSessionRouter = createRouter({
   /** Full dashboard state: config + session + account + metrics + kill switch. */
   state: authedQuery.query(({ ctx }) => getState(ctx.user.id)),
 
@@ -118,6 +117,9 @@ export const autonomousRouter = createRouter({
   orders: authedQuery.query(({ ctx }) => listAutonomousOrders(ctx.user.id)),
   trades: authedQuery.query(({ ctx }) => listAutonomousTrades(ctx.user.id)),
 });
+
+/** Session control + v3 console (engine/events/settings against schema `ac`). */
+export const autonomousRouter = t.mergeRouters(autonomousSessionRouter, autonomousConsoleRouter);
 
 /** Re-throw helper kept for parity with other routers (typed errors surface cleanly). */
 export function badRequest(message: string): never {

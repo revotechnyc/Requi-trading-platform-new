@@ -22,7 +22,7 @@ import {
   filterLikelyFalsePositiveTickers,
   resolveSymbolsFromText,
 } from "../../intelligence-data/symbol-resolver";
-import { isDeskCompareQuery } from "../gap-intents";
+import { isDeskCompareQuery, isTechnicalIndicatorQuery } from "../gap-intents";
 import { fetchEarningsCalendarForDate, resolveEarningsCalendarDate } from "../../intelligence-data/earnings-day";
 import { runEventStudy } from "./event-study";
 import { runPeerReadThrough } from "./peer-read-through";
@@ -105,13 +105,15 @@ export function buildCrossDayScreenPool<T>(
  */
 export async function selectStrongestUpcomingCandidates(
   maxSymbols = RESEARCH_TOP_N,
+  horizonDays = SCREEN_HORIZON_DAYS,
 ): Promise<{ symbols: string[]; note: string; screened: ScreenCandidate[] }> {
   const today =
     resolveEarningsCalendarDate("earnings calendar today") ?? new Date().toISOString().slice(0, 10);
   const byDay: Array<Array<{ symbol: string; reportDate: string; reportTime: string }>> = [];
   const seen = new Set<string>();
+  const horizon = Math.max(1, Math.min(30, horizonDays));
 
-  for (let i = 0; i < SCREEN_HORIZON_DAYS; i++) {
+  for (let i = 0; i < horizon; i++) {
     const ymd = addCalendarDaysYmd(today, i);
     const cal = await fetchEarningsCalendarForDate(ymd);
     const dayRows: Array<{ symbol: string; reportDate: string; reportTime: string }> = [];
@@ -134,7 +136,7 @@ export async function selectStrongestUpcomingCandidates(
   if (!pool.length) {
     return {
       symbols: [],
-      note: `No Finnhub calendar names in the next ${SCREEN_HORIZON_DAYS}-day window starting ${today}.`,
+      note: `No Finnhub calendar names in the next ${horizon}-day window starting ${today}.`,
       screened: [],
     };
   }
@@ -158,12 +160,62 @@ export async function selectStrongestUpcomingCandidates(
   }
 
   const ranked = rankScreenCandidates(screened);
-  const top = ranked.slice(0, maxSymbols);
+  const horizonEnd = addCalendarDaysYmd(today, horizon - 1);
+  const verified: ScreenCandidate[] = [];
+  const skippedDateMismatch: string[] = [];
+
+  // Keep names whose *calendar* report date is inside the asked window, and whose
+  // verified "next earnings" is not clearly outside that window (Finnhub calendar
+  // vs next-earnings API sometimes disagree — e.g. calendar today, next = +6 weeks).
+  for (const c of ranked) {
+    if (verified.length >= maxSymbols) break;
+    if (!(c.reportDate >= today && c.reportDate <= horizonEnd)) continue;
+
+    let nextDate: string | null = null;
+    try {
+      const next = await fetchEarnings(c.symbol);
+      nextDate =
+        next.available && next.payload && typeof (next.payload as { reportDate?: unknown }).reportDate === "string"
+          ? ((next.payload as { reportDate: string }).reportDate)
+          : null;
+    } catch {
+      nextDate = null;
+    }
+
+    if (nextDate && (nextDate < today || nextDate > horizonEnd) && nextDate !== c.reportDate) {
+      skippedDateMismatch.push(`${c.symbol} (cal ${c.reportDate} → next ${nextDate})`);
+      continue;
+    }
+    verified.push(c);
+  }
+
+  const top = verified.length ? verified : ranked.slice(0, maxSymbols);
+  const mismatchNote = skippedDateMismatch.length
+    ? ` Skipped ${skippedDateMismatch.length} calendar/next-earnings mismatch(es): ${skippedDateMismatch.slice(0, 6).join("; ")}${skippedDateMismatch.length > 6 ? "…" : ""}.`
+    : "";
   return {
     symbols: top.map((r) => r.symbol),
-    note: `Screened ${pool.length} of ${totalUnique} upcoming calendar names over ${SCREEN_HORIZON_DAYS} days from ${today} (pool capped at ${SCREEN_POOL_MAX}, sampled across days); ranked by historical beat rate then avg EPS surprise (available factors only — not a trade authorization). Selected: ${top.map((t) => `${t.symbol} (${t.reportDate}${t.reportTime !== "—" ? ` ${t.reportTime}` : ""})`).join(", ") || "none"}.`,
+    note: `Screened ${pool.length} of ${totalUnique} upcoming calendar names over ${horizon} days from ${today} (pool capped at ${SCREEN_POOL_MAX}, sampled across days); ranked by historical beat rate then avg EPS surprise (available factors only — not a trade authorization). Selected: ${top.map((t) => `${t.symbol} (${t.reportDate}${t.reportTime !== "—" ? ` ${t.reportTime}` : ""})`).join(", ") || "none"}.${mismatchNote}`,
     screened: ranked,
   };
+}
+
+/** Parse "three" / "a few" / "5 days" style limits for calendar auto-screen. */
+export function parseEarningsScreenLimits(text: string): { maxSymbols: number; horizonDays: number } {
+  let maxSymbols = RESEARCH_TOP_N;
+  if (/\b(a\s+few|handful|couple)\b/i.test(text) || /\b(three|3)\b/i.test(text)) maxSymbols = 3;
+  else if (/\b(four|4)\b/i.test(text)) maxSymbols = 4;
+  else if (/\b(five|5)\b/i.test(text) && !/\bnext\s+5\s+days?\b/i.test(text)) maxSymbols = 5;
+
+  let horizonDays = SCREEN_HORIZON_DAYS;
+  const dayMatch = text.match(/\b(?:over|within|in)?\s*(?:the\s+)?next\s+(\d+)\s+days?\b/i);
+  if (dayMatch) {
+    const n = Number(dayMatch[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 30) horizonDays = n;
+  } else if (/\bnext\s+seven\s+days?\b/i.test(text) || /\bcoming\s+week\b/i.test(text)) {
+    horizonDays = 7;
+  }
+  return { maxSymbols, horizonDays };
 }
 export type GapStatus = "retrieved" | "calculated" | "verified" | "unavailable" | "conflicting" | "WAIT" | "BLOCKED";
 
@@ -238,10 +290,23 @@ function resolvedResearchSymbols(text: string): string[] {
 export function isEarningsResearchProtocol(text: string): boolean {
   // Multi-factor desk compares must never enter the earnings swarm.
   if (isDeskCompareQuery(text)) return false;
+  // Chart / RSI / MACD asks must never become calendar auto-screen — even mid-thread.
+  if (isTechnicalIndicatorQuery(text)) return false;
   // Casual NL ("what would you research if you were me") is stock discovery — not Rev1.
   if (isCasualResearchAsk(text)) return false;
   if (EARNINGS_PROTOCOL_MARKERS.test(text)) return true;
   if (RUN_RESEARCH_RE.test(text) && resolvedResearchSymbols(text).length > 0) return true;
+  // Prose calendar screen: "Identify three companies reporting earnings within the next seven days"
+  // — no named tickers required; calendar auto-screen supplies the universe.
+  if (
+    /\b(analy[sz]e|screen|identify|find|list)\b/i.test(text) &&
+    /\bearnings\b/i.test(text) &&
+    /\b(next\s+(?:seven|7|\d+)\s+days?|within\s+the\s+next\s+\d+\s+days?|over\s+the\s+next\s+\d+\s+days?|upcoming|coming\s+week|reporting\s+earnings)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
   if (
     /\b(analy[sz]e|screen|identify)\b/i.test(text) &&
     /\b(universe|earnings|candidate)\b/i.test(text) &&
@@ -955,6 +1020,21 @@ function formatCandidateReport(r: CandidateResearchResult): string {
     lines.push("- Unavailable from Finnhub historical earnings");
   }
 
+  lines.push("", "### Probability of exceeding estimates (methodology — no invention)");
+  if (r.beatHistory?.epsBeatRate != null && r.beatHistory.quarters >= 4) {
+    lines.push(
+      `- **Research probability (historical beat-rate method):** ~**${r.beatHistory.epsBeatRate.toFixed(1)}%**`,
+      `- **Method:** empirical share of retrieved quarters where reported EPS ≥ estimate (${r.beatHistory.epsBeatCount}/${r.beatHistory.quarters}).`,
+      `- **Not** a calibrated forecast model; revisions/IV not required for this line but strengthen conviction when present.`,
+      `- Impact if history were missing: this probability line would be **WAIT**.`,
+    );
+  } else {
+    lines.push(
+      "- **Research probability:** **WAIT** — insufficient verified beat history (need ≥4 quarters with estimates).",
+      "- Remaining research below still runs (calendar, tape, gaps). Entire request is **not** abandoned.",
+    );
+  }
+
   lines.push(
     "",
     "### Tape (supporting)",
@@ -1035,7 +1115,8 @@ export async function runRevision1Research(
       };
     }
 
-    const selected = await selectStrongestUpcomingCandidates(RESEARCH_TOP_N);
+    const limits = parseEarningsScreenLimits(text);
+    const selected = await selectStrongestUpcomingCandidates(limits.maxSymbols, limits.horizonDays);
     symbols = selected.symbols;
     screenNote = selected.note;
     if (!symbols.length) {
@@ -1112,6 +1193,14 @@ export async function runRevision1Research(
       (r, i) =>
         `| ${i + 1} | ${r.symbol} | ${r.classification} | ${r.rawScore ?? "n/a"} | ${r.nextEarnings.date ?? "n/a"} | ${r.nextEarnings.reportTime ?? "unknown"} | ${r.historicalQuarters} |`,
     ),
+    "",
+    "### Predictive / probability honesty (complete remaining research — never abandon)",
+    "",
+    "For each name above, treat fields as:",
+    "- **Retrieved/calculated** when present in that symbol's gap register (surprises, revisions, IV, event-study).",
+    "- **WAIT** when missing — analysis continues on the remaining verified factors; the whole request is **not** abandoned.",
+    "",
+    "**Probability of beating estimates:** only state a research probability when historical beat-rate / surprise history is present in the gap register; methodology = empirical beat frequency over retrieved quarters (not a calibrated forecast). If history is missing → probability = **WAIT** (do not invent %).",
     "",
     "### Next data connections to close WAIT gates",
     "1. Estimate revisions API (30/60/90d) — premium consensus vendor",

@@ -44,12 +44,55 @@ export function isDeskCompareQuery(text: string): boolean {
   ) {
     return true;
   }
+  // Multi-name fundamental / desk card (style: compare + quality factors)
+  if (
+    /\bcompare\b/i.test(text) &&
+    /\b(revenue\s+growth|profitability|free\s+cash\s+flow|competitive\s+positioning|financial\s+reports?|margins?|multiples?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // "Apple vs Microsoft on valuation…" / "Meta and Amazon side by side on FCF…"
+  if (
+    /\b(side[- ]by[- ]side|versus|vs\.?)\b/i.test(text) &&
+    /\b(valuation|profitability|free\s+cash\s+flow|fundamentals|margins?|revenue\s+growth)\b/i.test(text) &&
+    (/\band\b/i.test(text) || /,/i.test(text) || /\$[A-Za-z]{1,5}/.test(text))
+  ) {
+    return true;
+  }
   if (/\bbetween\b/i.test(text) && /\b(cleaner growth|growth story|which is the cleaner)\b/i.test(text)) {
     return true;
   }
   if (
     /\brank\b/i.test(text) &&
     /\b(not earnings only|technicals and news|include technicals)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Hypothetical multi-sector portfolio stress — not live STATUS / P&L.
+ * Style-based (mock/paper/$Nx sleeve + scenarios), not exact PDF wording.
+ */
+export function isHypotheticalPortfolioQuery(text: string): boolean {
+  if (/\b(hypothetical|mock|paper|imaginary|simulated)\s+(portfolio|allocation|book|sleeve)\b/i.test(text)) {
+    return true;
+  }
+  if (
+    /\$\s*\d{2,3}(?:,\d{3})+\b/.test(text) &&
+    /\b(portfolio|allocate|allocation|invest|scenario|sleeve|stress[- ]?test)\b/i.test(text)
+  ) {
+    return true;
+  }
+  if (
+    /\b(portfolio|allocation|sleeve)\b/i.test(text) &&
+    /\b(technology|healthcare|tech\b|health\s*care)\b/i.test(text) &&
+    /\b(inflation|recession|interest\s+rates?|rate\s+hikes?|scenarios?|correlations?|drawdowns?|concentration|stress[- ]?test)\b/i.test(
+      text,
+    )
   ) {
     return true;
   }
@@ -127,6 +170,65 @@ export function isHistoricalPriceQuery(text: string): boolean {
   return false;
 }
 
+/**
+ * ChatGPT-style fundamental Q&A — one name, natural language.
+ * Must reach Lucia (+ gateway/SEC bundle), NOT Revision 1 earnings protocol.
+ */
+export function isConversationalFundamentalQuery(text: string): boolean {
+  if (/\bRun earnings candidate research on\b/i.test(text)) return false;
+  if (/\b(earnings\s+candidate|candidate\s+selection|BASE\s+RESET|REQUI\s+QUARTERLY)\b/i.test(text)) {
+    return false;
+  }
+  // Multi-name desk compare must win over single-name Lucia fundamentals.
+  if (isDeskCompareQuery(text)) return false;
+  if (isHypotheticalPortfolioQuery(text)) return false;
+  if (/\b(screen|universe)\b/i.test(text) && /\b(earnings|candidate|tickers?)\b/i.test(text)) return false;
+  // Earnings-session cohort: "quant research on those two" → Rev-1, not single-name chat.
+  if (
+    (/\bquant(?:itative)?\s+research\b/i.test(text) || /\bdo a quant\b/i.test(text)) &&
+    /\b(those|these|them)\b/i.test(text) &&
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/i.test(text)
+  ) {
+    return false;
+  }
+
+  const topic =
+    /\b(revenue\s+(?:growth|trend|increase|decline|change)|sales\s+growth|top[- ]?line)\b/i.test(text) ||
+    /\b(profit\s+margin|profitability|\bmargins?\b|gross\s+margin|operating\s+margin|net\s+margin)\b/i.test(text) ||
+    /\b(eps\s+growth|earnings\s+growth)\b/i.test(text) ||
+    (/\b(analy[sz]e|explain|tell\s+me\s+about|what\s+about|how\s+is)\b/i.test(text) &&
+      /\b(revenue|margin|profit|growth|financial|fundamental)\b/i.test(text)) ||
+    (/\bquant(?:itative)?\b/i.test(text) &&
+      /\b(analysis|breakdown)\b/i.test(text) &&
+      /\b(those|these|them|changes|margin|revenue|growth|that|numbers|fundamentals?)\b/i.test(text)) ||
+    /\b(how\s+does\s+that\s+compare|compare\s+with\s+last\s+year|vs\.?\s+last\s+year|year\s+over\s+year)\b/i.test(text);
+
+  return topic;
+}
+
+/**
+ * Single-name / chart technical asks — must never rewrite into Rev-1 earnings research
+ * just because a prior earnings screen left symbols in the working set.
+ */
+export function isTechnicalIndicatorQuery(text: string): boolean {
+  const tech =
+    /\b(rsi|macd|vwap|bollinger|atr|smas?|sma\s*\d+|ema\s*\d+|moving\s+averages?|volume\s+trend|support\s+(?:and|&)\s+resistance)\b/i.test(
+      text,
+    ) || /\b(technical\s+(?:analysis|read|chart)|chart)\b/i.test(text);
+  if (!tech) return false;
+  // Earnings calendar / beat screens that happen to mention RSI stay on the earnings path.
+  if (
+    /\bearnings\b/i.test(text) &&
+    /\b(find|screen|identify|list|reporting)\b/i.test(text) &&
+    /\b(next\s+(?:\d+|seven)\s+days?|within\s+the\s+next|over\s+the\s+next|upcoming|coming\s+week)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Asks that must never be rewritten into earnings-research / scope-compare templates. */
 export function shouldPassthroughGapGateAsk(text: string): boolean {
   return (
@@ -137,6 +239,9 @@ export function shouldPassthroughGapGateAsk(text: string): boolean {
     isHistoricalPriceQuery(text) ||
     isDeskCompareQuery(text) ||
     isImpliedMoveQuery(text) ||
-    isRatesBackdropQuery(text)
+    isRatesBackdropQuery(text) ||
+    isHypotheticalPortfolioQuery(text) ||
+    isTechnicalIndicatorQuery(text) ||
+    isConversationalFundamentalQuery(text)
   );
 }

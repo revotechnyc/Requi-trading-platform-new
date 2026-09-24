@@ -25,6 +25,7 @@ import {
   runMarketBreadthScan,
   formatStockDiscoveryReply,
   formatMarketMoversReply,
+  enrichMoversWithNewsDrivers,
   discoveryToRankedResults,
   moversToRankedResults,
   formatDiscoveryRankExplain,
@@ -1037,7 +1038,8 @@ export async function tryMarketIntelligenceReply(
       break;
     }
     case "MARKET_MOVERS": {
-      const movers = await runMarketMoversScan(userId);
+      const moversRaw = await runMarketMoversScan(userId);
+      const movers = await enrichMoversWithNewsDrivers(moversRaw).catch(() => moversRaw);
       reply = formatMarketMoversReply(analysis, movers);
       sourceName = "market-movers-v2";
       rankedResults = moversToRankedResults(movers);

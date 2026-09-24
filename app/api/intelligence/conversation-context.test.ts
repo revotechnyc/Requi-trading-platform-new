@@ -399,6 +399,25 @@ describe("conversation context orchestrator", () => {
     }
   });
 
+  it("passthroughs technical reads even after an earnings research working set (set-2 T4)", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(ws, [
+      { symbol: "ANEB", rawScore: 60, classification: "REJECT" },
+      { symbol: "KMX", rawScore: 53, classification: "REJECT" },
+      { symbol: "FGPR", rawScore: 50, classification: "REJECT" },
+      { symbol: "CAG", rawScore: 40, classification: "WAIT" },
+    ]);
+    const q =
+      "Do a technical read on Tesla: RSI, MACD, moving averages, volume trend, support and resistance, then outline near-term scenarios.";
+    const plan = planFromConversationContext(q, ws);
+    expect(plan.kind).toBe("passthrough");
+    if (plan.kind === "passthrough") {
+      expect(plan.text).toBe(q);
+      expect(plan.text).not.toMatch(/Run earnings candidate research/i);
+      expect(plan.text).not.toMatch(/\bANEB\b|\bKMX\b/);
+    }
+  });
+
   it("passthroughs implied-move asks instead of rewriting to earnings research (Phase 2)", () => {
     const ws = getWorkingSet(userId, conversationId);
     const q = "What's the implied move for AAPL into earnings?";
@@ -407,6 +426,28 @@ describe("conversation context orchestrator", () => {
     if (plan.kind === "passthrough") {
       expect(plan.text).toBe(q);
       expect(plan.text).not.toMatch(/^Run earnings candidate research/i);
+    }
+  });
+
+  it("passthroughs NVDA revenue growth — ChatGPT-style fundamentals, not Rev-1 rewrite", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    const q = "Analyze Nvidia's revenue growth.";
+    const plan = planFromConversationContext(q, ws);
+    expect(plan.kind).toBe("passthrough");
+    if (plan.kind === "passthrough") {
+      expect(plan.text).toBe(q);
+      expect(plan.text).not.toMatch(/Run earnings candidate research/i);
+    }
+  });
+
+  it("passthroughs quant-on-margin follow-up in scope instead of Rev-1", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(ws, [{ symbol: "NVDA", rawScore: 80, classification: "WATCHLIST" }]);
+    const q = "Do a quantitative analysis of those changes.";
+    const plan = planFromConversationContext(q, ws);
+    expect(plan.kind).toBe("passthrough");
+    if (plan.kind === "passthrough") {
+      expect(plan.text).not.toMatch(/Run earnings candidate research/i);
     }
   });
 
@@ -818,6 +859,109 @@ describe("conversation context orchestrator", () => {
       expect(plan.text).toMatch(/PTN/);
       expect(plan.text).not.toMatch(/QUANT/);
       expect(plan.targetSymbols?.sort()).toEqual(["BNTC", "PTN"]);
+    }
+  });
+});
+
+describe("real-life context challenges (planner)", () => {
+  const userId = "test-user-rl";
+  const conversationId = "conv-rl-1";
+
+  beforeEach(() => {
+    clearWorkingSet(userId, conversationId);
+  });
+
+  it("Script A: protocol on each symbol still carrying uses AMC board not prose tokens", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "MARA", rawScore: 44, classification: "REJECT" },
+        { symbol: "PATH", rawScore: 51, classification: "REJECT" },
+        { symbol: "DOCU", rawScore: 48, classification: "REJECT" },
+      ],
+      { groupLabel: "today_amc", lastHandler: "earnings_day" },
+    );
+    commitDisplayScope(ws, ["MARA", "PATH", "DOCU"], "earnings_session_slice");
+    const plan = planFromConversationContext(
+      "Run the earnings-candidate protocol on each symbol you're still carrying.",
+      ws,
+    );
+    expect(plan.kind).toBe("rewrite");
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols?.sort()).toEqual(["DOCU", "MARA", "PATH"]);
+      expect(plan.text).not.toMatch(/\bEVERY\b|\bSTILL\b|\bENDS\b/);
+    }
+  });
+
+  it("Script A: cut weakest from lineup removes bottom ranked symbol", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "MARA", rawScore: 44, classification: "REJECT" },
+        { symbol: "PATH", rawScore: 51, classification: "REJECT" },
+        { symbol: "DOCU", rawScore: 48, classification: "REJECT" },
+      ],
+      { lastHandler: "research" },
+    );
+    const plan = planFromConversationContext("Remove the weakest from that lineup.", ws);
+    expect(plan.kind).toBe("reply");
+    if (plan.kind === "reply") {
+      expect(plan.reply).toMatch(/MARA/);
+      expect(plan.applyActive?.map((e) => e.symbol).sort()).toEqual(["DOCU", "PATH"]);
+    }
+  });
+
+  it("Script B: fresh market ask passthrough after earnings scope seeded", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "AZO", rawScore: 1, classification: "EARNINGS" },
+        { symbol: "MLKN", rawScore: 2, classification: "EARNINGS" },
+      ],
+      { groupLabel: "today_bmo", lastHandler: "earnings_day" },
+    );
+    const plan = planFromConversationContext("How are large-cap indexes behaving right now?", ws);
+    expect(plan.kind).toBe("passthrough");
+  });
+
+  it("Script E: keep one with stronger beat streak narrows pair to single top", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    recordResearchResults(
+      ws,
+      [
+        { symbol: "INTC", rawScore: 40, classification: "REJECT" },
+        { symbol: "AMD", rawScore: 62, classification: "WATCHLIST" },
+      ],
+      { lastHandler: "research" },
+    );
+    commitDisplayScope(ws, ["INTC", "AMD"], "research");
+    const plan = planFromConversationContext(
+      "Keep only the one with the stronger beat streak.",
+      ws,
+    );
+    expect(["rewrite", "reply"]).toContain(plan.kind);
+    if (plan.kind === "rewrite") {
+      expect(plan.targetSymbols).toEqual(["AMD"]);
+    }
+  });
+
+  it("Script G: rank them uses cached scores not earnings rewrite", () => {
+    const ws = getWorkingSet(userId, conversationId);
+    const ranked = ["R1", "R2", "R3"].map((symbol, i) => ({
+      symbol,
+      rawScore: 100 - i * 10,
+      classification: "WAIT" as const,
+    }));
+    recordResearchResults(ws, ranked, { groupLabel: "stock_discovery", lastHandler: "research" });
+    const plan = planFromConversationContext("Rank them strongest to weakest.", ws);
+    expect(plan.kind).toBe("reply");
+    if (plan.kind === "reply") {
+      expect(plan.reply).toMatch(/Ranked by partial score/i);
+      expect(plan.reply).toMatch(/R1/);
+      expect(plan.reply).not.toMatch(/Run earnings candidate research/i);
     }
   });
 });

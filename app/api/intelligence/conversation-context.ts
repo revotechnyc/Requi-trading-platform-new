@@ -23,7 +23,17 @@ import {
   resolveContextSymbolsFromText,
   resolveSymbolsFromText,
 } from "../intelligence-data/symbol-resolver";
-import { shouldPassthroughGapGateAsk, isDeskCompareQuery } from "./gap-intents";
+import {
+  shouldPassthroughGapGateAsk,
+  isDeskCompareQuery,
+  isConversationalFundamentalQuery,
+  isTechnicalIndicatorQuery,
+} from "./gap-intents";
+import {
+  classifyGlobalIntent,
+  shouldForcePassthroughTransition,
+  type GlobalIntent,
+} from "./intent-firewall";
 import {
   isDiscoveryFollowUpQuery,
   isDiscoveryRankExplainQuery,
@@ -59,6 +69,8 @@ export type ConversationWorkingSet = {
   ranked: WorkingEntity[];
   groups: Record<string, WorkingEntity[]>;
   lastIntent?: FollowUpIntentType;
+  /** Phase A firewall — last classified global intent for transition rules. */
+  lastGlobalIntent?: GlobalIntent;
   lastHandler?: "earnings_day" | "research" | "data_reply" | "live_gate" | "other";
   lastUniverseLabel?: string;
   /** Tickers from the last assistant message (authoritative for vague follow-ups). */
@@ -402,6 +414,11 @@ export function setActiveEntities(
     ws.lastUniverseLabel = opts.groupLabel;
   }
   if (opts?.handler) ws.lastHandler = opts.handler;
+  if (opts?.handler === "earnings_day") ws.lastGlobalIntent = "EARNINGS_SCREEN";
+  else if (opts?.handler === "research") ws.lastGlobalIntent = "EARNINGS_RESEARCH";
+  else if (opts?.handler === "data_reply") {
+    /* leave lastGlobalIntent to recordGlobalIntentFromText when available */
+  }
   commitWorkingSet(ws);
   return ws;
 }
@@ -425,6 +442,14 @@ export function applyActiveSubset(
   );
   commitWorkingSet(ws);
   return ws;
+}
+
+/** Phase A — stamp firewall intent after a successful turn (from original user text). */
+export function recordGlobalIntentFromText(ws: ConversationWorkingSet, text: string): void {
+  const intent = classifyGlobalIntent(text);
+  if (intent === "UNKNOWN" || intent === "CHITCHAT") return;
+  ws.lastGlobalIntent = intent;
+  commitWorkingSet(ws);
 }
 
 export function recordResearchResults(
@@ -451,6 +476,11 @@ export function recordResearchResults(
   }
   ws.lastHandler = opts?.lastHandler ?? "research";
   ws.lastIntent = "research";
+  const gl = opts?.groupLabel?.toLowerCase();
+  if (opts?.lastHandler === "earnings_day") ws.lastGlobalIntent = "EARNINGS_SCREEN";
+  else if (gl === "stock_discovery") ws.lastGlobalIntent = "DISCOVERY";
+  else if (gl === "market_movers") ws.lastGlobalIntent = "MOVERS";
+  else ws.lastGlobalIntent = "EARNINGS_RESEARCH";
   const slice =
     opts?.groupLabel && /_(amc|bmo|dmh)$/i.test(opts.groupLabel)
       ? "earnings_session_slice"
@@ -538,6 +568,14 @@ export function parseQuantity(text: string): number | null {
 
   if (/\bboth\b/.test(lower) && /\b(them|those|these|of them)\b/.test(lower)) return 2;
 
+  const remainingQty = lower.match(
+    /\b(?:the\s+)?remaining\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/,
+  );
+  if (remainingQty) {
+    const n = quantityTokenToNumber(remainingQty[1]!);
+    if (n) return n;
+  }
+
   const digit = lower.match(/\b(\d{1,2})\b/);
   if (digit) return Math.min(10, Math.max(1, Number(digit[1])));
 
@@ -577,9 +615,11 @@ function hasNamedTickerList(text: string, explicit: string[]): boolean {
 }
 
 function wantsUniverseResearch(text: string, explicit: string[]): boolean {
+  if (isConversationalFundamentalQuery(text)) return false;
   // Desk / multi-factor compares must not become earnings-candidate research
   // ("like a research desk", "valuation and momentum", …).
   if (isDeskCompareQuery(text)) return false;
+  if (shouldPassthroughGapGateAsk(text)) return false;
   // Bare "research desk" / "like a research" is prose, not a protocol ask.
   if (/\bresearch\s+desk\b/i.test(text) || /\blike a research\b/i.test(text)) {
     if (!/\b(earnings\s+candidate|candidate\s+research|small-?cap\s+candidate)\b/i.test(text)) {
@@ -591,15 +631,31 @@ function wantsUniverseResearch(text: string, explicit: string[]): boolean {
     /\bquant(?:itative)?\s+research\b/i.test(text) ||
     /\bdo a quant\b/i.test(text);
   if (!researchVerb) return false;
+
+  // Phase C — bare single-ticker "Analyze AAPL" must not auto-become Rev-1.
+  // Multi-name universe lists and explicit earnings/quant protocol still rewrite.
+  const earningsProtocolLanguage =
+    /\b(earnings\s+candidate|candidate\s+research|rev-?1|small-?cap\s+candidate)\b/i.test(text) ||
+    /\bearnings\b/i.test(text) ||
+    /\bquant(?:itative)?\s+research\b/i.test(text) ||
+    /\bdo a quant\b/i.test(text);
+  if (!earningsProtocolLanguage && !hasNamedTickerList(text, explicit)) return false;
+
   if (hasNamedTickerList(text, explicit)) return true;
   // Single scraped token + referential scope → use conversation working set, not cold explicit.
   if (explicit.length === 1 && hasReferentialLanguage(text)) return false;
-  if (explicit.length >= 1) return true;
+  // Cold-start: only rewrite when at least one symbol is clearly a named ticker
+  // (blocks VOLUME / WITHIN / DAYS prose from becoming Rev-1 earnings research).
+  if (explicit.length >= 1) {
+    return explicit.some((s) => isExplicitlyNamedTicker(s, text));
+  }
   return false;
 }
 
 /** Research / Rev-1 follow-up on symbols already in this chat (not a fresh ticker list). */
 function wantsScopedResearchFollowUp(text: string): boolean {
+  if (isConversationalFundamentalQuery(text)) return false;
+  if (isTechnicalIndicatorQuery(text)) return false;
   return (
     /\b(research|analy[sz]e|earnings\s+candidate)\b/i.test(text) ||
     (/\brev-?\s*1\b/i.test(text) && /\b(analy[sz]e|style|research|run|dig)\b/i.test(text)) ||
@@ -753,7 +809,7 @@ export function classifyFollowUpIntent(text: string, ws: ConversationWorkingSet)
   if (/\bremaining\s+tickers?\b/i.test(lower) && ws.lastHandler === "earnings_day") {
     scores.go_deeper = Math.max(scores.go_deeper ?? 0, 88);
   }
-  if (/\bwhich\b/i.test(lower) && /\b(weakest|worst|lowest)\b/i.test(lower)) {
+  if (/\bwhich\b/i.test(lower) && /\b(weakest|worst|lowest|junkiest)\b/i.test(lower)) {
     scores.select = Math.max(scores.select ?? 0, 98);
     scores.research = Math.min(scores.research ?? 100, 40);
   }
@@ -956,7 +1012,7 @@ function wantsEvidenceAnswerWithoutFullResearch(text: string): boolean {
   }
   return (
     /\bwhich\b/i.test(text) &&
-    /\b(weakest|worst|lowest|strongest|best|top)\b/i.test(text) &&
+    /\b(weakest|worst|lowest|junkiest|strongest|best|top)\b/i.test(text) &&
     /\b(partial score|score|evidence|candidate|looks)\b/i.test(text)
   );
 }
@@ -975,6 +1031,11 @@ export function planFromConversationContext(
   // Phase 0 honesty gates — never rewrite into earnings research / scope-compare templates.
   // (Fixes: margin-trend compare collapsed to AAPL price dump; risk/reward → research on stale scope.)
   if (shouldPassthroughGapGateAsk(text)) {
+    return { kind: "passthrough", text };
+  }
+
+  // Phase A firewall — cross-family asks must not inherit prior working-set rewrites.
+  if (shouldForcePassthroughTransition(text, ws)) {
     return { kind: "passthrough", text };
   }
 
@@ -1299,6 +1360,12 @@ export function planFromConversationContext(
 
   // --- RESEARCH (default for analyze them / those tickers) ---
   if (classified.intent === "research" || referential) {
+    if (isConversationalFundamentalQuery(text)) {
+      return { kind: "passthrough", text };
+    }
+    if (isTechnicalIndicatorQuery(text)) {
+      return { kind: "passthrough", text };
+    }
     if (wantsEvidenceAnswerWithoutFullResearch(text)) {
       const pool = poolForEvidenceQuestion(text, ws, target, universe);
       if (pool.length && hasCachedScores(pool)) {

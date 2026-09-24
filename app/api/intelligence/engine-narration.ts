@@ -27,6 +27,9 @@ export type EngineCandidatePayload = {
   reasons: string[];
   source: string | null;
   timestamp: string | null;
+  marketSession?: string | null;
+  stale?: boolean;
+  driverHeadline?: string | null;
 };
 
 export type EngineNarrationPayload = {
@@ -93,6 +96,9 @@ function serializeCandidate(c: StockCandidate): EngineCandidatePayload {
     reasons: c.reasons.slice(0, 3),
     source: c.source,
     timestamp: c.timestamp,
+    marketSession: c.marketSession ?? null,
+    stale: c.stale,
+    driverHeadline: c.driverHeadline ?? null,
   };
 }
 
@@ -274,25 +280,54 @@ export function formatConversationalEngineReply(payload: EngineNarrationPayload)
   }
 
   if (payload.kind === "market_movers") {
-    const g = payload.gainers?.slice(0, 3).map((c) => candidateLine(c, true)).join("; ") || "none verified";
-    const l = payload.losers?.slice(0, 3).map((c) => candidateLine(c, true)).join("; ") || "none verified";
+    const all = [...(payload.gainers ?? []), ...(payload.losers ?? [])].sort((a, b) => {
+      const sa =
+        Math.abs(a.dailyChangePct ?? 0) * (a.relativeVolume != null ? Math.min(a.relativeVolume, 3) : 1);
+      const sb =
+        Math.abs(b.dailyChangePct ?? 0) * (b.relativeVolume != null ? Math.min(b.relativeVolume, 3) : 1);
+      return sb - sa;
+    });
+    const top = all.slice(0, 5);
     const idx =
       payload.indexes
         ?.filter((i) => i.dailyChangePct !== null)
         .map((i) => `${i.symbol} ${fmtPct(i.dailyChangePct)}`)
         .join(" · ") ?? "";
-    return [
-      `Here's what's moving in US liquid names — tape is ${regime} (health ${payload.marketHealth}/100).`,
-      "",
-      `Biggest gainers: ${g}.`,
-      `Biggest decliners: ${l}.`,
+    const lines = [
+      `Here's what's moving in US liquid names — tape is ${regime} (health ${payload.marketHealth}/100). Scanned ${payload.scanned ?? "n/a"} names.`,
       idx ? `Index context: ${idx}.` : "",
       "",
+    ];
+    if (!top.length) {
+      lines.push(
+        "No verified movers cleared the liquid scan filters on this snapshot (common in thin extended sessions). Latest index context above is the available tape — not an invented empty market.",
+      );
+    } else {
+      lines.push("Ranked by trading-evidence strength (|daily %| × RVOL when present):");
+      top.forEach((c, i) => {
+        const session =
+          c.marketSession && c.marketSession !== "REGULAR"
+            ? ` · ${String(c.marketSession).replace(/_/g, " ").toLowerCase()}`
+            : c.stale
+              ? " · stale quote"
+              : "";
+        lines.push(
+          `${i + 1}. ${candidateLine(c)}${session}.`,
+        );
+        if (c.driverHeadline) {
+          lines.push(`   Driver (verified headline): ${c.driverHeadline}`);
+        } else {
+          lines.push("   Driver / institutional flow: **WAIT** — no verified catalyst or flow record in this scan.");
+        }
+      });
+    }
+    lines.push(
+      "",
+      "Elevated RVOL is participation evidence only — it does **not** prove institutional buying or selling.",
       "Research context only — not a buy list.",
       sourceLine,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    );
+    return lines.filter(Boolean).join("\n");
   }
 
   const idxLines =
@@ -347,6 +382,8 @@ function buildNarrationDeveloperBlock(payload: EngineNarrationPayload): string {
     "- Do NOT output markdown tables, ### headers, numbered gate checklists, or BLOCKED/UNVERIFIED templates.",
     "- Say this is research context, not a trade authorization.",
     "- For WAIT model fields, state honestly that probability / EV / REOS / ERS were not calculated on this pass — do not invent them.",
+    "- For market_movers: narrate driverHeadline when present; if null, say catalyst/institutional flow is WAIT — never invent news or dark-pool flow.",
+    "- For market_movers: mention marketSession / stale when not REGULAR so after-hours vs RTH is clear.",
     "- CRITICAL: General market / opportunity research does NOT require a portfolio, brokerage, chart upload, or option chain.",
     "- Do NOT ask the user to attach data, charts, or L1 quotes. The engine scan above IS the current market data.",
     "- Do NOT say you lack market data when candidates or indexes are present in the JSON.",
@@ -368,6 +405,15 @@ export async function narrateEngineOutput(
   // Console chips (Beginner / Novice / Expert) — always use deterministic colleague prose.
   // LLM narration was over-refusing (portfolio/charts) and inventing model fields.
   if (payload.depth === "simple" || payload.depth === "standard" || payload.depth === "quant") {
+    return codeFallback();
+  }
+
+  // Client PDF Prompt 1 — keep verified movers card (drivers + session) instead of free-form Lucia.
+  // Prefer the deterministic formatter reply when present; else conversational engine fallback.
+  if (payload.kind === "market_movers") {
+    if (result.reply && /\b(What's moving|Driver|RVOL|liquid stocks)\b/i.test(result.reply)) {
+      return result.reply;
+    }
     return codeFallback();
   }
 

@@ -410,6 +410,16 @@ export function resolveEarningsCalendarDateRange(text: string): EarningsCalendar
     return { from: today, to: addEtDays(today, 29) };
   }
 
+  // "next seven days" / "within the next 7 days" / "over the next 5 days"
+  const nextN = lower.match(/\b(?:(?:within|over)\s+the\s+)?next\s+(?:(\d+)|seven)\s+days?\b/);
+  if (nextN) {
+    const nRaw = nextN[1];
+    const n = nRaw ? Number(nRaw) : 7;
+    if (Number.isFinite(n) && n >= 1 && n <= 90) {
+      return { from: today, to: addEtDays(today, Math.max(0, n - 1)) };
+    }
+  }
+
   if (/\bnext\s+week\b/.test(lower)) {
     const { weekday } = etParts();
     // Next Monday (weekday=1).
@@ -1445,6 +1455,18 @@ export function formatEarningsDayCalendarReply(result: EarningsDayCalendarResult
   if (result.truncated) {
     lines.push(`List truncated at ${MAX_ROWS_IN_REPLY} symbols — ask for a specific ticker for full detail.`);
   }
+
+  // Phase D — honest next steps for gaps we do not invent (IV, event-study, guidance).
+  const sample = result.rows.slice(0, 3).map((r) => r.symbol);
+  const sampleLine = sample.length ? sample.join(", ") : "TICKER";
+  lines.push(
+    "",
+    "### Next steps (verified paths only — no invented catalysts)",
+    `- Implied move / options IV screen: **WAIT** on this calendar path — ask \`What's the implied move for ${sample[0] ?? "TICKER"} into earnings?\``,
+    `- Event-study / historical reaction stats: **WAIT** — not wired here.`,
+    `- Guidance / transcript text: **WAIT** — ask for a single-name filing or news drill-down.`,
+    `- Deeper candidate scorecard: \`Run earnings candidate research on ${sampleLine}\``,
+  );
   return lines.join("\n");
 }
 

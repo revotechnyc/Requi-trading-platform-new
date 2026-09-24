@@ -70,6 +70,8 @@ const GENERAL_MARKET_PATTERNS = [
   /\bmarket\s+vibe\b/i,
   /\bquick\s+market\s+snapshot\b/i,
   /\bare\s+stocks\s+(?:up|down)\s+today\b/i,
+  /\bhow\s+are\s+(?:large-?cap\s+)?(?:indexes?|indices)\b/i,
+  /\b(?:indexes?|indices)\s+behav/i,
 ];
 
 const STOCK_DISCOVERY_PATTERNS = [
@@ -110,6 +112,21 @@ const MARKET_MOVERS_PATTERNS = [
   /\bwhat\s+is\s+going\s+down\b/i,
   /\bstocks?\s+(?:are\s+)?running\s+(?:the\s+)?hardest\b/i,
   /\bbiggest\s+(?:gainers?|losers?)\b/i,
+  // Client PDF Prompt 1 — unusual volume / momentum / institutional (style, not exact phrase)
+  /\bunusual\s+(?:trading\s+)?volume\b/i,
+  /\b(?:elevated|high)\s+(?:relative\s+)?volume\b/i,
+  /\bvolume\s+spike\b/i,
+  /\brelative\s+volume\b/i,
+  /\brvol\b/i,
+  /\bhigh\s+rvol\b/i,
+  /\bhottest\b.+\b(equities|stocks?|names?)\b/i,
+  /\bparticipation\b.+\b(rvol|volume)\b|\b(rvol|volume)\b.+\bparticipation\b/i,
+  /\binstitutional\s+(?:activity|flow|flows|buying|selling|interest)\b/i,
+  /\bbig[- ]?money\s+(?:flow|flows|buying|interest)\b/i,
+  /\bstocks?\s+showing\s+(?:unusual|strong|elevated)\b/i,
+  /\b(?:identify|find|show|list)\s+(?:\w+\s+){0,6}stocks?\b[\s\S]{0,120}\b(?:unusual|volume|momentum|institutional|rvol)\b/i,
+  /\bstrong\s+price\s+momentum\b/i,
+  /\b(?:running|ripping)\s+hard\b/i,
 ];
 
 /** Named international override — not US default. */

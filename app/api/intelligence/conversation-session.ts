@@ -7,6 +7,7 @@ import { conversations } from "@db/schema";
 import { getDb } from "../queries/connection";
 import { execSql } from "../lib/migrate";
 import type { ConversationWorkingSet, FollowUpIntentType, WorkingEntity } from "./conversation-context";
+import type { GlobalIntent } from "./intent-firewall";
 import { replaceWorkingSet, workingSetSnapshot } from "./conversation-context";
 import type { ThreadState } from "./intent";
 import { replaceThreadState, threadStateSnapshot } from "./intent";
@@ -20,6 +21,7 @@ export type PersistedConversationSession = {
     ranked: WorkingEntity[];
     groups: Record<string, WorkingEntity[]>;
     lastIntent?: FollowUpIntentType;
+    lastGlobalIntent?: GlobalIntent;
     lastHandler?: ConversationWorkingSet["lastHandler"];
     lastUniverseLabel?: string;
     displayScope?: WorkingEntity[];
@@ -84,6 +86,7 @@ export async function hydrateConversationSession(
         ranked: parsed.workingSet.ranked ?? [],
         groups: parsed.workingSet.groups ?? {},
         lastIntent: parsed.workingSet.lastIntent,
+        lastGlobalIntent: parsed.workingSet.lastGlobalIntent,
         lastHandler: parsed.workingSet.lastHandler,
         lastUniverseLabel: parsed.workingSet.lastUniverseLabel,
         displayScope: parsed.workingSet.displayScope ?? [],
@@ -118,6 +121,7 @@ export async function persistConversationSession(
             ranked: wsSnap.ranked,
             groups: wsSnap.groups,
             lastIntent: wsSnap.lastIntent,
+            lastGlobalIntent: wsSnap.lastGlobalIntent,
             lastHandler: wsSnap.lastHandler,
             lastUniverseLabel: wsSnap.lastUniverseLabel,
             displayScope: wsSnap.displayScope,

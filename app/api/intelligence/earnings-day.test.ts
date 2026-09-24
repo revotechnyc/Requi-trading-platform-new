@@ -70,6 +70,13 @@ describe("earnings day calendar intent", () => {
     expect(r3).not.toBeNull();
     expect(r3!.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(r3!.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(r3!.from <= r3!.to).toBe(true);
+
+    const r7 = resolveEarningsCalendarDateRange("earnings within the next seven days");
+    expect(r7).not.toBeNull();
+    expect(r7!.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(r7!.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(r7!.from <= r7!.to).toBe(true);
   });
 
   it("resolves between-and ranges and en-dash numeric ranges", () => {

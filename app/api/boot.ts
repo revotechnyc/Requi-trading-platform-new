@@ -18,6 +18,7 @@ import { createStripeWebhookHandler } from "./billing/stripe-webhook";
 import { startHealthScheduler } from "./platform/scheduler";
 import { startTaskScheduler } from "./scheduler-runner";
 import { startAutonomousRunner } from "./autonomous/runner";
+import { ensureAutonomousConsoleSchema } from "./autonomous/ensure-console-schema";
 import { intelligenceStreamHandler } from "./intelligence-stream";
 import { Paths } from "@contracts/constants";
 
@@ -58,6 +59,7 @@ if (env.isProduction) {
   const { syncIndicatorRegistry } = await import("./indicators/registry");
   await syncIndicatorRegistry(); // mirror the code indicator registry into indicator_registry (audit mirror)
   await ensureLegalDocsSeeded(); // versioned legal library (LEGAL_REVIEW drafts) — never overwrites existing rows
+  await ensureAutonomousConsoleSchema(); // console tables + seed in schema `ac`
   const { serve } = await import("@hono/node-server");
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);
@@ -71,6 +73,7 @@ if (env.isProduction) {
   // task scheduler still run so sessions/streaming work outside production.
   startTaskScheduler();
   startAutonomousRunner();
+  void ensureAutonomousConsoleSchema().catch((err) => console.error("[ac] ensure failed", err));
   void import("./intelligence-data/engine").then((m) => m.startIntelligenceDataEngine());
   void import("./indicators/registry").then((m) => m.syncIndicatorRegistry());
 }

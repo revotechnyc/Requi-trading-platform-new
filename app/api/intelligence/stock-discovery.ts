@@ -4,10 +4,11 @@
  * Never invents tickers; only symbols from the code-versioned universe below.
  */
 import { getSnapshot, getIndicators } from "../marketdata/gateway/gateway";
-import type { SnapshotResult } from "../marketdata/gateway/types";
+import type { MarketSession, SnapshotResult } from "../marketdata/gateway/types";
 import type { GeneralMarketAnalysis, MarketRegime, SectorSnapshot } from "./general-market";
-import { US_SECTOR_ETFS } from "./general-market";
+import { US_SECTOR_ETFS, formatSessionBanner } from "./general-market";
 import type { ConsoleResearchDepth } from "./market-intent";
+import { fetchNews } from "../intelligence-data/providers/news";
 
 export type DiscoveryRisk = "LOW" | "MODERATE" | "HIGH";
 
@@ -27,6 +28,10 @@ export type StockCandidate = {
   timestamp: string | null;
   stale: boolean;
   available: boolean;
+  /** Phase E — per-symbol session from gateway snapshot when available. */
+  marketSession?: MarketSession | null;
+  /** Phase D — top verified headline when news layer returns one. */
+  driverHeadline?: string | null;
 };
 
 export type StockDiscoveryResult = {
@@ -88,6 +93,7 @@ type SymbolMetrics = {
   timestamp: string | null;
   stale: boolean;
   available: boolean;
+  marketSession: MarketSession | null;
 };
 
 type DiscoveryCacheEntry = { at: number; discovery: StockDiscoveryResult; movers: MarketMoversResult };
@@ -159,6 +165,7 @@ async function loadSymbolMetrics(userId: string, symbol: string): Promise<Symbol
       timestamp: null,
       stale: true,
       available: false,
+      marketSession: null,
     };
   }
   const indicators = ind.available ? ind.indicators : null;
@@ -172,6 +179,7 @@ async function loadSymbolMetrics(userId: string, symbol: string): Promise<Symbol
     timestamp: snap.timestamp,
     stale: snap.stale,
     available: true,
+    marketSession: snap.market_session ?? null,
   };
 }
 
@@ -336,6 +344,7 @@ function mapCandidate(
     timestamp: metrics.timestamp,
     stale: metrics.stale,
     available: metrics.available,
+    marketSession: metrics.marketSession,
   };
 }
 
@@ -456,6 +465,21 @@ export async function runMarketMoversScan(userId: string): Promise<MarketMoversR
     movers: result,
   });
   return result;
+}
+
+/** Phase D — attach top verified headline per displayed mover (additive; never invent). */
+export async function enrichMoversWithNewsDrivers(
+  movers: MarketMoversResult,
+): Promise<MarketMoversResult> {
+  const targets = [...movers.gainers, ...movers.losers];
+  await Promise.all(
+    targets.map(async (c) => {
+      const news = await fetchNews(c.symbol).catch(() => null);
+      const title = news?.available ? news.payload?.headlines?.[0]?.title ?? null : null;
+      c.driverHeadline = title;
+    }),
+  );
+  return movers;
 }
 
 function fmtPct(pct: number | null): string {
@@ -597,18 +621,39 @@ export function formatStockDiscoveryReply(
   return lines.join("\n");
 }
 
+function candidateSessionTag(c: StockCandidate): string {
+  const bits: string[] = [];
+  if (c.marketSession === "AFTER_HOURS") bits.push("after-hours");
+  else if (c.marketSession === "PREMARKET") bits.push("pre-market");
+  else if (c.marketSession === "CLOSED") bits.push("last RTH / closed");
+  else if (c.marketSession === "REGULAR") bits.push("RTH");
+  if (c.stale) bits.push("stale");
+  if (c.timestamp) bits.push(`asOf ${c.timestamp}`);
+  return bits.length ? ` · _${bits.join(" · ")}_` : "";
+}
+
 export function formatMarketMoversReply(
   analysis: GeneralMarketAnalysis,
   movers: MarketMoversResult,
 ): string {
+  const anyStale =
+    analysis.indexes.some((i) => i.available && i.stale) ||
+    [...movers.gainers, ...movers.losers].some((c) => c.stale);
   const lines: string[] = [
     "**What's moving — US liquid stocks (verified scan)**",
+    "",
+    formatSessionBanner(analysis.session, {
+      stale: anyStale,
+      asOf: analysis.asOf,
+    }),
     "",
     `_Default market: NYSE / NASDAQ · USD_`,
     "",
     `**Regime:** ${analysis.regime.replace(/_/g, " ")} · **Market Health:** ${analysis.marketHealth}/100`,
     "",
-    `Scanned **${movers.scanned}** liquid names from the code-versioned universe — ranked by verified daily change (not LLM memory).`,
+    `Scanned **${movers.scanned}** liquid names from the code-versioned universe — ranked by verified daily change × relative volume (not LLM memory).`,
+    "",
+    "_Unusual volume / institutional activity:_ names below surface **RVOL** when the indicators layer provides it. After-hours prints are **not** regular-session volume — treat extended-session moves as partial.",
     "",
     "### Biggest gainers",
   ];
@@ -618,8 +663,14 @@ export function formatMarketMoversReply(
       lines.push(
         `- **${c.symbol}** ${fmtPct(c.dailyChangePct)} · ${fmtPrice(c.price)}` +
           `${c.relativeVolume !== null ? ` · RVOL ${c.relativeVolume.toFixed(2)}x` : ""}` +
-          `${c.source ? ` · ${c.source}` : ""}`,
+          `${c.source ? ` · ${c.source}` : ""}` +
+          candidateSessionTag(c),
       );
+      if (c.driverHeadline) {
+        lines.push(`  - Driver (verified headline): ${c.driverHeadline}`);
+      } else {
+        lines.push(`  - Driver / catalyst: **WAIT** — no verified headline attached.`);
+      }
     }
   } else {
     lines.push("- No verified gainers in scan window.");
@@ -631,11 +682,31 @@ export function formatMarketMoversReply(
       lines.push(
         `- **${c.symbol}** ${fmtPct(c.dailyChangePct)} · ${fmtPrice(c.price)}` +
           `${c.relativeVolume !== null ? ` · RVOL ${c.relativeVolume.toFixed(2)}x` : ""}` +
-          `${c.source ? ` · ${c.source}` : ""}`,
+          `${c.source ? ` · ${c.source}` : ""}` +
+          candidateSessionTag(c),
       );
+      if (c.driverHeadline) {
+        lines.push(`  - Driver (verified headline): ${c.driverHeadline}`);
+      } else {
+        lines.push(`  - Driver / catalyst: **WAIT** — no verified headline attached.`);
+      }
     }
   } else {
     lines.push("- No verified decliners in scan window.");
+  }
+
+  // Phase E — empty / thin AH or closed session: disclose last RTH posture, don't go silent.
+  if (
+    !movers.gainers.length &&
+    !movers.losers.length &&
+    (analysis.session === "AFTER_HOURS" || analysis.session === "CLOSED" || analysis.session === "PREMARKET")
+  ) {
+    lines.push(
+      "",
+      `**Extended / closed session note:** Market session is **${analysis.session.replace(/_/g, " ")}**. ` +
+        "No liquid-universe movers cleared the scan filters on this snapshot — this is **not** an empty market invention. " +
+        "Use the latest available RTH/index context below, or ask for a named ticker (`Why is TICKER moving?`).",
+    );
   }
 
   const indexLine = analysis.indexes

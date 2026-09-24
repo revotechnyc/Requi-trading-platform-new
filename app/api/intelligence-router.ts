@@ -50,6 +50,13 @@ import {
   setThreadState,
 } from "./intelligence/intent";
 import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
+import { isConversationalFundamentalQuery, isDeskCompareQuery } from "./intelligence/gap-intents";
+import { classifyGlobalIntent } from "./intelligence/intent-firewall";
+import {
+  shouldBlockLuciaWithoutPacket,
+  formatNoPacketWaitReply,
+  ensureFactPacket,
+} from "./intelligence/fact-packet";
 import {
   clarificationAskSharesOrDollars,
   parseTradeNotional,
@@ -63,6 +70,7 @@ import {
   pickRankedSlice,
   planFromConversationContext,
   recordResearchResults,
+  recordGlobalIntentFromText,
   resolveReferentialUniverse,
   setActiveEntities,
   withContextNote,
@@ -314,6 +322,7 @@ export async function runIntelligenceChat(
             })),
             { groupLabel: isDiscovery ? "stock_discovery" : "market_movers" },
           );
+          recordGlobalIntentFromText(workingSet, text);
         }
       }
       if (conversationId) await saveMessage(user.id, "assistant", marketFresh.reply, conversationId);
@@ -377,6 +386,7 @@ export async function runIntelligenceChat(
             })),
             { groupLabel: "stock_discovery" },
           );
+          recordGlobalIntentFromText(workingSet, text);
         }
         const reply = withContextNote(
           discoveryFollowUp.reply,
@@ -414,11 +424,13 @@ export async function runIntelligenceChat(
 
   // Gateway market meta (source/staleness) rides back to the UI chip whenever
   // a model turn resolved symbols through the Market Data Gateway.
-  let marketMeta: MarketMeta | null = null;
+  // Boxed so nested conversationalReply / onMarketMeta assigns stay typed (CFA
+  // otherwise treats a bare `let … = null` as permanently null).
+  const marketState: { meta: MarketMeta | null } = { meta: null };
   const withMarket = (o: AgentChatOptions): AgentChatOptions => ({
     ...o,
     onMarketMeta: (m) => {
-      marketMeta = m;
+      marketState.meta = m;
     },
   });
 
@@ -459,6 +471,8 @@ export async function runIntelligenceChat(
         })),
         { groupLabel, lastHandler: "earnings_day" },
       );
+      // Phase C — stamp from original user text even on this early return.
+      recordGlobalIntentFromText(workingSet, text);
       return;
     }
 
@@ -504,6 +518,8 @@ export async function runIntelligenceChat(
         }
       }
     }
+    // Phase A — stamp firewall intent from the *original* user turn (not rewritten text).
+    recordGlobalIntentFromText(workingSet, text);
   };
 
   /**
@@ -533,7 +549,7 @@ export async function runIntelligenceChat(
           return null;
         });
         if (research) {
-          marketMeta = {
+          marketState.meta = {
             symbols: research.symbols,
             source: "finnhub",
             sourceName: "Revision 1 research (Finnhub + gateway)",
@@ -543,7 +559,7 @@ export async function runIntelligenceChat(
           rememberFromMeta("research", research.symbols, undefined, research.rankedResults);
           return withContextNote(`${cal.reply}\n\n---\n\n${research.reply}`, contextNote);
         }
-        marketMeta = cal.meta;
+        marketState.meta = cal.meta;
         return withContextNote(
           `${cal.reply}\n\n_Calendar loaded into active set (${line}). Research could not complete — retry with "Analyze those tickers."_`,
           contextNote,
@@ -552,13 +568,21 @@ export async function runIntelligenceChat(
     }
 
     // Revision 1 research protocols — deterministic retrieve/calc/gap report first.
-    if (!options.skipDeterministicLayers && !options.advisory && !options.developerExtra) {
+    // Desk-compare wins over Lucia fundamentals skip (Client PDF Prompt 2).
+    const luciaFundamentalsTurn =
+      isConversationalFundamentalQuery(userText) && !isDeskCompareQuery(userText);
+    if (
+      !options.skipDeterministicLayers &&
+      !luciaFundamentalsTurn &&
+      !options.advisory &&
+      !options.developerExtra
+    ) {
       const liveGate = await runLivePriceConfirmationGate(ctx.user.id, userText).catch((e) => {
         console.error("[intelligence] live price gate failed", e);
         return null;
       });
       if (liveGate) {
-        marketMeta = {
+        marketState.meta = {
           symbols: liveGate.symbols,
           source: liveGate.meta.source,
           sourceName: liveGate.meta.sourceName,
@@ -573,23 +597,20 @@ export async function runIntelligenceChat(
         return null;
       });
       if (research) {
+        const rewriteScope = pendingScope?.kind === "rewrite" ? pendingScope : null;
         const selectAfterRank =
-          pendingScope?.kind === "rewrite" &&
-          pendingScope.action === "rank" &&
-          pendingScope.intent === "select" &&
-          (pendingScope.nextActive?.length ?? 0) > 0 &&
+          rewriteScope?.action === "rank" &&
+          rewriteScope.intent === "select" &&
+          (rewriteScope.nextActive?.length ?? 0) > 0 &&
           (research.rankedResults?.length ?? 0) > 0;
 
-        const selectCount = selectAfterRank ? pendingScope.nextActive!.length : 0;
-        const selectSide =
-          selectAfterRank && pendingScope.kind === "rewrite"
-            ? (pendingScope.selectSide ?? "top")
-            : "top";
+        const selectCount = selectAfterRank ? (rewriteScope?.nextActive?.length ?? 0) : 0;
+        const selectSide = selectAfterRank ? (rewriteScope?.selectSide ?? "top") : "top";
         const selectSymbols = selectAfterRank
           ? pickRankedSlice(research.rankedResults!, selectCount, selectSide).map((r) => r.symbol)
           : research.symbols;
 
-        marketMeta = {
+        marketState.meta = {
           symbols: selectSymbols,
           source: "finnhub",
           sourceName: selectAfterRank
@@ -611,7 +632,8 @@ export async function runIntelligenceChat(
       }
       const deterministic = await tryDeterministicDataReply(ctx.user.id, userText).catch(() => null);
       if (deterministic) {
-        marketMeta = deterministic.meta;
+        ensureFactPacket(deterministic, userText);
+        marketState.meta = deterministic.meta;
         const isCalendar = /finnhub/i.test(deterministic.meta.sourceName ?? "") ||
           /quarterly earnings/i.test(deterministic.reply);
         const isDiscovery = /stock-discovery/i.test(deterministic.meta.sourceName ?? "");
@@ -636,6 +658,12 @@ export async function runIntelligenceChat(
         }
         return withContextNote(deterministic.reply, contextNote);
       }
+
+      // Phase B — hard data intents with no deterministic packet must not fall through to Lucia.
+      if (shouldBlockLuciaWithoutPacket(userText)) {
+        const intent = classifyGlobalIntent(userText);
+        return withContextNote(formatNoPacketWaitReply(intent, userText), contextNote);
+      }
     }
 
     // Long-prompt overflow: never truncate — package as attachment blocks for the model.
@@ -656,7 +684,7 @@ export async function runIntelligenceChat(
       developerExtra: developerExtra || undefined,
     });
     if (lucia?.reply) {
-      if (lucia.marketMeta) marketMeta = lucia.marketMeta;
+      if (lucia.marketMeta) marketState.meta = lucia.marketMeta;
       return withContextNote(lucia.reply, contextNote);
     }
     return agentChat(ctx.user.id, prepared.modelUserText, withMarket({
@@ -678,7 +706,7 @@ export async function runIntelligenceChat(
       if (classifyMarketIntelligenceIntent(effectiveText)) {
         const marketEarly = await tryMarketIntelligenceReply(ctx.user.id, effectiveText).catch(() => null);
         if (marketEarly) {
-          marketMeta = marketEarly.meta;
+          marketState.meta = marketEarly.meta;
           const isDiscovery = /stock-discovery/i.test(marketEarly.meta.sourceName ?? "");
           const isMovers = /market-movers/i.test(marketEarly.meta.sourceName ?? "");
           if (isDiscovery || isMovers) {
@@ -1065,7 +1093,8 @@ export async function runIntelligenceChat(
     if (assistantText) {
       await saveMessage(user.id, "assistant", assistantText, conversationId);
       if (contextEnabled) {
-        if (marketMeta?.symbols?.length) {
+        const resolvedMarket = marketState.meta;
+        if (resolvedMarket && resolvedMarket.symbols.length > 0) {
           const session = extractEarningsSessionFilter(effectiveText);
           let kind: DisplayScopeKind = "data_reply";
           if (/finnhub|quarterly earnings|earnings calendar/i.test(assistantText)) {
@@ -1073,7 +1102,7 @@ export async function runIntelligenceChat(
           } else if (/Revision 1|Earnings candidate research/i.test(assistantText)) {
             kind = "research";
           }
-          commitDisplayScope(workingSet, marketMeta.symbols, kind);
+          commitDisplayScope(workingSet, resolvedMarket.symbols, kind);
         } else {
           const inferred = inferDisplayScopeFromAssistantReply(text, assistantText, workingSet);
           if (inferred?.length) {
@@ -1087,7 +1116,7 @@ export async function runIntelligenceChat(
       }
     }
   }
-  return marketMeta ? { ...result, market: marketMeta } : result;
+  return marketState.meta ? { ...result, market: marketState.meta } : result;
   } finally {
     if (contextEnabled && conversationId) {
       await persistConversationSession(user.id, conversationId).catch(() => undefined);

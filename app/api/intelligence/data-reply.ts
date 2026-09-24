@@ -20,6 +20,7 @@ import {
   isDeskCompareQuery,
   isImpliedMoveQuery,
   isRatesBackdropQuery,
+  isHypotheticalPortfolioQuery,
 } from "./gap-intents";
 
 export {
@@ -30,11 +31,19 @@ export {
   isDeskCompareQuery,
   isImpliedMoveQuery,
   isRatesBackdropQuery,
+  isHypotheticalPortfolioQuery,
 } from "./gap-intents";
 import { fetchImpliedMove } from "../intelligence-data/providers/massive-options";
 import { fetchFredMacroBackdrop, formatFredMacroBrief } from "../intelligence-data/providers/fred";
+import {
+  fetchSecCompanyFacts,
+  type SecCompanyFactsSummary,
+} from "../intelligence-data/providers/edgar-facts";
+import { fetchAlphaVantageOverview, fetchAlphaVantageEarnings } from "../intelligence-data/providers/alpha-vantage";
 import { tryMarketIntelligenceReply } from "./general-market";
 import { isConversationAck } from "./market-intent";
+import { ensureFactPacket } from "./fact-packet";
+import { buildSleeveRiskReport, formatSleeveRiskSection } from "./hyp-portfolio-risk";
 
 const DATA_QUERY_RE =
   /\b(price|prices?|quote|trading|rsi|macd|sma|ema|earnings|filing|filings|sec|edgar|sentiment|news|indicator|overbought|oversold|compare|current|latest|worth|momentum|macro)\b/i;
@@ -44,7 +53,8 @@ const OVERBOUGHT_RE = /\boverbought\b/i;
 const OVERSOLD_RE = /\boversold\b/i;
 const EARNINGS_QUERY_RE = /\b(earnings|report(?:s|ing)?(?:\s+earnings)?|next earnings|earnings date|report next)\b/i;
 const MACRO_QUERY_RE = /\b(macro|geopolitical|global news|technology stocks)\b/i;
-const MULTI_INDICATOR_RE = /\b(macd|sma\s*20|sma\s*50|sma\s*200)\b/i;
+const MULTI_INDICATOR_RE =
+  /\b(macd|smas?|sma\s*20|sma\s*50|sma\s*200|moving\s+averages?|technical\s+analysis|support\s+(?:and|&)\s+resistance|chart)\b/i;
 const FILING_QUERY_RE = /\b(filing|filings|10-?k|10-?q|8-?k|sec\b|edgar|insider)\b/i;
 const SPECIFIC_FORM_RE = /\b(10-?K|10-?Q|8-?K)\b/i;
 const SENTIMENT_QUERY_RE = /\b(sentiment|reddit|wsb|stocktwits|traders?|social|saying)\b/i;
@@ -91,6 +101,269 @@ export function formatFundamentalSeriesUnavailableReply(symbols: string[]): stri
     "",
     "Closest available today: latest XBRL point facts inside earnings-candidate research, or latest EDGAR filing links.",
   ].join("\n");
+}
+
+/** Parse optional explicit holdings like `AAPL 40%`, `40% MSFT`, `NVDA:25%`. */
+export function parseHypotheticalHoldings(
+  text: string,
+): Array<{ symbol: string; weightPct: number | null }> {
+  const weightBySym = new Map<string, number | null>();
+
+  for (const m of text.matchAll(/\b([A-Za-z]{1,5})\b\s*[:=]?\s*(\d{1,3}(?:\.\d+)?)\s*%/g)) {
+    const sym = m[1].toUpperCase();
+    const w = Number(m[2]);
+    if (sym.length >= 1 && sym.length <= 5 && Number.isFinite(w) && w > 0 && w <= 100) {
+      weightBySym.set(sym, w);
+    }
+  }
+  for (const m of text.matchAll(/\b(\d{1,3}(?:\.\d+)?)\s*%\s*\b([A-Za-z]{1,5})\b/g)) {
+    const sym = m[2].toUpperCase();
+    const w = Number(m[1]);
+    if (sym.length >= 1 && sym.length <= 5 && Number.isFinite(w) && w > 0 && w <= 100) {
+      weightBySym.set(sym, w);
+    }
+  }
+
+  if (!weightBySym.size) {
+    // Bare tickers without weights — only when resolver finds them.
+    return resolveSymbolsFromText(text).map((symbol) => ({ symbol, weightPct: null }));
+  }
+
+  // Force resolver scan via research-list phrasing, then keep only validated symbols.
+  const validated = new Set(
+    resolveSymbolsFromText(`Research holdings on ${[...weightBySym.keys()].join(", ")}`),
+  );
+  const out: Array<{ symbol: string; weightPct: number | null }> = [];
+  for (const [symbol, weightPct] of weightBySym) {
+    if (!validated.has(symbol)) continue;
+    out.push({ symbol, weightPct });
+  }
+  return out;
+}
+
+/** Parse sector sleeve weights: `40% technology`, `30% financial stocks`, `10% cash`. */
+export type SectorSleeveSlice = {
+  key: "technology" | "financials" | "healthcare" | "cash" | "other";
+  label: string;
+  weightPct: number;
+};
+
+export function parseSectorSleeve(text: string): SectorSleeveSlice[] {
+  const out: SectorSleeveSlice[] = [];
+  const seen = new Set<string>();
+  const patterns: Array<{ key: SectorSleeveSlice["key"]; label: string; re: RegExp }> = [
+    { key: "technology", label: "Technology", re: /(\d{1,3}(?:\.\d+)?)\s*%\s*(?:in\s+)?(?:technology|tech)\s*stocks?/gi },
+    { key: "financials", label: "Financials", re: /(\d{1,3}(?:\.\d+)?)\s*%\s*(?:in\s+)?(?:financial|financials|finance)\s*stocks?/gi },
+    { key: "healthcare", label: "Healthcare", re: /(\d{1,3}(?:\.\d+)?)\s*%\s*(?:in\s+)?(?:healthcare|health\s*care)\s*stocks?/gi },
+    { key: "cash", label: "Cash", re: /(\d{1,3}(?:\.\d+)?)\s*%\s*(?:in\s+)?cash\b/gi },
+  ];
+  // Also support "technology stocks, 40%" / "40% technology"
+  const alt: Array<{ key: SectorSleeveSlice["key"]; label: string; re: RegExp }> = [
+    { key: "technology", label: "Technology", re: /(?:technology|tech)\s*stocks?[^\d%]{0,24}(\d{1,3}(?:\.\d+)?)\s*%/gi },
+    { key: "financials", label: "Financials", re: /(?:financial|financials)\s*stocks?[^\d%]{0,24}(\d{1,3}(?:\.\d+)?)\s*%/gi },
+    { key: "healthcare", label: "Healthcare", re: /(?:healthcare|health\s*care)\s*stocks?[^\d%]{0,24}(\d{1,3}(?:\.\d+)?)\s*%/gi },
+    { key: "cash", label: "Cash", re: /\bcash[^\d%]{0,24}(\d{1,3}(?:\.\d+)?)\s*%/gi },
+  ];
+
+  const ingest = (key: SectorSleeveSlice["key"], label: string, raw: string) => {
+    const w = Number(raw);
+    if (!Number.isFinite(w) || w <= 0 || w > 100 || seen.has(key)) return;
+    seen.add(key);
+    out.push({ key, label, weightPct: w });
+  };
+
+  for (const p of patterns) {
+    for (const m of text.matchAll(p.re)) ingest(p.key, p.label, m[1]!);
+  }
+  for (const p of alt) {
+    for (const m of text.matchAll(p.re)) ingest(p.key, p.label, m[1]!);
+  }
+  return out;
+}
+
+function resolveRateScenarioLabel(text: string): { label: string; direction: "declining" | "rising" | "unspecified" } {
+  if (/\b(declining|falling|lower(ing)?|cutting|cuts?|easing)\b.*\b(interest\s+)?rates?\b/i.test(text) ||
+      /\b(interest\s+)?rates?\b.*\b(declining|falling|lower(ing)?|cuts?|easing)\b/i.test(text)) {
+    return { label: "Declining interest rates", direction: "declining" };
+  }
+  if (/\b(rising|hikes?|higher|tightening)\b.*\b(interest\s+)?rates?\b/i.test(text) ||
+      /\brate\s+hikes?\b/i.test(text)) {
+    return { label: "Rising interest rates / rate hikes", direction: "rising" };
+  }
+  return { label: "Interest-rate scenario (direction unspecified)", direction: "unspecified" };
+}
+
+function resolveInflationLabel(text: string): string {
+  if (/\bpersistent\s+inflation\b/i.test(text)) return "Persistent inflation";
+  if (/\bsticky\s+inflation\b/i.test(text)) return "Sticky inflation";
+  return "Inflation spike / elevated inflation";
+}
+
+function resolveRecessionLabel(text: string): string {
+  if (/\b(shallow\s+downturn|mild\s+recession)\b/i.test(text)) return "Mild recession / shallow downturn";
+  if (/\beconomic\s+recession\b/i.test(text)) return "Economic recession";
+  return "Recession / growth contraction";
+}
+
+export function formatHypotheticalPortfolioReply(
+  text: string,
+  opts?: {
+    fredBrief?: string[];
+    holdings?: Array<{ symbol: string; weightPct: number | null }>;
+    /** Pre-formatted risk lines from ETF proxy engine (coding-only). */
+    riskSectionLines?: string[];
+  },
+): string {
+  const amountMatch = text.match(/\$\s*(\d{1,3}(?:,\d{3})+|\d{4,9})\b/);
+  const amountLabel = amountMatch ? `$${amountMatch[1]}` : "$100,000";
+  const sleeve = parseSectorSleeve(text);
+  const rate = resolveRateScenarioLabel(text);
+  const inflationLabel = resolveInflationLabel(text);
+  const recessionLabel = resolveRecessionLabel(text);
+  const holdings = opts?.holdings?.length ? opts.holdings : parseHypotheticalHoldings(text);
+
+  const hasTech = sleeve.some((s) => s.key === "technology") || /\b(technology|tech)\b/i.test(text);
+  const hasHealth = sleeve.some((s) => s.key === "healthcare") || /\b(healthcare|health\s*care)\b/i.test(text);
+  const hasFin = sleeve.some((s) => s.key === "financials") || /\b(financial|financials)\b/i.test(text);
+  const hasCash = sleeve.some((s) => s.key === "cash") || /\bcash\b/i.test(text);
+
+  const lines = [
+    "**Hypothetical portfolio scenario — RESEARCH ONLY**",
+    "",
+    "_This is **not** your live broker book, P&L, or STATUS positions._",
+    "",
+  ];
+
+  if (holdings.length) {
+    lines.push(`Assumed sleeve: **${amountLabel}** with **named holdings**:`);
+    for (const h of holdings) {
+      lines.push(
+        `- **${h.symbol}**${h.weightPct != null ? ` · ${h.weightPct}%` : " · weight **WAIT** (not specified)"}`,
+      );
+    }
+    lines.push("");
+  } else if (sleeve.length) {
+    const sum = sleeve.reduce((a, s) => a + s.weightPct, 0);
+    lines.push(`Assumed sleeve: **${amountLabel}** with **stated sector weights** (from your prompt):`);
+    for (const s of sleeve) {
+      const dollars = Math.round((amountMatch ? Number(amountMatch[1].replace(/,/g, "")) : 100_000) * (s.weightPct / 100));
+      lines.push(`- **${s.label}** · ${s.weightPct}% ≈ $${dollars.toLocaleString()}`);
+    }
+    if (Math.abs(sum - 100) > 0.5) {
+      lines.push(`- _Weights sum to **${sum}%** (not 100%) — treat remainder as **WAIT** / unspecified._`);
+    }
+    lines.push("");
+  } else {
+    const sectors =
+      hasTech && hasHealth && hasFin
+        ? "technology + financials + healthcare"
+        : hasTech && hasHealth
+          ? "technology + healthcare"
+          : hasTech
+            ? "technology"
+            : hasHealth
+              ? "healthcare"
+              : "the named sectors";
+    lines.push(
+      `Assumed sleeve: **${amountLabel}** across **${sectors}** (equal-weight starter — no explicit % sleeve parsed).`,
+      "",
+    );
+  }
+
+  // Scenario frames — match client Prompt 5 wording (declining rates, persistent inflation, recession).
+  const rateBlurb =
+    rate.direction === "declining"
+      ? "Duration-sensitive growth/tech often benefits as discount rates fall; financials (esp. net-interest-margin banks) can face mixed pressure; cash yield declines; healthcare usually less rate-driven than multiples."
+      : rate.direction === "rising"
+        ? "Growth / long-duration tech multiples typically compress first; financials can be mixed (NIM vs valuation); healthcare defensives can lag but are not immune if discount rates rise broadly; cash yield rises."
+        : "Rate path not specified clearly — both rising and declining paths would reprice duration assets first; mark directional P&L **WAIT** without a rate path.";
+
+  lines.push(
+    "### Scenario frames (qualitative — verified macro series not invented)",
+    `- **${rate.label}:** ${rateBlurb}`,
+    `- **${inflationLabel}:** Input costs and margin pressure vary by sector; real yields and multiples matter more than a single CPI print. Financials may see loan-quality stress if inflation stays sticky with higher-for-longer rates.`,
+    `- **${recessionLabel}:** Cyclical tech and financial credit risk soften first; selective healthcare (necessity demand) often shows relative resilience — still subject to funding and M&A cycles; cash is the ballast but opportunity-cost rises if recovery is sharp.`,
+    "",
+  );
+
+  if (opts?.fredBrief?.length) {
+    lines.push("### Macro backdrop (verified FRED when available)", ...opts.fredBrief.map((l) => `- ${l}`), "");
+  } else {
+    lines.push(
+      "### Macro backdrop",
+      "- FRED series: **WAIT** on this turn — ask `rates backdrop` / macro rates for the verified FRED card.",
+      "",
+    );
+  }
+
+  lines.push(
+    "### Economic indicators to monitor (highest priority for this sleeve)",
+    "- **Federal funds rate / policy path** — drives discount rates and cash yield.",
+    "- **10-year Treasury + 10Y–2Y curve** — duration and recession-signal context.",
+    "- **CPI (or core inflation)** — persistent inflation vs disinflation narrative.",
+    "- **Unemployment + real GDP** — recession confirmation / labor softness.",
+    "- **Sector ETF relative strength** (XLK / XLF / XLV) — sleeve factor confirmation (**WAIT** for live ETF RS unless asked).",
+    "",
+  );
+
+  if (opts?.riskSectionLines?.length) {
+    lines.push(...opts.riskSectionLines);
+    lines.push(
+      "### Concentration vulnerabilities",
+      hasTech ? "- Tech sleeve can factor-collapse in risk-off even if ‘diversified’ names." : null,
+      hasFin ? "- Financials add credit/rates factor — not cash-like diversification." : null,
+      hasCash ? "- Cash lowers path drawdown but creates drag if equities rally." : null,
+      "- Single-name holdings were not provided — stock-level concentration remains **WAIT**.",
+      "",
+    );
+  } else {
+    lines.push(
+      "### Correlations, drawdowns & concentration",
+      hasTech
+        ? "- **Technology concentration:** intra-tech correlations often spike in risk-off — a tech sleeve can behave like one factor."
+        : "- Sector concentration depends on named weights above.",
+      hasFin
+        ? "- **Financials:** often correlated with rates and credit cycle — not a pure diversifier vs equity beta."
+        : null,
+      hasHealth
+        ? "- **Healthcare:** can diversify vs pure tech, but does **not** eliminate equity beta."
+        : null,
+      hasCash
+        ? "- **Cash:** reduces drawdown depth but creates cash-drag if risk assets rally."
+        : null,
+      "- **Historical correlation matrices / max drawdown tables** for this exact sleeve: **WAIT** on this turn (ETF proxy engine did not attach).",
+      "- **Concentration risk:** largest vulnerabilities are single-sector crowding (if one sleeve dominates), factor crowding, and liquidity gaps in stress.",
+      "",
+    );
+  }
+
+  lines.push("### What is missing (WAIT)");
+
+  if (!holdings.length && !sleeve.length) {
+    lines.push(
+      "- Named tickers / explicit sector % sleeve were **not** parsed — I will **not** invent holdings.",
+    );
+  } else if (!holdings.length) {
+    lines.push(
+      "- Named single-stock holdings were **not** provided — sector % sleeve is used; stock-level P&L remains **WAIT**.",
+    );
+  }
+  if (opts?.riskSectionLines?.length) {
+    lines.push(
+      "- Single-stock correlation matrix (vs sector ETF proxies above): **WAIT** until holdings are named.",
+      "- Options overlays / leverage: **WAIT**.",
+    );
+  } else {
+    lines.push(
+      "- Verified historical drawdown / correlation matrix for this custom mix: **WAIT**.",
+    );
+  }
+  lines.push(
+    "",
+    "Status: **RESEARCH ONLY / NO TRADE** — hypothetical scenario only; use Status for a real connected account.",
+  );
+
+  return lines.filter((l) => l !== null).join("\n");
 }
 
 export function formatRiskRewardPartialReply(
@@ -140,15 +413,99 @@ export function formatRiskRewardPartialReply(
   return lines.join("\n");
 }
 
+function formatPctOrWait(n: number | null, digits = 1): string {
+  if (n === null || !Number.isFinite(n)) return "**WAIT**";
+  return `${(n * 100).toFixed(digits)}%`;
+}
+
+function buildEpsTrendFromAvEarnings(
+  symbol: string,
+  earnings: Awaited<ReturnType<typeof fetchAlphaVantageEarnings>>,
+): DeskOverviewBrief["epsTrend"] {
+  if (!earnings.available || !earnings.quarterly.length) return null;
+  const rows = [...earnings.quarterly]
+    .filter((r) => r.reportedEPS != null)
+    .sort((a, b) => (a.fiscalDateEnding < b.fiscalDateEnding ? 1 : -1));
+  if (rows.length < 2) return null;
+  const latest = rows[0]!;
+  const prior = rows[4] ?? rows[rows.length - 1]!; // ~1y ago when possible
+  let yoy: number | null = null;
+  if (
+    latest.reportedEPS != null &&
+    prior.reportedEPS != null &&
+    Math.abs(prior.reportedEPS) > 1e-9
+  ) {
+    yoy = ((latest.reportedEPS - prior.reportedEPS) / Math.abs(prior.reportedEPS)) * 100;
+  }
+  const surprises = rows
+    .map((r) => r.surprisePercent)
+    .filter((x): x is number => x != null && Number.isFinite(x));
+  const avgSurprise =
+    surprises.length >= 2
+      ? surprises.slice(0, 8).reduce((a, b) => a + b, 0) / Math.min(8, surprises.length)
+      : null;
+  return {
+    quarters: rows.length,
+    latestReportedEps: latest.reportedEPS,
+    priorReportedEps: prior.reportedEPS,
+    yoyEpsChangePct: yoy != null ? +yoy.toFixed(1) : null,
+    avgSurprisePct: avgSurprise != null ? +avgSurprise.toFixed(2) : null,
+    source: earnings.source,
+  };
+}
+
+function formatSecFactsBrief(summary: SecCompanyFactsSummary): string[] {
+  const d = summary.derived;
+  const lines = [
+    `**${summary.symbol}** (SEC companyfacts / XBRL${summary.cik ? ` · CIK ${summary.cik}` : ""})`,
+    `- Gross margin: ${formatPctOrWait(d.grossMargin)}`,
+    `- Operating margin: ${formatPctOrWait(d.operatingMargin)}`,
+    `- Net margin: ${formatPctOrWait(d.netMargin)}`,
+    `- Free cash flow: ${d.freeCashFlow != null && Number.isFinite(d.freeCashFlow) ? `$${d.freeCashFlow.toLocaleString()}` : "**WAIT**"}`,
+    `- Current ratio: ${d.currentRatio != null && Number.isFinite(d.currentRatio) ? d.currentRatio.toFixed(2) : "**WAIT**"}`,
+  ];
+  if (!summary.available) {
+    lines.push(`- Status: **WAIT** — ${summary.error ?? "companyfacts unavailable"}`);
+  }
+  return lines;
+}
+
+export type DeskOverviewBrief = {
+  symbol: string;
+  peRatio: number | null;
+  profitMargin: number | null;
+  operatingMarginTTM: number | null;
+  revenueTTM: number | null;
+  marketCap: number | null;
+  sector: string | null;
+  industry: string | null;
+  source: string;
+  available: boolean;
+  /** Coding-only historical EPS surprise proxy from AV quarterly earnings. */
+  epsTrend?: {
+    quarters: number;
+    latestReportedEps: number | null;
+    priorReportedEps: number | null;
+    yoyEpsChangePct: number | null;
+    avgSurprisePct: number | null;
+    source: string;
+  } | null;
+};
+
 /** Multi-factor desk compare — verified layers only; WAIT where valuation/narrative missing. */
-export function formatDeskCompareReply(text: string, bundle: IntelligenceBundle): string {
+export function formatDeskCompareReply(
+  text: string,
+  bundle: IntelligenceBundle,
+  secFactsBySymbol?: Record<string, SecCompanyFactsSummary | null>,
+  overviewBySymbol?: Record<string, DeskOverviewBrief | null>,
+): string {
   const symbols = resolveSymbolsFromText(text);
   const syms = symbols.length ? symbols : bundle.symbols;
   const label = syms.join(" vs ") || "names";
   const lines: string[] = [
     `**Research-desk compare — ${label}**`,
     "",
-    "_Verified layers only. Missing factors are marked **WAIT** — nothing invented._",
+    "_Verified layers only. Missing factors are marked **WAIT** — nothing invented. This is fundamental research, not an earnings-event trade card._",
     "",
   ];
 
@@ -158,42 +515,132 @@ export function formatDeskCompareReply(text: string, bundle: IntelligenceBundle)
   lines.push(priceBlock || "Price: **UNAVAILABLE**");
   lines.push("");
 
-  // Momentum
+  // Momentum — per name when available (partial OK)
   lines.push("### Momentum");
-  const rsiBlocks = bundle.layers
-    .filter((l) => l.layer === "indicators" && (!syms.length || (l.ticker && syms.includes(l.ticker))))
-    .map(formatRsiLine)
-    .filter((b): b is string => Boolean(b));
+  const indLayers = bundle.layers.filter(
+    (l) => l.layer === "indicators" && (!syms.length || (l.ticker && syms.includes(l.ticker))),
+  );
+  const rsiBlocks = indLayers.map(formatRsiLine).filter((b): b is string => Boolean(b));
   if (rsiBlocks.length) {
     lines.push(...rsiBlocks);
     const mom = formatMomentumCompare(bundle);
     if (mom) lines.push("", mom);
+    if (syms.length && rsiBlocks.length < syms.length) {
+      lines.push("", `_Partial:_ indicators missing for ${syms.length - rsiBlocks.length} of ${syms.length} names.`);
+    }
   } else {
     lines.push("Momentum / RSI: **WAIT** — indicators layer unavailable for one or more names.");
   }
   lines.push("");
 
-  // Business quality / fundamentals (point facts from earnings research aren't in bundle;
-  // use earnings dates + filing list as partial quality signals, WAIT for full quality score.)
-  lines.push("### Business quality");
+  // Business quality — XBRL + AV overview when available
+  lines.push("### Business quality / profitability");
+  const factEntries = syms
+    .map((s) => secFactsBySymbol?.[s] ?? null)
+    .filter((f): f is SecCompanyFactsSummary => Boolean(f));
+  if (factEntries.length) {
+    lines.push("_Point fundamentals (SEC XBRL companyfacts — not multi-quarter growth series):_");
+    for (const f of factEntries) {
+      lines.push(...formatSecFactsBrief(f), "");
+    }
+  } else {
+    lines.push(
+      "SEC XBRL point facts: **WAIT** — companyfacts not attached on this turn.",
+    );
+  }
+
+  const ovEntries = syms
+    .map((s) => overviewBySymbol?.[s] ?? null)
+    .filter((o): o is DeskOverviewBrief => Boolean(o?.available));
+  if (ovEntries.length) {
+    lines.push("_Vendor overview (Alpha Vantage — point TTM / profile):_");
+    for (const o of ovEntries) {
+      lines.push(
+        `**${o.symbol}**`,
+        `- Sector / industry: ${o.sector ?? "WAIT"} / ${o.industry ?? "WAIT"}`,
+        `- Revenue TTM: ${o.revenueTTM != null ? `$${o.revenueTTM.toLocaleString()}` : "**WAIT**"}`,
+        `- Profit margin: ${o.profitMargin != null ? `${(o.profitMargin * (o.profitMargin <= 1 ? 100 : 1)).toFixed(1)}%` : "**WAIT**"}`,
+        `- Operating margin TTM: ${o.operatingMarginTTM != null ? `${(o.operatingMarginTTM * (o.operatingMarginTTM <= 1 ? 100 : 1)).toFixed(1)}%` : "**WAIT**"}`,
+        `- Market cap: ${o.marketCap != null ? `$${o.marketCap.toLocaleString()}` : "**WAIT**"}`,
+        `- Source: ${o.source}`,
+        "",
+      );
+    }
+  }
+
   lines.push(
-    "Full business-quality scorecard (segment mix, moat, capital returns): **WAIT** — not wired as a dedicated layer.",
+    "_Still WAIT (do not invent):_",
+    "- Multi-quarter **revenue growth** time series",
+    "- Competitive moat / positioning narrative score",
   );
   const earnBlocks = bundle.layers
     .filter((l) => l.layer === "earnings" && (!syms.length || (l.ticker && syms.includes(l.ticker))))
     .map(formatEarningsLine)
     .filter((b): b is string => Boolean(b));
   if (earnBlocks.length) {
-    lines.push("", "_Nearest verified proxy — next earnings:_", ...earnBlocks);
+    lines.push("", "_Calendar context only (not the fundamental scorecard):_", ...earnBlocks);
   }
   lines.push("");
 
-  // Valuation
+  // Valuation — AV PE when present; historical averages still WAIT
   lines.push("### Valuation");
-  lines.push(
-    "Trailing/forward multiples vs history and peers: **WAIT** — historical valuation series / peer multiples not verified on the free stack.",
-  );
-  lines.push("I will **not** invent P/E, EV/EBITDA, or “expensive vs cheap” from price alone.");
+  if (ovEntries.some((o) => o.peRatio != null)) {
+    lines.push("_Trailing P/E (vendor overview — point-in-time):_");
+    for (const o of ovEntries) {
+      lines.push(
+        `- **${o.symbol}** P/E: ${o.peRatio != null ? o.peRatio.toFixed(2) : "**WAIT**"} (${o.source})`,
+      );
+    }
+    lines.push(
+      "",
+      "P/E vs **multi-year historical averages** / full peer EV bands: **WAIT** — long history percentile series not assembled here (will not invent “cheap/expensive”).",
+    );
+  } else {
+    lines.push(
+      "Trailing/forward multiples: **WAIT** — overview P/E not available for these names on this turn.",
+    );
+    lines.push("I will **not** invent P/E, EV/EBITDA, or “expensive vs cheap” from price alone.");
+  }
+  lines.push("");
+
+  // Historical performance proxy from AV quarterly EPS (coding-only, existing key)
+  const trends = ovEntries.filter((o) => o.epsTrend);
+  lines.push("### Historical performance proxy (EPS — verified quarterly when available)");
+  if (trends.length) {
+    for (const o of trends) {
+      const t = o.epsTrend!;
+      lines.push(
+        `**${o.symbol}** (${t.source})`,
+        `- Quarters retrieved: ${t.quarters}`,
+        `- Latest vs ~prior EPS: ${t.latestReportedEps ?? "WAIT"} → ${t.priorReportedEps ?? "WAIT"}`,
+        `- Approx EPS change: ${t.yoyEpsChangePct != null ? `${t.yoyEpsChangePct.toFixed(1)}%` : "**WAIT**"}`,
+        `- Avg EPS surprise % (recent quarters): ${t.avgSurprisePct != null ? `${t.avgSurprisePct.toFixed(2)}%` : "**WAIT**"}`,
+        "",
+      );
+    }
+    lines.push(
+      "_Note:_ This is an **EPS history proxy**, not full multi-quarter revenue growth from income statements. Revenue growth series remains **WAIT** when not in XBRL point facts.",
+      "",
+    );
+  } else {
+    lines.push(
+      "- EPS history proxy: **WAIT** — Alpha Vantage quarterly earnings not attached on this turn.",
+      "",
+    );
+  }
+
+  // Strongest fundamentals — only from available verified fields
+  lines.push("### Relative read (available fields only)");
+  if (factEntries.length || ovEntries.length) {
+    lines.push(
+      "Strongest **point** fundamentals among names with verified XBRL/overview rows should be judged on margins + FCF + (when present) trailing P/E — **not** on next-earnings timing.",
+    );
+    lines.push(
+      "A single “winner” label is **WAIT** when multi-quarter growth and historical valuation averages are missing.",
+    );
+  } else {
+    lines.push("Relative fundamental ranking: **WAIT** — insufficient verified fundamental fields on this turn.");
+  }
   lines.push("");
 
   // Key risks
@@ -208,7 +655,6 @@ export function formatDeskCompareReply(text: string, bundle: IntelligenceBundle)
     lines.push("News-derived risk context: **UNAVAILABLE** from configured feeds.");
   }
   const edgar = formatEdgarReply(
-    // Force metadata list, not content-QA invent path
     `latest SEC filings ${syms.join(" ")}`,
     bundle,
   );
@@ -225,8 +671,9 @@ export function formatDeskCompareReply(text: string, bundle: IntelligenceBundle)
 
   lines.push("### Bottom line");
   lines.push(
-    "This is a **partial** desk card from connected market/data layers only. " +
-      "For a full earnings-protocol scorecard (still not a trade authorization), say " +
+    "This is a **partial fundamental desk card** from connected layers (price, indicators, XBRL/overview when available). " +
+      "It is **not** an earnings-surprise trade card. " +
+      "For a protocol scorecard with gap registers, say " +
       `\`Run earnings candidate research on ${syms.join(", ") || "TICKERS"}\`.`,
   );
   lines.push("Status: **RESEARCH ONLY / NO TRADE**.");
@@ -433,7 +880,60 @@ function formatIndicatorBundle(layer: LayerEnvelope): string | null {
   if (typeof ind.sma_20 === "number") parts.push(`- **SMA 20:** $${ind.sma_20.toFixed(2)}`);
   if (typeof ind.sma_50 === "number") parts.push(`- **SMA 50:** $${ind.sma_50.toFixed(2)}`);
   if (typeof ind.sma_200 === "number") parts.push(`- **SMA 200:** $${ind.sma_200.toFixed(2)}`);
-  parts.push(`- **Source:** ${layer.source} (gateway-computed)`);
+  if (typeof ind.volume === "number") parts.push(`- **Volume (session):** ${ind.volume.toLocaleString()}`);
+  if (typeof ind.average_volume === "number") {
+    parts.push(`- **Avg volume:** ${ind.average_volume.toLocaleString()}`);
+  }
+  if (typeof ind.relative_volume === "number") {
+    parts.push(`- **Relative volume:** ${ind.relative_volume.toFixed(2)}x`);
+  }
+  if (typeof ind.atr_14 === "number") parts.push(`- **ATR (14):** $${ind.atr_14.toFixed(2)}`);
+  if (typeof ind.bollinger_upper === "number" && typeof ind.bollinger_lower === "number") {
+    parts.push(
+      `- **Bollinger (proxy band):** $${ind.bollinger_lower.toFixed(2)} – $${ind.bollinger_upper.toFixed(2)}`,
+    );
+  }
+
+  // Soft structure from verified SMAs / ATR — not a full S/R map.
+  const structure: string[] = [];
+  if (typeof ind.sma_20 === "number") structure.push(`near-term pivot / support-resistance proxy: SMA20 $${ind.sma_20.toFixed(2)}`);
+  if (typeof ind.sma_50 === "number") structure.push(`intermediate: SMA50 $${ind.sma_50.toFixed(2)}`);
+  if (typeof ind.sma_200 === "number") structure.push(`trend: SMA200 $${ind.sma_200.toFixed(2)}`);
+  if (typeof ind.week_52_high === "number") structure.push(`52-week high: $${ind.week_52_high.toFixed(2)}`);
+  if (typeof ind.week_52_low === "number") structure.push(`52-week low: $${ind.week_52_low.toFixed(2)}`);
+  if (structure.length) {
+    parts.push("", "### Support / resistance proxies (verified levels only)");
+    for (const s of structure) parts.push(`- ${s}`);
+    parts.push("- Discrete swing highs/lows: **WAIT** — bar-level swing map not assembled on this path.");
+  }
+
+  const setups: string[] = [];
+  if (typeof ind.rsi_14 === "number") {
+    if (ind.rsi_14 >= 70) setups.push("RSI ≥ 70 — stretched; pullback / mean-reversion risk elevated (not a short signal).");
+    else if (ind.rsi_14 <= 30) setups.push("RSI ≤ 30 — oversold zone; bounce attempts possible but trend context still required.");
+    else setups.push("RSI mid-range — no extreme overbought/oversold flag from RSI alone.");
+  }
+  if (typeof ind.macd === "number" && typeof ind.macd_signal === "number") {
+    setups.push(
+      ind.macd >= ind.macd_signal
+        ? "MACD at/above signal — momentum bias constructive on this snapshot (research only)."
+        : "MACD below signal — momentum bias softer on this snapshot (research only).",
+    );
+  }
+  if (typeof ind.sma_20 === "number" && typeof ind.sma_50 === "number") {
+    setups.push(
+      ind.sma_20 >= ind.sma_50
+        ? "SMA20 ≥ SMA50 — short-term trend stacked above intermediate."
+        : "SMA20 < SMA50 — short-term trend below intermediate average.",
+    );
+  }
+  if (setups.length) {
+    parts.push("", "### Near-term scenarios (from verified indicators only)");
+    for (const s of setups) parts.push(`- ${s}`);
+    parts.push("- Status: **RESEARCH ONLY / NO TRADE** — levels are proxies, not entry orders.");
+  }
+
+  parts.push("", `- **Source:** ${layer.source} (gateway-computed)`);
   parts.push(`- **As of:** ${layer.timestamp}`);
   return parts.join("\n");
 }
@@ -806,6 +1306,14 @@ export async function tryDeterministicDataReply(
   userId: string,
   text: string,
 ): Promise<DeterministicPriceResult | null> {
+  const result = await tryDeterministicDataReplyInner(userId, text);
+  return result ? ensureFactPacket(result, text) : null;
+}
+
+async function tryDeterministicDataReplyInner(
+  userId: string,
+  text: string,
+): Promise<DeterministicPriceResult | null> {
   if (isConversationAck(text)) return null;
 
   // NL screener — never resolve ABOVE/SECTOR as tickers (Phase 0: P0-TECH-005).
@@ -822,6 +1330,37 @@ export async function tryDeterministicDataReply(
     return {
       reply: formatFundamentalSeriesUnavailableReply(symbols),
       meta: gapMeta(symbols, "fundamental-series-gate"),
+    };
+  }
+
+  // Hypothetical portfolio stress — never STATUS / live P&L (Client PDF Prompt 5).
+  if (isHypotheticalPortfolioQuery(text)) {
+    const holdings = parseHypotheticalHoldings(text);
+    const sleeve = parseSectorSleeve(text);
+    const backdrop = await fetchFredMacroBackdrop().catch((e) => ({
+      available: false,
+      asOf: new Date().toISOString(),
+      series: [],
+      source: "FRED",
+      error: (e as Error).message,
+    }));
+    const fredBrief = formatFredMacroBrief(backdrop);
+    const risk = await buildSleeveRiskReport(userId, sleeve).catch(() => null);
+    const riskSectionLines = risk ? formatSleeveRiskSection(risk) : undefined;
+    return {
+      reply: formatHypotheticalPortfolioReply(text, {
+        holdings,
+        fredBrief: fredBrief.length ? fredBrief : undefined,
+        riskSectionLines,
+      }),
+      meta: gapMeta(
+        holdings.map((h) => h.symbol),
+        risk?.available
+          ? "hypothetical-portfolio-v1+fred+etf-risk"
+          : backdrop.available
+            ? "hypothetical-portfolio-v1+fred"
+            : "hypothetical-portfolio-v1",
+      ),
     };
   }
 
@@ -953,8 +1492,61 @@ export async function tryDeterministicDataReply(
       };
     }
     const { bundle } = await buildIntelligenceBundle(userId, text, [], { includeWatchlist: false });
+    // Attach point SEC XBRL + Alpha Vantage overview when available (never invent multiples).
+    const enriched = await Promise.all(
+      symbols.slice(0, 6).map(async (s) => {
+        const [facts, overview, earnings] = await Promise.all([
+          fetchSecCompanyFacts(s).catch(() => null),
+          fetchAlphaVantageOverview(s).catch(() => ({ available: false, payload: null })),
+          fetchAlphaVantageEarnings(s).catch(() => ({
+            available: false,
+            symbol: s,
+            annual: [],
+            quarterly: [],
+            source: "Alpha Vantage EARNINGS" as const,
+          })),
+        ]);
+        const epsTrend = buildEpsTrendFromAvEarnings(s, earnings);
+        const ov = overview.available && overview.payload
+          ? ({
+              symbol: s,
+              peRatio: overview.payload.peRatio,
+              profitMargin: overview.payload.profitMargin,
+              operatingMarginTTM: overview.payload.operatingMarginTTM,
+              revenueTTM: overview.payload.revenueTTM,
+              marketCap: overview.payload.marketCap,
+              sector: overview.payload.sector,
+              industry: overview.payload.industry,
+              source: overview.payload.source,
+              available: true,
+              epsTrend,
+            } satisfies DeskOverviewBrief)
+          : epsTrend
+            ? ({
+                symbol: s,
+                peRatio: null,
+                profitMargin: null,
+                operatingMarginTTM: null,
+                revenueTTM: null,
+                marketCap: null,
+                sector: null,
+                industry: null,
+                source: epsTrend.source,
+                available: true,
+                epsTrend,
+              } satisfies DeskOverviewBrief)
+            : null;
+        return [s, facts, ov] as const;
+      }),
+    );
+    const secFactsBySymbol: Record<string, SecCompanyFactsSummary | null> = {};
+    const overviewBySymbol: Record<string, DeskOverviewBrief | null> = {};
+    for (const [s, facts, ov] of enriched) {
+      secFactsBySymbol[s] = facts;
+      overviewBySymbol[s] = ov;
+    }
     return {
-      reply: formatDeskCompareReply(text, bundle),
+      reply: formatDeskCompareReply(text, bundle, secFactsBySymbol, overviewBySymbol),
       meta: { ...toMarketMeta(bundle), symbols, sourceName: "desk-compare" },
     };
   }

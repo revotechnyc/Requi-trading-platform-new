@@ -6,6 +6,7 @@ import { openRiskDollars, listPositions } from "../engine/portfolio";
 import { publicPackageStatus } from "../governance/runtime";
 import { parseTradeQuantity, resolveTradeSymbol } from "./trade-symbol";
 import { classifyMarketIntelligenceIntent } from "./market-intent";
+import { isHypotheticalPortfolioQuery } from "./gap-intents";
 
 /**
  * INTENT ROUTER — the deterministic switch between the AI reasoning model
@@ -208,7 +209,7 @@ export function classifyIntent(text: string, thread: ThreadState): IntentResult 
   if (STRATEGIZE_TRIGGERS.test(text)) {
     return { ...base, mode: "STRATEGIZE", reason: "strategy-building request — deterministic strategy builder path" };
   }
-  if (STATUS_TRIGGERS.test(text) && !hasTradeTrigger) {
+  if (STATUS_TRIGGERS.test(text) && !hasTradeTrigger && !isHypotheticalPortfolioQuery(text)) {
     return { ...base, mode: "STATUS_QUERY", reason: "read-only status request" };
   }
   return {

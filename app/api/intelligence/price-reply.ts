@@ -4,6 +4,7 @@ import type { IntelligenceBundle, LayerEnvelope } from "../intelligence-data/typ
 import { resolveSymbolsFromText } from "../intelligence-data/symbol-resolver";
 import type { MarketMeta } from "./tools";
 import type { EngineNarrationPayload } from "./engine-narration";
+import { ensureFactPacket, type FactPacket } from "./fact-packet";
 import { isHistoricalPriceQuery } from "./gap-intents";
 
 export { isHistoricalPriceQuery } from "./gap-intents";
@@ -175,6 +176,8 @@ export interface DeterministicPriceResult {
   rankedResults?: Array<{ symbol: string; rawScore?: number | null; classification?: string | null }>;
   /** Structured engine JSON for Step 4 Lucia narration. */
   enginePayload?: EngineNarrationPayload;
+  /** Phase B — verified fact envelope when built by a deterministic handler. */
+  factPacket?: FactPacket;
 }
 
 /** Server-side quote formatter — bypasses the LLM so prices cannot be invented. */
@@ -186,16 +189,19 @@ export async function tryDeterministicPriceReply(
 
   // Dated / historical closes must never return the live session quote.
   if (isHistoricalPriceQuery(text) && querySymbols.length > 0) {
-    return {
-      reply: formatHistoricalPriceUnavailableReply(querySymbols, text),
-      meta: {
-        symbols: querySymbols,
-        source: null,
-        sourceName: "historical-price-gate",
-        stale: true,
-        timestamp: new Date().toISOString(),
+    return ensureFactPacket(
+      {
+        reply: formatHistoricalPriceUnavailableReply(querySymbols, text),
+        meta: {
+          symbols: querySymbols,
+          source: null,
+          sourceName: "historical-price-gate",
+          stale: true,
+          timestamp: new Date().toISOString(),
+        },
       },
-    };
+      text,
+    );
   }
 
   if (!isDeterministicPriceQuery(text, querySymbols)) return null;
@@ -204,8 +210,11 @@ export async function tryDeterministicPriceReply(
   const symbols = resolveSymbolsFromText(text);
   if (!isDeterministicPriceQuery(text, symbols)) return null;
 
-  return {
-    reply: formatVerifiedPriceReply(bundle, symbols),
-    meta: toMarketMeta(bundle),
-  };
+  return ensureFactPacket(
+    {
+      reply: formatVerifiedPriceReply(bundle, symbols),
+      meta: toMarketMeta(bundle),
+    },
+    text,
+  );
 }
