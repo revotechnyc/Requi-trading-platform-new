@@ -59,7 +59,12 @@ if (env.isProduction) {
   const { syncIndicatorRegistry } = await import("./indicators/registry");
   await syncIndicatorRegistry(); // mirror the code indicator registry into indicator_registry (audit mirror)
   await ensureLegalDocsSeeded(); // versioned legal library (LEGAL_REVIEW drafts) — never overwrites existing rows
-  await ensureAutonomousConsoleSchema(); // console tables + seed in schema `ac`
+  try {
+    await ensureAutonomousConsoleSchema(); // console tables + seed in schema `ac`
+  } catch (err) {
+    // Do not take down Intelligence/trading if autonomous console DDL fails.
+    console.error("[ac] ensure failed (continuing boot)", err);
+  }
   const { serve } = await import("@hono/node-server");
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);

@@ -685,10 +685,10 @@ CREATE INDEX IF NOT EXISTS pa_event_idx ON position_authority(event_id);
 CREATE TABLE IF NOT EXISTS apma_config (
   id SERIAL PRIMARY KEY,
   action VARCHAR(64) NOT NULL,
-  desc TEXT NOT NULL,
-  trigger TEXT NOT NULL,
+  "desc" TEXT NOT NULL,
+  "trigger" TEXT NOT NULL,
   color VARCHAR(16) NOT NULL,
-  order INTEGER NOT NULL,
+  "order" INTEGER NOT NULL,
   is_enabled BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );

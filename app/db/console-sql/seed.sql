@@ -123,7 +123,7 @@ INSERT INTO risk_config (key, value, description, category) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- 8. APMA Config
-INSERT INTO apma_config (action, desc, trigger, color, "order", is_enabled) VALUES
+INSERT INTO apma_config (action, "desc", "trigger", color, "order", is_enabled) VALUES
 ('Auto-Trail', 'Trailing stop activates after +$0.50 unrealized', 'Unrealized P&L >= $0.50', 'green', 1, true),
 ('Breakeven', 'Stop moves to breakeven after +$0.25 unrealized', 'Unrealized P&L >= $0.25', 'green', 2, true),
 ('Time-Decay Exit', 'Flat exit if position held > 5 minutes without progress', 'Hold time > 5min AND price flat', 'orange', 3, true),
