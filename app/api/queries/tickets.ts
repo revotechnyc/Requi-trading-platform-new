@@ -43,6 +43,8 @@ export interface ProposeInput {
   target?: number;
   target2?: number;
   origin: "INTELLIGENCE" | "AUTONOMOUS" | "MANUAL";
+  /** Autonomous session id — links the ticket to the live run stream. */
+  runSessionId?: string;
 }
 
 function makeTicketId(strategy: string, seq: number): string {
@@ -130,6 +132,7 @@ export async function proposeTicket(userId: string, input: ProposeInput): Promis
     broker: input.broker,
     effectiveBroker: effective,
     accountId: input.accountId ?? null,
+    runSessionId: input.runSessionId ?? null,
     symbol: input.symbol.toUpperCase(),
     side: input.side,
     quantity: input.quantity,

@@ -23,6 +23,12 @@ const typeStyle: Record<string, string> = {
 /** Brokers available in the Connect picker. Add entries here as integrations ship. */
 const BROKER_OPTIONS = [
   {
+    id: 'ibkr_paper' as const,
+    name: 'Interactive Brokers',
+    subtitle: 'Paper account (DU…) via Client Portal Gateway',
+    available: true,
+  },
+  {
     id: 'robinhood_mcp' as const,
     name: 'Robinhood',
     subtitle: 'Agentic Trading (MCP) — OAuth',
@@ -41,6 +47,30 @@ export default function Accounts() {
       setPickerOpen(false);
       setBanner('Redirecting to Robinhood to authorize Agentic MCP…');
       window.location.assign(res.authorizeUrl);
+    },
+    onError: (err) => setBanner(err.message),
+  });
+  const connectIbkrMut = trpc.trading.connectIbkrPaper.useMutation({
+    onSuccess: async (res) => {
+      setPickerOpen(false);
+      setBanner(
+        `IBKR Paper linked (${res.ibkr.accountId ?? 'DU…'}). Gateway ${res.ibkr.gatewayOk ? 'authenticated' : 'needs login'}.`,
+      );
+      await utils.trading.accounts.invalidate();
+    },
+    onError: (err) => setBanner(err.message),
+  });
+  const refreshIbkrMut = trpc.trading.refreshIbkrPaper.useMutation({
+    onSuccess: async (res) => {
+      setBanner(res.detail);
+      await utils.trading.accounts.invalidate();
+    },
+    onError: (err) => setBanner(err.message),
+  });
+  const disconnectIbkrMut = trpc.trading.disconnectIbkrPaper.useMutation({
+    onSuccess: async (res) => {
+      setBanner(res.message);
+      await utils.trading.accounts.invalidate();
     },
     onError: (err) => setBanner(err.message),
   });
@@ -75,9 +105,10 @@ export default function Accounts() {
   );
 
   const rh = data?.robinhoodMcp ?? null;
+  const ibkr = data?.ibkr ?? null;
   const total = accounts.reduce((a, b) => a + b.equity, 0);
   const dayPnl = accounts.reduce((a, b) => a + b.dayPnl, 0);
-  const connecting = startMut.isPending;
+  const connecting = startMut.isPending || connectIbkrMut.isPending;
   const none = !isLoading && accounts.length === 0;
 
   function openBrokerPicker() {
@@ -86,6 +117,16 @@ export default function Accounts() {
   }
 
   function selectBroker(id: (typeof BROKER_OPTIONS)[number]['id']) {
+    if (id === 'ibkr_paper') {
+      if (ibkr?.connectedForUser) {
+        setBanner('IBKR Paper is already linked to this workspace.');
+        setPickerOpen(false);
+        return;
+      }
+      setBanner(null);
+      connectIbkrMut.mutate();
+      return;
+    }
     if (id === 'robinhood_mcp') {
       if (rh) {
         setBanner('Robinhood Agentic MCP is already connected.');
@@ -119,6 +160,63 @@ export default function Accounts() {
           {banner}
         </div>
       )}
+
+      <div className="glass rounded-2xl p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Interactive Brokers Paper</p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+              Links this workspace to the server-configured IBKR paper account (<span className="font-mono">DU…</span>).
+              Start the Client Portal Gateway, complete IBKR login + 2FA, then connect. Fake money only — live
+              accounts are blocked until live trading is explicitly unlocked.
+            </p>
+          </div>
+        </div>
+
+        {ibkr?.connectedForUser ? (
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-900/10 bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{ibkr.label}</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {ibkr.accountId ?? 'DU…'} · {ibkr.gatewayOk ? 'Gateway authenticated' : ibkr.detail}
+                {ibkr.equity > 0 ? ` · equity ${fmtUsd(ibkr.equity)}` : ''}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={refreshIbkrMut.isPending}
+                onClick={() => refreshIbkrMut.mutate()}
+              >
+                <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', refreshIbkrMut.isPending && 'animate-spin')} />
+                Refresh health
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={disconnectIbkrMut.isPending}
+                onClick={() => {
+                  if (window.confirm('Unlink IBKR Paper from this workspace? The gateway session stays as-is.')) {
+                    disconnectIbkrMut.mutate();
+                  }
+                }}
+              >
+                <Unplug className="mr-1.5 h-3.5 w-3.5" />
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">
+            {ibkr?.configured
+              ? ibkr.gatewayOk
+                ? 'Gateway is authenticated — use Connect broker account, then choose Interactive Brokers.'
+                : ibkr.detail
+              : 'Not configured yet — add IBKR_ACCOUNT=DU… and IBKR_GATEWAY_URL to the server env, start the gateway, then connect.'}
+          </p>
+        )}
+      </div>
 
       <div className="glass rounded-2xl p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -189,13 +287,6 @@ export default function Accounts() {
             then choose Robinhood to authorize (desktop browser).
           </p>
         )}
-
-        {data?.ibkrServerLinked && (
-          <p className="mt-3 text-[11px] text-slate-500">
-            Server-linked IBKR ({data.ibkrAccountId ?? 'configured'}) is unchanged. Robinhood MCP connect does
-            not replace it in this phase.
-          </p>
-        )}
       </div>
 
       {!none && (
@@ -230,7 +321,7 @@ export default function Accounts() {
             <p className="text-sm font-medium text-slate-700">Not Connected</p>
             <p className="max-w-md text-xs leading-relaxed text-slate-500">
               No brokerage accounts are connected. Balances appear only after a real connection is established.
-              The paper engine remains available in Autonomous without a connection.
+              The paper engine remains available in Autonomous. To trade IBKR Paper, connect Interactive Brokers first.
             </p>
             <Button
               className="mt-2 bg-royal-500 font-semibold text-white hover:bg-sky-600"
@@ -304,13 +395,15 @@ export default function Accounts() {
           <DialogHeader>
             <DialogTitle>Connect broker account</DialogTitle>
             <DialogDescription>
-              Choose a broker to connect. More brokers can be added here later; Robinhood Agentic MCP is
-              available now.
+              Choose a broker to connect. IBKR Paper uses the Client Portal Gateway on this server.
+              Robinhood Agentic MCP is also available.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-2 space-y-2">
             {BROKER_OPTIONS.map((opt) => {
-              const already = opt.id === 'robinhood_mcp' && Boolean(rh);
+              const already =
+                (opt.id === 'robinhood_mcp' && Boolean(rh)) ||
+                (opt.id === 'ibkr_paper' && Boolean(ibkr?.connectedForUser));
               const disabled = !opt.available || connecting || already;
               return (
                 <button
@@ -333,7 +426,13 @@ export default function Accounts() {
                     <p className="text-xs text-slate-500">{opt.subtitle}</p>
                   </div>
                   <span className="shrink-0 text-xs font-semibold text-slate-500">
-                    {already ? 'Connected' : connecting && opt.id === 'robinhood_mcp' ? 'Starting…' : 'Connect'}
+                    {already
+                      ? 'Connected'
+                      : connecting && opt.id === 'ibkr_paper' && connectIbkrMut.isPending
+                        ? 'Linking…'
+                        : connecting && opt.id === 'robinhood_mcp' && startMut.isPending
+                          ? 'Starting…'
+                          : 'Connect'}
                   </span>
                 </button>
               );

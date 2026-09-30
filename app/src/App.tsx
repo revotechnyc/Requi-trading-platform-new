@@ -89,7 +89,7 @@ export default function App() {
       >
         <Route index element={<Intelligence />} />
         <Route path="strategies" element={<IntelligenceOnly><Strategies /></IntelligenceOnly>} />
-        <Route path="autonomous" element={<IntelligenceOnly><Autonomous /></IntelligenceOnly>} />
+        <Route path="autonomous" element={<Autonomous />} />
         <Route path="financials" element={<IntelligenceOnly><Financials /></IntelligenceOnly>} />
         <Route path="signals" element={<IntelligenceOnly><Signals /></IntelligenceOnly>} />
         <Route path="accounts" element={<IntelligenceOnly><Accounts /></IntelligenceOnly>} />

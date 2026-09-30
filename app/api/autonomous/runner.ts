@@ -4,6 +4,7 @@ import { autonomousConfigs, autonomousSessions, brokerAccounts, orderTickets, po
 import { computedAllocation, emitEvent, stop as stopSession } from "./service";
 import { sourceStatus } from "../marketdata/gateway/gateway";
 import { gatewayHealth } from "../marketdata/ibkr-data";
+import { sessionUsesIbkr, tickIbkrSession } from "./ibkr-tick";
 
 /** Provider transitions + throttled health checks (per session, in-process). */
 const lastSource = new Map<string, string>();
@@ -79,6 +80,11 @@ async function tickSession(s: Session): Promise<void> {
       .set({ status: "BROKER_DISCONNECTED", lastError: "Broker connection lost" })
       .where(eq(autonomousSessions.id, s.id));
     await emitEvent(s.id, s.userId, { phase: "ERROR", kind: "error", message: "Broker disconnected — monitoring halted, protections preserved" });
+    return;
+  }
+
+  if (sessionUsesIbkr(account)) {
+    await tickIbkrSession(s, cfg, account);
     return;
   }
 

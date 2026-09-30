@@ -13,6 +13,12 @@ import { desc } from "drizzle-orm";
 import { env } from "./lib/env";
 import { isIbkrAccountConfigured } from "./brokers/ibkr";
 import {
+  connectIbkrPaperAccount,
+  disconnectIbkrPaperAccount,
+  ibkrPaperStatus,
+  refreshIbkrPaperAccount,
+} from "./brokers/ibkr-paper";
+import {
   completeRobinhoodConnect,
   disconnectRobinhood,
   getRobinhoodConnectionPublic,
@@ -56,7 +62,36 @@ export const tradingRouter = createRouter({
       robinhoodMcp: rh,
       ibkrServerLinked: isIbkrAccountConfigured(),
       ibkrAccountId: process.env.IBKR_ACCOUNT?.trim() || null,
+      ibkr: await ibkrPaperStatus(ctx.user.id),
     };
+  }),
+
+  ibkrStatus: authedQuery.query(({ ctx }) => ibkrPaperStatus(ctx.user.id)),
+
+  connectIbkrPaper: authedQuery.mutation(async ({ ctx }) => {
+    try {
+      return await connectIbkrPaperAccount(ctx.user.id, ctx.user.activeOrganizationId);
+    } catch (e) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: e instanceof Error ? e.message : "Could not connect IBKR paper",
+      });
+    }
+  }),
+
+  refreshIbkrPaper: authedQuery.mutation(async ({ ctx }) => {
+    try {
+      return await refreshIbkrPaperAccount(ctx.user.id);
+    } catch (e) {
+      throw new TRPCError({
+        code: "BAD_GATEWAY",
+        message: e instanceof Error ? e.message : "IBKR health refresh failed",
+      });
+    }
+  }),
+
+  disconnectIbkrPaper: authedQuery.mutation(async ({ ctx }) => {
+    return disconnectIbkrPaperAccount(ctx.user.id);
   }),
 
   /**

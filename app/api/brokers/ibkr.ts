@@ -93,13 +93,49 @@ export class IbkrBroker implements BrokerAdapter {
 
   async getAccounts(): Promise<BrokerAccount[]> {
     const accounts = await this.req<Array<{ accountId?: string; id?: string; accountTitle?: string }>>("GET", "/portfolio/accounts");
-    return (accounts ?? []).map((a) => ({
-      accountId: String(a.accountId ?? a.id ?? ""),
-      label: String(a.accountTitle ?? "IBKR"),
-      equity: 0,
-      cash: 0,
-      buyingPower: 0,
-    }));
+    const rows = await Promise.all(
+      (accounts ?? []).map(async (a) => {
+        const accountId = String(a.accountId ?? a.id ?? "");
+        const summary = accountId ? await this.accountSummary(accountId).catch(() => null) : null;
+        return {
+          accountId,
+          label: String(a.accountTitle ?? "IBKR"),
+          equity: summary?.equity ?? 0,
+          cash: summary?.cash ?? 0,
+          buyingPower: summary?.buyingPower ?? 0,
+        };
+      }),
+    );
+    return rows;
+  }
+
+  /** Keep the Client Portal Gateway session alive. Safe to call often. */
+  async tickle(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const out = await this.req<{ iserver?: { authStatus?: { authenticated?: boolean } } }>("POST", "/tickle");
+      const authenticated = out?.iserver?.authStatus?.authenticated === true;
+      return {
+        ok: authenticated,
+        detail: authenticated ? "tickle ok · brokerage session live" : "tickle reached gateway but session is not authenticated",
+      };
+    } catch (e) {
+      return { ok: false, detail: (e as Error).message };
+    }
+  }
+
+  private async accountSummary(accountId: string): Promise<{ equity: number; cash: number; buyingPower: number } | null> {
+    const rows = await this.req<Array<{ tag?: string; value?: string; amount?: number }>>("GET", `/portfolio/${accountId}/summary`);
+    const num = (tag: string) => {
+      const hit = (rows ?? []).find((r) => String(r.tag ?? "").toLowerCase() === tag.toLowerCase());
+      if (!hit) return 0;
+      const n = hit.amount !== undefined ? Number(hit.amount) : Number(hit.value);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return {
+      equity: num("NetLiquidation") || num("EquityWithLoanValue"),
+      cash: num("TotalCashValue") || num("CashBalance"),
+      buyingPower: num("BuyingPower") || num("AvailableFunds"),
+    };
   }
 
   async getPositions(accountId: string): Promise<BrokerPosition[]> {
@@ -144,6 +180,7 @@ export class IbkrBroker implements BrokerAdapter {
 
   async placeOrder(accountId: string, intent: OrderIntent): Promise<BrokerOrderAck> {
     const acct = accountId || this.accountId;
+    assertIbkrPaperUnlessLiveUnlocked(acct);
     const conid = await this.conid(intent.symbol);
     const order: Record<string, unknown> = {
       acctId: acct,
@@ -205,5 +242,35 @@ export class IbkrBroker implements BrokerAdapter {
 
 /** True when operator has configured a target IBKR account id. */
 export function isIbkrAccountConfigured(): boolean {
-  return Boolean(process.env.IBKR_ACCOUNT?.trim());
+  return Boolean(configuredIbkrAccountId());
+}
+
+export function configuredIbkrAccountId(): string {
+  return process.env.IBKR_ACCOUNT?.trim() ?? "";
+}
+
+/** IBKR paper accounts are DU…; live accounts are typically U…. */
+export function isIbkrPaperAccountId(accountId: string): boolean {
+  return /^DU/i.test(accountId.trim());
+}
+
+export function isLiveTradingUnlocked(): boolean {
+  const v = process.env.LIVE_TRADING_ENABLED?.trim().toLowerCase();
+  return v === "true" || v === "1";
+}
+
+/** Paper-first: refuse live IBKR account ids until an explicit live flag is set. */
+export function assertIbkrPaperUnlessLiveUnlocked(accountId: string): void {
+  const id = accountId.trim();
+  if (!id) throw new Error("IBKR account id is missing — set IBKR_ACCOUNT to a paper id (DU…).");
+  if (isIbkrPaperAccountId(id)) return;
+  if (isLiveTradingUnlocked()) return;
+  throw new Error(
+    `IBKR account ${id} is not a paper account (DU…). Live trading is locked until LIVE_TRADING_ENABLED=true.`,
+  );
+}
+
+export function isIbkrBrokerAccount(brokerName: string | null | undefined): boolean {
+  const b = (brokerName ?? "").toUpperCase();
+  return b === "IBKR" || b.includes("INTERACTIVE");
 }

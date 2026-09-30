@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import {
   Sparkles, SendHorizonal, Copy, Check, ClipboardPaste, Layers, Wallet, Radio,
-  TrendingUp, ShieldCheck, Route, CircleCheck, Square,
+  TrendingUp, ShieldCheck, Route, CircleCheck, Square, Bot, ArrowRight,
 } from 'lucide-react';
 import type { Strategy } from '@/lib/data';
 import { trpc } from '@/providers/trpc';
@@ -15,6 +16,7 @@ import ReasoningIndicator, {
   inferThinkingHint,
   type ThinkingHint,
 } from '@/components/ReasoningIndicator';
+import { intelligenceOnlyMode } from '@/lib/app-access';
 import { streamIntelligenceChat } from '@/lib/intelligenceStream';
 
 /* ─── message model ─────────────────────────────────────────────────────── */
@@ -377,6 +379,36 @@ export default function Intelligence() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="glass flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-royal-500/10 text-sky-700">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Autonomous mode · IBKR Paper</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Connect Interactive Brokers paper, then start the engine. Orders go to IBKR Paper — not live capital.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!intelligenceOnlyMode && (
+              <Link
+                to="/app/accounts"
+                className="inline-flex items-center rounded-lg border border-slate-900/10 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Connect IBKR Paper
+              </Link>
+            )}
+            <Link
+              to="/app/autonomous"
+              className="inline-flex items-center rounded-lg bg-royal-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-600"
+            >
+              Open Autonomous <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </div>
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.7fr_1fr]">

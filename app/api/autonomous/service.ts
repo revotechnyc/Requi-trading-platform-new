@@ -2,6 +2,7 @@ import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { gatewayHealth } from "../marketdata/ibkr-data";
 import { sourceStatus } from "../marketdata/gateway/gateway";
+import { assertIbkrPaperUnlessLiveUnlocked, configuredIbkrAccountId, isIbkrBrokerAccount } from "../brokers/ibkr";
 import {
   aiLimits,
   autonomousConfigs,
@@ -158,6 +159,15 @@ export async function start(userId: string) {
   const [account] = await db.select().from(brokerAccounts).where(eq(brokerAccounts.id, cfg.accountId));
   if (!account) throw new Error("Selected broker account no longer exists.");
   if (account.status !== "Connected") throw new Error(`Broker account is ${account.status} — reconnect before starting.`);
+  if (isIbkrBrokerAccount(account.broker)) {
+    assertIbkrPaperUnlessLiveUnlocked(configuredIbkrAccountId());
+    const health = await gatewayHealth().catch(() => ({ ok: false, detail: "unreachable" }));
+    if (!configuredIbkrAccountId() || !health.ok) {
+      throw new Error(
+        `IBKR Paper is unavailable: ${health.detail}. Start the Client Portal Gateway, log in with 2FA, then retry.`,
+      );
+    }
+  }
   if (cfg.mode === "LIVE") {
     // HARD RULE (Market Data spec §14): live trading requires a real,
     // connected, HEALTHY broker. Yahoo (or any fallback feed) may support

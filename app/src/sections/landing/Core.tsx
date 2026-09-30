@@ -89,19 +89,19 @@ const steps = [
     icon: PenLine,
     num: '01',
     title: 'Create',
-    body: 'Define clear entry and exit rules, set stop-loss, take-profit, and position sizing. Connect directly to TradingView alerts, TrendSpider, or use clean JSON templates.',
+    body: 'Open Autonomous from Home. Accept disclosures, set allocation and risk limits, then arm the engine in paper mode.',
   },
   {
     icon: Link2,
     num: '02',
-    title: 'Connect',
-    body: 'Link your broker accounts in seconds. Subscribe any broker to your strategies and route signals to multiple accounts simultaneously.',
+    title: 'Connect IBKR Paper',
+    body: 'Link your Interactive Brokers paper account (DU…) through the Client Portal Gateway. Live accounts stay locked until paper is proven.',
   },
   {
     icon: Send,
     num: '03',
-    title: 'Send',
-    body: 'Fire a webhook from any signal source. Requi executes orders instantly across all connected brokers while you track fills, P&L, and positions in real-time.',
+    title: 'Run',
+    body: 'Start Autonomous. The engine scans, stages tickets, and — only after confirm or auto-execute — sends orders to IBKR Paper. You track fills, P&L, and positions in one place.',
   },
 ];
 
@@ -115,7 +115,7 @@ export function HowItWorks() {
           <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl">
             Simple. Powerful. <span className="text-gradient">Scalable.</span>
           </h2>
-          <p className="mt-5 text-slate-500">From idea to live execution in three steps — no code required.</p>
+          <p className="mt-5 text-slate-500">From Home to IBKR Paper in three steps — paper capital only.</p>
         </Reveal>
 
         <div className="relative mt-16 grid gap-6 md:grid-cols-3">

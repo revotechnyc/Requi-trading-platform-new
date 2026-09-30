@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { colors, layout, anim } from './design'
 import { engineConfig } from './autonomous.config'
+import { trpc } from '@/providers/trpc'
 import DisclosureModal from './legal/DisclosureModal'
 import PreStartAuth from './legal/PreStartAuth'
 import OverviewTab from './OverviewTab'
@@ -98,8 +99,6 @@ type AutonomousShellProps = {
 
 export default function AutonomousShell({ singleScreen = false, embedded = true }: AutonomousShellProps) {
   const [activeTab, setActiveTab] = useState('overview')
-  const [engineRunning, setEngineRunning] = useState(engineConfig.killSwitch !== 'TRIGGERED')
-  const [killSwitchArmed, setKillSwitchArmed] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [isTablet, setIsTablet] = useState(false)
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
@@ -121,6 +120,52 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
   })
   const [hasAcceptedOnce, setHasAcceptedOnce] = useState(false)
   const [disclosureAccepted, setDisclosureAccepted] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const utils = trpc.useUtils()
+  const { data: autoState } = trpc.autonomous.state.useQuery(undefined, { refetchInterval: 4000 })
+  const { data: ibkrStatus } = trpc.trading.ibkrStatus.useQuery(undefined, { refetchInterval: 10000 })
+  const startMut = trpc.autonomous.start.useMutation({
+    onSuccess: async () => {
+      setShowPreStartAuth(false)
+      setActionError(null)
+      await utils.autonomous.state.invalidate()
+    },
+    onError: (err) => setActionError(err.message),
+  })
+  const pauseMut = trpc.autonomous.pause.useMutation({
+    onSuccess: () => utils.autonomous.state.invalidate(),
+    onError: (err) => setActionError(err.message),
+  })
+  const stopMut = trpc.autonomous.emergencyStop.useMutation({
+    onSuccess: () => utils.autonomous.state.invalidate(),
+    onError: (err) => setActionError(err.message),
+  })
+  const releaseMut = trpc.autonomous.releaseKillSwitch.useMutation({
+    onSuccess: () => {
+      setActionError(null)
+      utils.autonomous.state.invalidate()
+    },
+    onError: (err) => setActionError(err.message),
+  })
+
+  const engineRunning = autoState?.session?.status === 'RUNNING'
+  const killSwitchArmed = autoState ? !autoState.killSwitch : true
+  const modeLabel = autoState?.config?.mode ?? engineConfig.mode
+  const ibkrLabel = !ibkrStatus
+    ? '…'
+    : ibkrStatus.connectedForUser && ibkrStatus.gatewayOk
+      ? 'PAPER'
+      : ibkrStatus.gatewayOk
+        ? 'READY'
+        : ibkrStatus.configured
+          ? 'LOGIN'
+          : 'OFF'
+  const ibkrConn = ibkrStatus?.connectedForUser && ibkrStatus.gatewayOk
+    ? 'CONNECTED'
+    : ibkrStatus?.configured
+      ? 'CONNECTING'
+      : 'DISCONNECTED'
 
   useEffect(() => {
     const check = () => {
@@ -136,17 +181,19 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
   const sidebarW = sidebarExpanded && !isTablet ? layout.sidebarWidthExpanded : layout.sidebarWidth
   const topBarH = isMobile ? layout.mobileTopHeight : layout.topBarHeight
 
-  const modeColor = getModeColor(engineConfig.mode)
+  const modeColor = getModeColor(modeLabel)
   const engineColor = getEngineColor(engineRunning ? 'RUNNING' : 'PAUSED')
-  const ibkrColor = getConnectionColor(engineConfig.ibkrConnection)
+  const ibkrColor = getConnectionColor(ibkrConn)
   const dataColor = getDataColor(engineConfig.dataStatus)
 
   const handleKillSwitch = () => {
-    setKillSwitchArmed(false)
-    setEngineRunning(false)
+    if (!killSwitchArmed) {
+      releaseMut.mutate({ confirm: 'RELEASE' })
+      return
+    }
+    if (!window.confirm('Engage emergency stop? Autonomous cannot start again until you release the kill switch.')) return
     setDisclosureAccepted(false)
-    // Record kill event
-    console.log('[COMPLIANCE] Kill switch triggered')
+    stopMut.mutate({ confirm: 'STOP' })
   }
 
   const checkGateStatus = async () => {
@@ -192,17 +239,14 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
   }
 
   const handlePreStartConfirm = () => {
-    setShowPreStartAuth(false)
-    setEngineRunning(true)
-    // Record start event
-    console.log('[COMPLIANCE] Engine start authorized')
+    setActionError(null)
+    startMut.mutate()
   }
 
   const toggleEngine = () => {
     if (!killSwitchArmed) return
     if (engineRunning) {
-      // Pause doesn't need gate
-      setEngineRunning(false)
+      pauseMut.mutate()
     } else {
       handleStartRequest()
     }
@@ -319,7 +363,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: sidebarExpanded ? 'flex-start' : 'center' }}>
               <Wifi size={13} color={ibkrColor} />
-              {sidebarExpanded && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: ibkrColor, fontWeight: 500 }}>IBKR {engineConfig.ibkrConnection}</span>}
+              {sidebarExpanded && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: ibkrColor, fontWeight: 500 }}>IBKR {ibkrLabel}</span>}
             </div>
             {sidebarExpanded && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -421,9 +465,9 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           {/* Status pills */}
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <StatusPill label='MODE' value={engineConfig.mode} color={modeColor} />
+              <StatusPill label='MODE' value={modeLabel} color={modeColor} />
               <StatusPill label='ENGINE' value={engineRunning ? 'RUNNING' : 'PAUSED'} color={engineColor} />
-              <StatusPill label='IBKR' value={engineConfig.ibkrConnection} color={ibkrColor} />
+              <StatusPill label='IBKR' value={ibkrLabel} color={ibkrColor} />
             </div>
           )}
 
@@ -431,7 +475,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
             <button
               onClick={toggleEngine}
-              disabled={!killSwitchArmed}
+              disabled={!killSwitchArmed || startMut.isPending || pauseMut.isPending}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 padding: '6px 12px',
@@ -463,7 +507,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
               }}
             >
               <Square size={12} fill={killSwitchArmed ? colors.chipRed : 'none'} />
-              {killSwitchArmed ? 'KILL' : 'KILLED'}
+              {killSwitchArmed ? 'KILL' : 'RELEASE'}
             </button>
             {!isMobile && (
               <>
@@ -483,9 +527,9 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
         {/* Mobile status bar */}
         {isMobile && (
           <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: 8, overflowX: 'auto' }}>
-            <StatusPill label='MODE' value={engineConfig.mode} color={modeColor} />
+            <StatusPill label='MODE' value={modeLabel} color={modeColor} />
             <StatusPill label='ENGINE' value={engineRunning ? 'RUNNING' : 'PAUSED'} color={engineColor} />
-            <StatusPill label='IBKR' value={engineConfig.ibkrConnection} color={ibkrColor} />
+            <StatusPill label='IBKR' value={ibkrLabel} color={ibkrColor} />
             <StatusPill label='DATA' value={engineConfig.dataStatus} color={dataColor} />
           </div>
         )}
@@ -531,6 +575,19 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           padding: isMobile ? '16px' : '24px',
           paddingBottom: isMobile && !singleScreen ? `${layout.mobileBottomNav + 16}px` : '24px',
         }}>
+          {actionError && (
+            <div style={{
+              margin: isMobile ? '0 16px 8px' : '0 24px 8px',
+              padding: '10px 14px',
+              background: `${colors.chipRed}12`,
+              border: `1px solid ${colors.chipRed}40`,
+              borderRadius: layout.cardRadiusSmall,
+              color: colors.chipRed,
+              fontSize: 12,
+            }}>
+              {actionError}
+            </div>
+          )}
           {renderTab()}
         </div>
 
@@ -628,7 +685,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
         onClose={() => setShowPreStartAuth(false)}
         onConfirm={handlePreStartConfirm}
         gateStatus={gateStatus}
-        environment={engineConfig.mode}
+        environment={ibkrStatus?.connectedForUser ? 'IBKR Paper' : modeLabel}
       />
     </div>
   )

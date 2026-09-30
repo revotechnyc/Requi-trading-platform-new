@@ -18,6 +18,7 @@ import { createStripeWebhookHandler } from "./billing/stripe-webhook";
 import { startHealthScheduler } from "./platform/scheduler";
 import { startTaskScheduler } from "./scheduler-runner";
 import { startAutonomousRunner } from "./autonomous/runner";
+import { startIbkrKeepAlive } from "./brokers/ibkr-paper";
 import { ensureAutonomousConsoleSchema } from "./autonomous/ensure-console-schema";
 import { intelligenceStreamHandler } from "./intelligence-stream";
 import { Paths } from "@contracts/constants";
@@ -54,6 +55,7 @@ if (env.isProduction) {
   startHealthScheduler(); // light checks every 5m + deep audit 2×/day, auto-incidents
   startTaskScheduler(); // due scheduled Intelligence tasks every 60s
   startAutonomousRunner(); // advances RUNNING autonomous sessions every 2.5s
+  startIbkrKeepAlive(); // POST /tickle every 60s when IBKR_ACCOUNT is set
   const { startIntelligenceDataEngine } = await import("./intelligence-data/engine");
   startIntelligenceDataEngine(); // Engine A — background layer prefetch (PDF §5)
   const { syncIndicatorRegistry } = await import("./indicators/registry");
@@ -78,6 +80,7 @@ if (env.isProduction) {
   // task scheduler still run so sessions/streaming work outside production.
   startTaskScheduler();
   startAutonomousRunner();
+  startIbkrKeepAlive();
   void ensureAutonomousConsoleSchema().catch((err) => console.error("[ac] ensure failed", err));
   void import("./intelligence-data/engine").then((m) => m.startIntelligenceDataEngine());
   void import("./indicators/registry").then((m) => m.syncIndicatorRegistry());
