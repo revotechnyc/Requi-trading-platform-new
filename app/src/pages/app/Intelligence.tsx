@@ -16,8 +16,9 @@ import ReasoningIndicator, {
   inferThinkingHint,
   type ThinkingHint,
 } from '@/components/ReasoningIndicator';
-import { intelligenceOnlyMode } from '@/lib/app-access';
+import { canAccessAutonomousAndAccounts } from '@/lib/app-access';
 import { streamIntelligenceChat } from '@/lib/intelligenceStream';
+import { useAuth } from '@/hooks/useAuth';
 
 /* ─── message model ─────────────────────────────────────────────────────── */
 
@@ -128,6 +129,8 @@ function Bubble({ msg }: { msg: Msg }) {
 /* ─── main page ─────────────────────────────────────────────────────────── */
 
 export default function Intelligence() {
+  const { user } = useAuth();
+  const showAutonomousCta = canAccessAutonomousAndAccounts(user?.email);
   const [messages, setMessages] = useState<Msg[]>(seed);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -381,6 +384,7 @@ export default function Intelligence() {
         </div>
       </div>
 
+      {showAutonomousCta && (
       <div className="glass flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-royal-500/10 text-sky-700">
@@ -394,14 +398,12 @@ export default function Intelligence() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {!intelligenceOnlyMode && (
-              <Link
-                to="/app/accounts"
-                className="inline-flex items-center rounded-lg border border-slate-900/10 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Connect IBKR Paper
-              </Link>
-            )}
+            <Link
+              to="/app/accounts"
+              className="inline-flex items-center rounded-lg border border-slate-900/10 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Connect IBKR Paper
+            </Link>
             <Link
               to="/app/autonomous"
               className="inline-flex items-center rounded-lg bg-royal-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-600"
@@ -410,6 +412,7 @@ export default function Intelligence() {
             </Link>
           </div>
       </div>
+      )}
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.7fr_1fr]">
         <div className="glass flex min-h-[520px] flex-col overflow-hidden rounded-2xl lg:h-[calc(100vh-16.5rem)] lg:min-h-0">

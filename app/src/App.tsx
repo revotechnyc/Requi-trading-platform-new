@@ -31,7 +31,7 @@ import { ConsentGate } from '@/components/ConsentGate';
 import { CookieConsent } from '@/components/CookieConsent';
 import { getSupabase } from '@/lib/supabase';
 import { trpc } from '@/providers/trpc';
-import { intelligenceOnlyMode } from '@/lib/app-access';
+import { intelligenceOnlyMode, canAccessAutonomousAndAccounts } from '@/lib/app-access';
 
 function SupabaseSessionBridge() {
   const config = trpc.auth.config.useQuery(undefined, { staleTime: 60_000 });
@@ -68,6 +68,14 @@ function IntelligenceOnly({ children }: { children: ReactNode }) {
   return children;
 }
 
+/** Autonomous + Accounts — static email allowlist only. */
+function AutonomousAccountsGate({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <LoadingScreen />;
+  if (!canAccessAutonomousAndAccounts(user?.email)) return <Navigate to="/app" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <>
@@ -89,10 +97,10 @@ export default function App() {
       >
         <Route index element={<Intelligence />} />
         <Route path="strategies" element={<IntelligenceOnly><Strategies /></IntelligenceOnly>} />
-        <Route path="autonomous" element={<Autonomous />} />
+        <Route path="autonomous" element={<AutonomousAccountsGate><Autonomous /></AutonomousAccountsGate>} />
         <Route path="financials" element={<IntelligenceOnly><Financials /></IntelligenceOnly>} />
         <Route path="signals" element={<IntelligenceOnly><Signals /></IntelligenceOnly>} />
-        <Route path="accounts" element={<IntelligenceOnly><Accounts /></IntelligenceOnly>} />
+        <Route path="accounts" element={<AutonomousAccountsGate><Accounts /></AutonomousAccountsGate>} />
         <Route path="marketplace" element={<IntelligenceOnly><Marketplace /></IntelligenceOnly>} />
         <Route path="library" element={<IntelligenceOnly><Library /></IntelligenceOnly>} />
         <Route path="settings" element={<IntelligenceOnly><Settings /></IntelligenceOnly>} />

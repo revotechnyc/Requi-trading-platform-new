@@ -9,7 +9,7 @@ import NotificationCenter from '@/components/NotificationCenter';
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import { cn } from '@/lib/utils';
-import { intelligenceOnlyMode, isPreviewNavItem } from '@/lib/app-access';
+import { intelligenceOnlyMode, isNavItemVisible } from '@/lib/app-access';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -65,7 +65,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     refetchInterval: 30000,
     enabled: !intelligenceOnlyMode,
   });
-  const mainNav = intelligenceOnlyMode ? nav.filter((item) => isPreviewNavItem(item.to)) : nav;
+  const mainNav = nav.filter((item) => isNavItemVisible(item.to, user?.email));
+  const showAutoAccounts = isNavItemVisible('/app/autonomous', user?.email);
 
   return (
     <div className="flex h-full flex-col">
@@ -94,7 +95,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {intelligenceOnlyMode && (
         <div className="mx-5 mb-4 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2.5">
           <p className="text-[11px] font-semibold text-sky-700">Preview</p>
-          <p className="text-[10px] text-sky-600/80">Intelligence and Autonomous are open. Other sections are locked.</p>
+          <p className="text-[10px] text-sky-600/80">
+            {showAutoAccounts
+              ? 'Intelligence, Autonomous, and Accounts are open. Other sections are locked.'
+              : 'Intelligence is open. Other sections are locked.'}
+          </p>
         </div>
       )}
 
