@@ -20,6 +20,7 @@ import { startTaskScheduler } from "./scheduler-runner";
 import { startAutonomousRunner } from "./autonomous/runner";
 import { startIbkrKeepAlive } from "./brokers/ibkr-paper";
 import { ensureAutonomousConsoleSchema } from "./autonomous/ensure-console-schema";
+import { ensureAutonomousTradingSchema } from "./autonomous/ensure-trading-schema";
 import { intelligenceStreamHandler } from "./intelligence-stream";
 import { Paths } from "@contracts/constants";
 
@@ -62,6 +63,11 @@ if (env.isProduction) {
   await syncIndicatorRegistry(); // mirror the code indicator registry into indicator_registry (audit mirror)
   await ensureLegalDocsSeeded(); // versioned legal library (LEGAL_REVIEW drafts) — never overwrites existing rows
   try {
+    await ensureAutonomousTradingSchema();
+  } catch (err) {
+    console.error("[autonomous] trading schema ensure failed (continuing boot)", err);
+  }
+  try {
     await ensureAutonomousConsoleSchema(); // console tables + seed in schema `ac`
   } catch (err) {
     // Do not take down Intelligence/trading if autonomous console DDL fails.
@@ -78,9 +84,13 @@ if (env.isProduction) {
 } else {
   // Dev server (vite @hono/vite-dev-server): the autonomous session runner and
   // task scheduler still run so sessions/streaming work outside production.
-  startTaskScheduler();
-  startAutonomousRunner();
-  startIbkrKeepAlive();
+  void ensureAutonomousTradingSchema()
+    .catch((err) => console.error("[autonomous] trading schema ensure failed", err))
+    .finally(() => {
+      startTaskScheduler();
+      startAutonomousRunner();
+      startIbkrKeepAlive();
+    });
   void ensureAutonomousConsoleSchema().catch((err) => console.error("[ac] ensure failed", err));
   void import("./intelligence-data/engine").then((m) => m.startIntelligenceDataEngine());
   void import("./indicators/registry").then((m) => m.syncIndicatorRegistry());

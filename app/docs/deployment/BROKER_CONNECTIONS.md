@@ -177,9 +177,10 @@ answers them via `/iserver/reply/{replyId}` before treating the order as ACKed.
    IBKR_GATEWAY_URL=https://localhost:5000/v1/api   # default
    IBKR_ACCOUNT=DU123456                            # paper or live account id
    ```
-3. If the gateway uses its self-signed certificate, either mount its CA into
-   the runtime or co-locate the adapter and gateway on one host (recommended
-   for production — see the module deployment guides).
+3. Self-signed Client Portal Gateway cert: for `localhost` / `127.0.0.1`
+   (including SSH tunnels `-L 5000:127.0.0.1:5000`) the adapter skips TLS
+   verify automatically. Set `IBKR_GATEWAY_INSECURE_TLS=1` for other hosts,
+   or mount the gateway CA for production.
 4. Restart and verify `execution.brokers` shows `IBKR: ok`.
 
 **Start with an IBKR paper account (DU…).** The full Requi pipeline —
@@ -213,5 +214,6 @@ same ticket — confirming in one place resolves the request everywhere.
 | `ROBINHOOD_MCP_URL` | MCP endpoint override | optional |
 | `IBKR_GATEWAY_URL` | Client Portal Gateway base URL | IBKR live/paper |
 | `IBKR_ACCOUNT` | Target IBKR account id | IBKR live/paper |
+| `IBKR_GATEWAY_INSECURE_TLS` | `1` = accept self-signed (auto for localhost) | IBKR via tunnel |
 | `GOVERNANCE_VAULT_KEY` | Governance vault/package signing key | all production |
 | `DATABASE_URL` | MySQL/TiDB connection | all |

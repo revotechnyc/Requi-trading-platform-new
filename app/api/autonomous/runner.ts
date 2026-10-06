@@ -34,7 +34,13 @@ const TICK_MS = 2500;
 
 /** Survive Vite HMR so we don't spawn duplicate 2.5s tickers that exhaust the DB pool. */
 type RunnerGlobal = typeof globalThis & {
-  __requiAutonomousRunner?: { started: boolean; ticking: boolean; timer?: ReturnType<typeof setInterval> };
+  __requiAutonomousRunner?: {
+    started: boolean;
+    ticking: boolean;
+    timer?: ReturnType<typeof setInterval>;
+    /** Always point at the latest module's tick so HMR does not keep stale disconnect logic. */
+    tickFn?: () => Promise<void>;
+  };
 };
 const runnerState = ((globalThis as RunnerGlobal).__requiAutonomousRunner ??= {
   started: false,
@@ -75,6 +81,16 @@ async function tickSession(s: Session): Promise<void> {
   if (!cfg) return;
   const [account] = s.accountId ? await db.select().from(brokerAccounts).where(eq(brokerAccounts.id, s.accountId)) : [null];
   if (!account || account.status !== "Connected") {
+    // IBKR paper: keep the session alive and let tickIbkrSession soft-skip orders.
+    // A transient "Attention" row must not kill RUNNING after a successful START.
+    if (sessionUsesIbkr(account)) {
+      await emitEvent(s.id, s.userId, {
+        phase: "MARKET_DATA",
+        kind: "warn",
+        message: `Broker account status is ${account?.status ?? "missing"} — IBKR paper orders paused until Connected`,
+      });
+      return;
+    }
     await db
       .update(autonomousSessions)
       .set({ status: "BROKER_DISCONNECTED", lastError: "Broker connection lost" })
@@ -387,13 +403,23 @@ async function tick(): Promise<void> {
   }
 }
 
+// HMR: keep the live interval on the newest tick implementation.
+runnerState.tickFn = tick;
+
 export function startAutonomousRunner(): void {
+  const enabled = (process.env.AUTONOMOUS_RUNNER_ENABLED ?? "1").trim().toLowerCase();
+  if (enabled === "0" || enabled === "false" || enabled === "off") {
+    console.log("[autonomous] session runner disabled (AUTONOMOUS_RUNNER_ENABLED=0)");
+    return;
+  }
+  runnerState.tickFn = tick;
   if (runnerState.started) return;
   runnerState.started = true;
   runnerState.timer = setInterval(() => {
     if (runnerState.ticking) return;
     runnerState.ticking = true;
-    tick()
+    const run = runnerState.tickFn ?? tick;
+    run()
       .catch((err) => console.error("[autonomous] tick failed:", err instanceof Error ? err.message : err))
       .finally(() => {
         runnerState.ticking = false;

@@ -97,11 +97,11 @@ export function threadStateSnapshot(userId: string, conversationId: string): Thr
 /* ---------- lexicon (versioned constants — changing a trigger is a code edit) ---------- */
 
 export const ORDER_COMMAND_RE = /^\s*(confirm|reject)\s+order\s+[a-z0-9-]+\s*$/i;
-export const STATUS_TRIGGERS = /\b(p&l|pnl|profit|loss|positions?|orders?|tickets?|monitors?|watchlist|what'?s open|how am i doing|portfolio|balance)\b/i;
+export const STATUS_TRIGGERS = /\b(p&l|pnl|profit|loss|positions?|orders?|tickets?|monitors?|watchlist|what'?s open|how am i doing|portfolio|balance|buying\s*power|how much cash|account\s*(equity|balance)?|equity|nav)\b/i;
 export const STRATEGIZE_TRIGGERS = /\b(strategi[sz]e|build (me )?a strategy|create (a )?strategy|design (a )?strategy|write (a )?strategy|backtest|game ?plan|trade plan)\b/i;
 /** Bare "short" excluded — "short list" is research scope, not short-selling. */
 export const TRADE_TRIGGERS =
-  /\b(buy|sell|long|flatten|exit|close (my |the )?position|add to|go short|short the)\b|\bshort\s+(?:\d+|[A-Za-z$]{1,6}\b)/i;
+  /\b(buy|sell|long|flatten|exit|add to|go short|short the)\b|\bclose\s+all\b|\bclose\s+(?:my\s+|the\s+)?(?:[A-Za-z.]{1,12}\s+)?position\b|\bclose\s+(?:my\s+|the\s+)?[A-Za-z.]{1,12}\b|\b(all\s+the\s+holdings|all\s+my\s+holdings|all\s+positions|all\s+open\s+positions)\b|\bshort\s+(?:\d+|[A-Za-z$]{1,6}\b)/i;
 export const STAGE_FOLLOWUP_RE = /\b(stage|stage it|do it|go ahead|place it|send it|buy it|sell it|execute|proceed|let'?s do it|confirmed?)\b/i;
 const QUESTION_OR_NEGATION =
   /(\?|^\s*what\s+should\s+i\s+buy\b|^\s*what\s+(?:stock\s+)?should\s+i\b|^\s*(should|would|could|is it|what if|what happens|why did|when (to|should)|how about)|\b(don'?t|do not|hold off|not yet|wait)\b)/i;
@@ -144,7 +144,12 @@ export function isNonImperativeResearchAsk(text: string): boolean {
 
 function inferTradeSide(text: string): "BUY" | "SELL" | null {
   if (/\b(sell|flatten|exit)\b/i.test(text)) return "SELL";
-  if (/\bclose\s+(my\s+)?(the\s+)?position\b/i.test(text)) return "SELL";
+  if (/\bclose\s+all\b/i.test(text)) return "SELL";
+  if (/\b(all\s+the\s+holdings|all\s+my\s+holdings|all\s+positions|all\s+open\s+positions)\b/i.test(text)) {
+    return "SELL";
+  }
+  if (/\bclose\s+(?:my\s+|the\s+)?(?:[A-Za-z.]{1,12}\s+)?position\b/i.test(text)) return "SELL";
+  if (/\bclose\s+(?:my\s+|the\s+)?[A-Za-z.]{1,12}\b/i.test(text)) return "SELL";
   if (/\b(go\s+short|short\s+the|\bshort\s+\d+)\b/i.test(text)) return "SELL";
   if (/\bshort\s+[A-Za-z$]{1,6}\b/i.test(text) && !/\bshort\s+(list|lineup|set|group|table|universe)\b/i.test(text)) {
     return "SELL";

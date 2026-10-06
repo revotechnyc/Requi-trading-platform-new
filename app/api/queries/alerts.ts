@@ -1,6 +1,7 @@
 import { getDb } from "./connection";
 import { alerts } from "@db/schema";
 import { and, desc, eq } from "drizzle-orm";
+import { confirmTicket, rejectTicket } from "./tickets";
 
 export async function findAlertsByUser(userId: string) {
   return getDb()
@@ -22,7 +23,15 @@ export async function markAllAlertsRead(userId: string) {
   await getDb().update(alerts).set({ read: true }).where(eq(alerts.userId, userId));
 }
 
-/** Respond to a CONFIRMATION_REQUEST alert — simulated order gateway. */
+function extractTicketId(alert: { body?: string | null; title?: string | null }): string | null {
+  const text = `${alert.title ?? ""}\n${alert.body ?? ""}`;
+  const confirm = text.match(/CONFIRM ORDER\s+([A-Za-z0-9-]+)/i);
+  if (confirm?.[1]) return confirm[1].toUpperCase();
+  const ticket = text.match(/\bTicket\s+([A-Za-z0-9-]+)/i);
+  return ticket?.[1]?.toUpperCase() ?? null;
+}
+
+/** Respond to a CONFIRMATION_REQUEST alert — routes through the real ticket gate (IBKR Paper / PAPER). */
 export async function respondToConfirmation(userId: string, id: string, accept: boolean) {
   const db = getDb();
   const [req] = await db
@@ -32,21 +41,45 @@ export async function respondToConfirmation(userId: string, id: string, accept: 
     .limit(1);
   if (!req || req.type !== "CONFIRMATION_REQUEST") return { ok: false as const };
 
-  await db
-    .update(alerts)
-    .set({ read: true, state: accept ? "EXECUTING" : "REJECTED" })
-    .where(eq(alerts.id, id));
+  const ticketId = extractTicketId(req);
+  if (!ticketId) {
+    await db.update(alerts).set({ read: true, state: "ERROR" }).where(eq(alerts.id, id));
+    return { ok: false as const, accepted: accept, message: "Could not find ticket id on this confirmation alert." };
+  }
 
+  if (accept) {
+    const confirmation = `CONFIRM ORDER ${ticketId}`;
+    const res = await confirmTicket(userId, ticketId, confirmation);
+    await db
+      .update(alerts)
+      .set({ read: true, state: res.ok ? "EXECUTING" : "ERROR" })
+      .where(eq(alerts.id, id));
+    await db.insert(alerts).values({
+      userId,
+      type: res.ok ? "EXECUTION" : "SYSTEM_STATE",
+      priority: res.ok ? "HIGH" : "HIGH",
+      title: res.ok ? "Order Submitted" : "Confirmation Failed",
+      body: res.ok
+        ? `Ticket ${ticketId} confirmed · ${res.message}`
+        : `Ticket ${ticketId} could not be confirmed (${res.reasonCode}): ${res.message}`,
+      symbol: req.symbol ?? undefined,
+      state: res.ok ? "EXECUTING" : "WATCHING",
+    });
+    return { ok: res.ok as boolean, accepted: true as const, ticketId, message: res.message };
+  }
+
+  const res = await rejectTicket(userId, ticketId);
+  await db.update(alerts).set({ read: true, state: "REJECTED" }).where(eq(alerts.id, id));
   await db.insert(alerts).values({
     userId,
-    type: accept ? "EXECUTION" : "SYSTEM_STATE",
-    priority: accept ? "HIGH" : "LOW",
-    title: accept ? "Order Executed" : "Order Rejected by User",
-    body: accept
-      ? `Ticket confirmed by user · ${req.symbol ?? "Order"} submitted to paper execution simulator · Awaiting fill confirmation`
-      : "Ticket rejected by user · Strategy returned to SCAN state · No order submitted",
+    type: "SYSTEM_STATE",
+    priority: "LOW",
+    title: "Order Rejected by User",
+    body: res.ok
+      ? `Ticket ${ticketId} rejected · no order submitted`
+      : `Reject failed for ${ticketId}: ${res.message}`,
     symbol: req.symbol ?? undefined,
-    state: accept ? "EXECUTING" : "WATCHING",
+    state: "WATCHING",
   });
-  return { ok: true as const, accepted: accept };
+  return { ok: res.ok as boolean, accepted: false as const, ticketId, message: res.message };
 }

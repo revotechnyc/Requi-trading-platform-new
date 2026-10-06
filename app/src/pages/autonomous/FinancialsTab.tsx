@@ -1,14 +1,7 @@
+import { useMemo } from 'react'
 import { DollarSign, TrendingUp, BarChart3, Target } from 'lucide-react'
 import { colors, layout } from './design'
-import {
-  engineConfig, winsPerOrder, strategyPerformance, tickerPerformance,
-  sectorPerformance, regimePerformance, rpersPerformance, earningsBreakdown,
-  orderFinancials
-} from './autonomous.config'
-import EquityCurveChart from './charts/EquityCurveChart'
-import PnLChart from './charts/PnLChart'
-import DrawdownChart from './charts/DrawdownChart'
-import { generateEquityCurveData, generatePnLData, generateDrawdownData } from './charts/chartData'
+import { trpc } from '@/providers/trpc'
 
 function Card({ title, icon: Icon, children }: { title?: string; icon?: React.ElementType; children: React.ReactNode }) {
   return (
@@ -33,195 +26,197 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
   )
 }
 
-function DataTable({ headers, rows, keyFn }: { headers: string[]; rows: (string | number | null)[][]; keyFn: (row: (string | number | null)[], i: number) => string }) {
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr style={{ background: colors.bgSecondary }}>
-            {headers.map((h) => (
-              <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.03em', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={keyFn(row, i)} style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {row.map((cell, j) => (
-                <td key={j} style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: typeof cell === 'number' && cell < 0 ? colors.red : typeof cell === 'number' && cell > 0 ? colors.green : colors.textSecondary, whiteSpace: 'nowrap' }}>{cell ?? '—'}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+function money(n: number, d = 2) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 }
 
 export default function FinancialsTab() {
+  const { data: state } = trpc.autonomous.state.useQuery(undefined, { refetchInterval: 5000 })
+  const { data: ibkr } = trpc.trading.ibkrStatus.useQuery(undefined, { refetchInterval: 10_000 })
+  const { data: positions = [] } = trpc.autonomous.positions.useQuery(undefined, { refetchInterval: 5000 })
+  const { data: brokerPos } = trpc.execution.positions.useQuery({ broker: 'IBKR' }, { refetchInterval: 15_000, retry: 1 })
+  const { data: orders = [] } = trpc.autonomous.orders.useQuery(undefined, { refetchInterval: 5000 })
+  const { data: trades = [] } = trpc.autonomous.trades.useQuery(undefined, { refetchInterval: 8000 })
+
+  const equity = Number(ibkr?.equity || state?.account?.equity || 0)
+  const cash = Number(ibkr?.cash || 0)
+  const buyingPower = Number(ibkr?.buyingPower || 0)
+  const allocated = Number(state?.metrics?.allocated || 0)
+  const realized = Number(state?.metrics?.realizedPnl || 0)
+  const todayPnl = Number(state?.metrics?.todayPnl || 0)
+
+  const gatewayExposure = useMemo(() => {
+    return (brokerPos?.positions ?? []).reduce((s, p) => s + Math.abs(Number(p.marketValue) || Number(p.averageCost) * Number(p.quantity) || 0), 0)
+  }, [brokerPos])
+
+  const ledgerExposure = useMemo(() => {
+    return positions.reduce((s, p) => s + p.quantity * parseFloat(p.avgEntry), 0)
+  }, [positions])
+
+  const exposure = gatewayExposure > 0 ? gatewayExposure : ledgerExposure
+  const unrealGw = useMemo(() => {
+    return (brokerPos?.positions ?? []).reduce((s, p) => s + (Number(p.unrealizedPnl) || 0), 0)
+  }, [brokerPos])
+
+  const bySymbol = useMemo(() => {
+    const map = new Map<string, { qty: number; notional: number; pnl: number }>()
+    for (const p of brokerPos?.positions ?? []) {
+      if (!p.symbol || Number(p.quantity) === 0) continue
+      map.set(String(p.symbol), {
+        qty: Number(p.quantity),
+        notional: Math.abs(Number(p.marketValue) || Number(p.averageCost) * Number(p.quantity)),
+        pnl: Number(p.unrealizedPnl) || 0,
+      })
+    }
+    for (const p of positions) {
+      if (map.has(p.symbol)) continue
+      map.set(p.symbol, {
+        qty: p.quantity,
+        notional: p.quantity * parseFloat(p.avgEntry),
+        pnl: 0,
+      })
+    }
+    return [...map.entries()].map(([symbol, v]) => ({ symbol, ...v }))
+  }, [brokerPos, positions])
+
+  const byStrategy = useMemo(() => {
+    const map = new Map<string, { tickets: number; filled: number; working: number }>()
+    for (const o of orders) {
+      const k = o.strategy || 'UNKNOWN'
+      const cur = map.get(k) ?? { tickets: 0, filled: 0, working: 0 }
+      cur.tickets += 1
+      if (o.state === 'FILLED') cur.filled += 1
+      if (o.state === 'WORKING' || o.state === 'SUBMITTING') cur.working += 1
+      map.set(k, cur)
+    }
+    return [...map.entries()].map(([strategy, v]) => ({ strategy, ...v }))
+  }, [orders])
+
+  const closedRows = trades.slice(0, 25)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <DollarSign size={16} color={colors.blue} strokeWidth={2} />
         <h2 style={{ fontSize: 18, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Financials</h2>
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>
+          live · IBKR Paper + autonomous ledger
+        </span>
       </div>
 
-      {/* Account Summary */}
       <Card title='Account Summary' icon={DollarSign}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <StatBox label='Starting Equity' value={`$${engineConfig.startingEquity.toLocaleString()}`} />
-          <StatBox label='Current Equity' value={`$${engineConfig.equity.toLocaleString()}`} />
-          <StatBox label='Cash' value={`$${(engineConfig.equity - 19770.50).toLocaleString()}`} />
-          <StatBox label='Buying Power' value={`$${engineConfig.buyingPower.toLocaleString()}`} color={colors.blue} />
-          <StatBox label='Gross Exposure' value='$19,770.50' />
-          <StatBox label='Net Exposure' value='$19,770.50' />
-          <StatBox label='Realized P&L' value='$8,240.50' color={colors.green} />
-          <StatBox label='Unrealized P&L' value='$675.30' color={colors.green} />
-          <StatBox label='Total P&L' value='$8,915.80' color={colors.green} />
-          <StatBox label='Daily Return' value={`+${engineConfig.dailyReturnPct}%`} color={colors.green} />
-          <StatBox label='Weekly Return' value='+1.85%' color={colors.green} />
-          <StatBox label='Monthly Return' value='+3.42%' color={colors.green} />
-          <StatBox label='YTD Return' value='+13.90%' color={colors.green} />
+          <StatBox label='IBKR Equity' value={equity > 0 ? `$${money(equity)}` : '—'} />
+          <StatBox label='Cash' value={cash > 0 ? `$${money(cash)}` : '—'} />
+          <StatBox label='Buying Power' value={buyingPower > 0 ? `$${money(buyingPower)}` : '—'} color={colors.blue} />
+          <StatBox label='Allocated (engine)' value={`$${money(allocated, 0)}`} />
+          <StatBox label='Gross Exposure' value={`$${money(exposure, 0)}`} />
+          <StatBox label='Open Positions' value={String(bySymbol.length)} />
+          <StatBox label='Realized P&L' value={`$${money(realized)}`} color={realized >= 0 ? colors.green : colors.red} />
+          <StatBox label='Unrealized (IBKR)' value={unrealGw !== 0 ? `$${money(unrealGw)}` : '—'} color={unrealGw >= 0 ? colors.green : colors.red} />
+          <StatBox label='Today P&L' value={`$${money(todayPnl)}`} color={todayPnl >= 0 ? colors.green : colors.red} />
         </div>
       </Card>
 
-      {/* Charts Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Card title='Equity Curve' icon={TrendingUp}>
-          <EquityCurveChart data={generateEquityCurveData()} height={220} />
-        </Card>
-        <Card title='Daily P&L' icon={BarChart3}>
-          <PnLChart data={generatePnLData()} height={220} />
-        </Card>
-      </div>
-
-      <Card title='Drawdown' icon={Target}>
-        <DrawdownChart data={generateDrawdownData()} height={160} />
-      </Card>
-
-      {/* Order-Level Financials */}
-      <Card title='Order-Level Financials' icon={BarChart3}>
-        <DataTable
-          headers={['Order', 'Ticker', 'Strategy', 'Event', 'Entry', 'Exit', 'Entry $', 'Exit $', 'Qty', 'Gross', 'Fees', 'Slip', 'Net', 'Ret%', 'MFE', 'MAE', 'Hold', 'Out']}
-          rows={orderFinancials.map((o) => [
-            o.orderId, o.ticker, o.strategy, o.event, o.entryTime, o.exitTime,
-            o.entryPrice, o.exitPrice, o.qty, `$${o.grossPnl.toFixed(2)}`, `$${o.fees.toFixed(2)}`,
-            `$${o.slippage.toFixed(2)}`, `$${o.netPnl.toFixed(2)}`, `${o.returnPct > 0 ? '+' : ''}${o.returnPct}%`,
-            o.mfe, o.mae, o.holdPeriod, o.outcome,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
-      </Card>
-
-      {/* Wins Per Order */}
-      <Card title='Wins Per Order' icon={Target}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <StatBox label='Total Orders' value={winsPerOrder.totalOrders.toString()} />
-          <StatBox label='Winning Orders' value={winsPerOrder.winningOrders.toString()} color={colors.green} />
-          <StatBox label='Losing Orders' value={winsPerOrder.losingOrders.toString()} color={colors.red} />
-          <StatBox label='Win Rate' value={`${winsPerOrder.winRate}%`} color={colors.green} />
-          <StatBox label='Avg Win' value={`$${winsPerOrder.averageWin.toFixed(2)}`} color={colors.green} />
-          <StatBox label='Avg Loss' value={`-$${Math.abs(winsPerOrder.averageLoss).toFixed(2)}`} color={colors.red} />
-          <StatBox label='Largest Win' value={`$${winsPerOrder.largestWin.toFixed(2)}`} color={colors.green} />
-          <StatBox label='Largest Loss' value={`-$${Math.abs(winsPerOrder.largestLoss).toFixed(2)}`} color={colors.red} />
-          <StatBox label='Median Win' value={`$${winsPerOrder.medianWin.toFixed(2)}`} color={colors.green} />
-          <StatBox label='Median Loss' value={`-$${Math.abs(winsPerOrder.medianLoss).toFixed(2)}`} color={colors.red} />
-          <StatBox label='W/L Ratio' value={winsPerOrder.winLossRatio.toFixed(2)} color={colors.green} />
-          <StatBox label='Profit Factor' value={winsPerOrder.profitFactor.toFixed(2)} color={colors.green} />
-          <StatBox label='Expectancy' value={`$${winsPerOrder.expectancyPerOrder.toFixed(2)}`} color={colors.green} />
-        </div>
-      </Card>
-
-      {/* Earnings Breakdown */}
-      <Card title='Earnings Strategy Performance' icon={TrendingUp}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
-          <StatBox label='Total Trades' value={earningsBreakdown.totalTrades.toString()} />
-          <StatBox label='+Reaction' value={earningsBreakdown.positiveReaction.toString()} color={colors.green} />
-          <StatBox label='-Reaction' value={earningsBreakdown.negativeReaction.toString()} color={colors.red} />
-          <StatBox label='Correct Pred' value={earningsBreakdown.correctPredictions.toString()} color={colors.green} />
-          <StatBox label='Incorrect Pred' value={earningsBreakdown.incorrectPredictions.toString()} color={colors.red} />
-          <StatBox label='Reaction Acc' value={`${earningsBreakdown.reactionAccuracy}%`} color={colors.orange} />
-          <StatBox label='Gap Acc' value={`${earningsBreakdown.gapAccuracy}%`} color={colors.orange} />
-          <StatBox label='Avg Gap' value={`${earningsBreakdown.avgGapCaptured}%`} />
-          <StatBox label='Avg Profit/Event' value={`$${earningsBreakdown.avgProfitPerEvent.toFixed(2)}`} color={colors.green} />
-          <StatBox label='Avg Loss/Event' value={`-$${Math.abs(earningsBreakdown.avgLossPerEvent).toFixed(2)}`} color={colors.red} />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div style={{ padding: 14, background: `${colors.green}08`, borderRadius: layout.cardRadiusSmall, border: `1px solid ${colors.green}12` }}>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: '0 0 4px 0' }}>BEAT + POSITIVE REACTION</p>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: colors.green, margin: 0 }}>{earningsBreakdown.beatPositive}</p>
+      <Card title='Holdings by Symbol' icon={TrendingUp}>
+        {bySymbol.length === 0 ? (
+          <p style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+            No open holdings yet. Confirm IBKR Paper tickets under Orders — fills appear here.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: colors.bgSecondary }}>
+                  {['Symbol', 'Qty', 'Notional', 'Unrealized'].map((h) => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bySymbol.map((r) => (
+                  <tr key={r.symbol} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textPrimary }}>{r.symbol}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>{r.qty}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>${money(r.notional, 0)}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: r.pnl >= 0 ? colors.green : colors.red }}>
+                      {r.pnl !== 0 ? `${r.pnl >= 0 ? '+' : ''}$${money(r.pnl)}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div style={{ padding: 14, background: `${colors.red}08`, borderRadius: layout.cardRadiusSmall, border: `1px solid ${colors.red}12` }}>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: '0 0 4px 0' }}>BEAT + NEGATIVE REACTION</p>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: colors.red, margin: 0 }}>{earningsBreakdown.beatNegative}</p>
+        )}
+      </Card>
+
+      <Card title='Strategy Activity' icon={BarChart3}>
+        {byStrategy.length === 0 ? (
+          <p style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>No autonomous tickets this session yet.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: colors.bgSecondary }}>
+                  {['Strategy', 'Tickets', 'Filled', 'Working'].map((h) => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {byStrategy.map((r) => (
+                  <tr key={r.strategy} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textPrimary }}>{r.strategy}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>{r.tickets}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.green }}>{r.filled}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.orange }}>{r.working}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div style={{ padding: 14, background: `${colors.orange}08`, borderRadius: layout.cardRadiusSmall, border: `1px solid ${colors.orange}12` }}>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: '0 0 4px 0' }}>MISS + POSITIVE REACTION</p>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: colors.orange, margin: 0 }}>{earningsBreakdown.missPositive}</p>
+        )}
+      </Card>
+
+      <Card title='Closed Trades' icon={Target}>
+        {closedRows.length === 0 ? (
+          <p style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+            No closed autonomous trades yet. Open positions and exits will list here.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: colors.bgSecondary }}>
+                  {['Symbol', 'Qty', 'Entry', 'Exit', 'P&L', 'Closed'].map((h) => (
+                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {closedRows.map((t) => {
+                  const pnl = t.realizedPnl != null ? parseFloat(String(t.realizedPnl)) : 0
+                  return (
+                    <tr key={t.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textPrimary }}>{t.symbol}</td>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>{t.quantity}</td>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>${money(parseFloat(String(t.avgEntry)))}</td>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textSecondary }}>
+                        {t.exitPrice != null ? `$${money(parseFloat(String(t.exitPrice)))}` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: pnl >= 0 ? colors.green : colors.red }}>
+                        {t.realizedPnl != null ? `${pnl >= 0 ? '+' : ''}$${money(pnl)}` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', color: colors.textMuted }}>
+                        {t.closedAt ? new Date(t.closedAt).toLocaleString() : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-          <div style={{ padding: 14, background: 'rgba(142,142,147,0.06)', borderRadius: layout.cardRadiusSmall, border: '1px solid rgba(142,142,147,0.12)' }}>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: '0 0 4px 0' }}>MISS + NEGATIVE REACTION</p>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: colors.textSecondary, margin: 0 }}>{earningsBreakdown.missNegative}</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Performance by Strategy */}
-      <Card title='Performance by Strategy' icon={TrendingUp}>
-        <DataTable
-          headers={['Strategy', 'Trades', 'Win%', 'Avg Ret%', 'Net P&L', 'P.Fact', 'MDD%', 'Sharpe', 'Avg Hold']}
-          rows={strategyPerformance.map((s) => [
-            s.strategy, s.trades, `${s.winRate}%`, `${s.avgReturn}%`, `$${s.netPnl.toFixed(2)}`,
-            s.profitFactor.toFixed(2), `${s.mdd}%`, s.sharpe.toFixed(2), s.avgHold,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
-      </Card>
-
-      {/* Performance by Ticker */}
-      <Card title='Performance by Ticker' icon={BarChart3}>
-        <DataTable
-          headers={['Ticker', 'Trades', 'Wins', 'Losses', 'Win%', 'Gross P&L', 'Net P&L', 'Avg Trade', 'Best', 'Worst']}
-          rows={tickerPerformance.map((t) => [
-            t.ticker, t.trades, t.wins, t.losses, `${t.winRate}%`, `$${t.grossPnl.toFixed(2)}`,
-            `$${t.netPnl.toFixed(2)}`, `$${t.avgTrade.toFixed(2)}`, `$${t.bestTrade.toFixed(2)}`, `$${t.worstTrade.toFixed(2)}`,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
-      </Card>
-
-      {/* Performance by Sector */}
-      <Card title='Performance by Sector' icon={BarChart3}>
-        <DataTable
-          headers={['Sector', 'Trades', 'Win%', 'Net P&L', 'Avg Gap%', 'Avg MFE', 'Avg MAE']}
-          rows={sectorPerformance.map((s) => [
-            s.sector, s.trades, `${s.winRate}%`, `$${s.pnl.toFixed(2)}`, `${s.avgGap}%`, s.avgMfe, s.avgMae,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
-      </Card>
-
-      {/* Performance by Regime */}
-      <Card title='Performance by Market Regime' icon={Target}>
-        <DataTable
-          headers={['Regime', 'Trades', 'Win%', 'Avg P&L', 'Avg Gap%', 'False Pos%']}
-          rows={regimePerformance.map((r) => [
-            r.regime, r.trades, `${r.winRate}%`, `$${r.avgPnl.toFixed(2)}`, `${r.avgGap}%`, `${r.falsePositiveRate}%`,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
-      </Card>
-
-      {/* Performance by RPERS */}
-      <Card title='Performance by RPERS Bucket' icon={Target}>
-        <DataTable
-          headers={['Bucket', 'Pred%', 'Realized%', 'Trades', 'Avg P&L', 'Avg Gap%', 'MFE', 'MAE', 'Cal Error']}
-          rows={rpersPerformance.map((r) => [
-            r.bucket, `${r.predictedProb}%`, `${r.realizedRate}%`, r.trades, `$${r.avgPnl.toFixed(2)}`,
-            `${r.avgGap}%`, r.mfe, r.mae, `${r.calibrationError}%`,
-          ])}
-          keyFn={(row) => row[0] as string}
-        />
+        )}
       </Card>
     </div>
   )

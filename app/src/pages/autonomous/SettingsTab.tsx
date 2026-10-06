@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRiskProfile, useStrategySelectionProfile, useProtectionProfile, useConfigurationHistory } from './settings/useSettings'
 import { EditableRow, ToggleRow, SelectRowReactive, StrategyBadge, StatusBadge } from './settings/SettingsComponents'
 import LegalComplianceTab from './legal/LegalComplianceTab'
+import { trpc } from '@/providers/trpc'
 
 function Card({ title, icon: Icon, children, rightAction }: { title: string; icon: React.ElementType; children: React.ReactNode; rightAction?: React.ReactNode }) {
   return (
@@ -32,6 +33,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function SettingsTab() {
   const [activeTab, setActiveTab] = useState<'general' | 'risk' | 'strategies' | 'protection' | 'history' | 'notifications' | 'charts' | 'legal'>('general')
+  const [engineMsg, setEngineMsg] = useState<string | null>(null)
+
+  const { data: autoState } = trpc.autonomous.state.useQuery(undefined, { refetchInterval: 5000 })
+  const utils = trpc.useUtils()
+  const updateEngine = trpc.autonomous.updateConfig.useMutation({
+    onSuccess: async () => {
+      setEngineMsg('Engine limits saved')
+      await utils.autonomous.state.invalidate()
+    },
+    onError: (e) => setEngineMsg(`Save failed: ${e.message}`),
+  })
 
   const { profile, update, isUpdating } = useRiskProfile(1, 1)
   const { selectionProfile, preferences, strategies, updateSelection, updatePreference, isUpdating: isStrategyUpdating } = useStrategySelectionProfile(1, 1)
@@ -144,16 +156,109 @@ export default function SettingsTab() {
       {/* GENERAL TAB */}
       {activeTab === 'general' && (
         <>
+          <Card title='IBKR Paper Engine Limits' icon={Shield}>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: colors.textMuted, lineHeight: 1.5 }}>
+              These values drive autonomous ticket sizing (qty = floor(allocation × max position % / price)). Live session only.
+            </p>
+            {engineMsg && (
+              <p style={{ margin: '0 0 12px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: colors.blue }}>{engineMsg}</p>
+            )}
+            <EditableRow
+              label='Allocation ($)'
+              value={Number(autoState?.config?.allocationValue ?? 0)}
+              type='currency'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ allocationType: 'DOLLAR', allocationValue: Number(val) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+              description='Dollar budget the engine may deploy'
+            />
+            <EditableRow
+              label='Max Position Size %'
+              value={Number(autoState?.config?.maxPositionSizePct ?? 10)}
+              type='percent'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ maxPositionSizePct: Number(val) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+              description='Cap per ticket as % of allocation'
+            />
+            <EditableRow
+              label='Max Positions'
+              value={Number(autoState?.config?.maxPositions ?? 5)}
+              type='integer'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ maxPositions: Math.floor(Number(val)) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+            />
+            <EditableRow
+              label='Stop Loss %'
+              value={Number(autoState?.config?.stopLossPct ?? 2)}
+              type='percent'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ stopLossPct: Number(val) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+            />
+            <EditableRow
+              label='Trailing Stop %'
+              value={Number(autoState?.config?.trailingStopPct ?? 1)}
+              type='percent'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ trailingStopPct: Number(val) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+            />
+            <EditableRow
+              label='Max Daily Loss ($)'
+              value={Number(autoState?.config?.maxDailyLoss ?? 0)}
+              type='currency'
+              onSave={async (val) => {
+                try {
+                  await updateEngine.mutateAsync({ maxDailyLoss: Number(val) })
+                  return { success: true }
+                } catch {
+                  return { success: false, error: 'SAVE_FAILED' }
+                }
+              }}
+            />
+            <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>
+              Mode {autoState?.config?.mode ?? '—'} · session {autoState?.session?.status ?? 'IDLE'}
+              {updateEngine.isPending ? ' · saving…' : ''}
+            </div>
+          </Card>
+
           <Card title='Engine Mode' icon={Activity}>
-            <SelectRowReactive label='Trading Mode' value='PAPER' options={['SHADOW', 'PAPER', 'LIVE']}
-              onSave={async () => ({ success: true })} description='Operational trading environment' />
-            <SelectRowReactive label='Position Handling' value='HOLD_UNTIL_MIDNIGHT'
-              options={['HOLD_UNTIL_MIDNIGHT', 'AUTO_CLOSE_WHEN_PROFITABLE', 'HOLD_INDEFINITELY']}
-              onSave={async () => ({ success: true })} />
-            <SelectRowReactive label='Event Strategy' value='STANDARD' options={['AGGRESSIVE', 'CONSERVATIVE', 'STANDARD']}
-              onSave={async () => ({ success: true })} />
-            <SelectRowReactive label='Time Zone' value='AMERICA/NEW_YORK' options={['AMERICA/NEW_YORK']}
-              onSave={async () => ({ success: true })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
+              <span style={{ fontSize: 13, color: colors.textSecondary }}>Trading Mode</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textPrimary }}>
+                {autoState?.config?.mode ?? 'PAPER'}
+              </span>
+            </div>
+            <p style={{ margin: '12px 0 0', fontSize: 11, color: colors.textMuted, lineHeight: 1.5 }}>
+              LIVE mode requires typed confirmation through the engine START / mode flow — not a silent toggle here.
+            </p>
           </Card>
 
           <Card title='Strategy Registry' icon={Activity}>

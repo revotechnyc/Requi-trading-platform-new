@@ -1,0 +1,49 @@
+﻿Γùç injected env (23) from .env // tip: Γîÿ override existing { override: true }
+Γùç injected env (15) from .env.local // tip: Γîÿ enable debugging { debug: true }
+node.exe : C:\Users\E 14\Desktop\JOB\Requi-trading-platform-new\app\node_modules\src\pg-core\session.ts:73
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\E 14\D...e\session.ts:73:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+				throw new DrizzleQueryError(queryString, params, e as Error);
+				      ^
+
+
+DrizzleQueryError: Failed query: select "id" from "autonomous_sessions" where "autonomous_sessions"."userId" = $1
+params: dba1bfb1-5dc6-439b-9e1c-c35bc77b8ce4
+    at PostgresJsPreparedQuery.queryWithCache (C:\Users\E 
+14\Desktop\JOB\Requi-trading-platform-new\app\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (C:\Users\E 
+14\Desktop\JOB\Requi-trading-platform-new\app\node_modules\src\postgres-js\session.ts:58:17)
+    at async sessionIds (C:\Users\E 14\Desktop\JOB\Requi-trading-platform-new\app\api\autonomous\service.ts:313:16)
+    at async sessionTickets (C:\Users\E 14\Desktop\JOB\Requi-trading-platform-new\app\api\autonomous\service.ts:410:15)
+    at async Promise.all (index 3)
+    at async <anonymous> (C:\Users\E 
+14\Desktop\JOB\Requi-trading-platform-new\app\scripts\verify-overview-live.ts:7:50) {
+  query: 'select "id" from "autonomous_sessions" where "autonomous_sessions"."userId" = $1',
+  params: [ 'dba1bfb1-5dc6-439b-9e1c-c35bc77b8ce4' ],
+  cause: PostgresError: canceling statement due to statement timeout
+      at ErrorResponse 
+(file:///C:/Users/E%2014/Desktop/JOB/Requi-trading-platform-new/app/node_modules/postgres/src/connection.js:815:30)
+      at handle 
+(file:///C:/Users/E%2014/Desktop/JOB/Requi-trading-platform-new/app/node_modules/postgres/src/connection.js:489:6)
+      at TLSSocket.data 
+(file:///C:/Users/E%2014/Desktop/JOB/Requi-trading-platform-new/app/node_modules/postgres/src/connection.js:324:9)
+      at TLSSocket.emit (node:events:519:28)
+      at addChunk (node:internal/streams/readable:561:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+      at Readable.push (node:internal/streams/readable:392:5)
+      at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23) {
+    severity_local: 'ERROR',
+    severity: 'ERROR',
+    code: '57014',
+    file: 'postgres.c',
+    line: '3405',
+    routine: 'ProcessInterrupts'
+  }
+}
+
+Node.js v22.9.0

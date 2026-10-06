@@ -1,18 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Activity, Radio, TrendingUp, Shield, Zap, Clock, ChevronDown,
-  Search, Filter, ArrowUpRight, ArrowDownRight
+  Search, Filter, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
 import { colors, layout } from './design'
-import { engineConfig, activeEvents, winsPerOrder, riskConfig } from './autonomous.config'
 import { trpc } from '@/providers/trpc'
 import TradingChart from './charts/TradingChart'
-import { generateCandleData } from './charts/chartData'
-
-function useOverviewData() {
-  const { data: overview } = trpc.autonomous.getOverviewStats.useQuery(undefined, { retry: false });
-  return { overview };
-}
 
 function Card({ children, style, noPadding = false }: { children: React.ReactNode; style?: React.CSSProperties; noPadding?: boolean }) {
   return (
@@ -41,9 +34,9 @@ function SectionHeader({ icon: Icon, title, right }: { icon: React.ElementType; 
 }
 
 function MetricPill({ label, value, delta, color }: { label: string; value: string; delta?: string; color?: string }) {
-  const isPositive = delta && delta.startsWith('+');
-  const isNegative = delta && delta.startsWith('-');
-  const deltaColor = isPositive ? colors.green : isNegative ? colors.red : colors.textMuted;
+  const isPositive = delta?.startsWith('+')
+  const isNegative = delta?.startsWith('-')
+  const deltaColor = isPositive ? colors.green : isNegative ? colors.red : colors.textMuted
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 4,
@@ -52,35 +45,27 @@ function MetricPill({ label, value, delta, color }: { label: string; value: stri
     }}>
       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: color || colors.textPrimary, letterSpacing: '-0.02em' }}>{value}</span>
-      {delta && (
+      {delta ? (
         <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: deltaColor, fontWeight: 500 }}>
           {isPositive ? <ArrowUpRight size={10} style={{ display: 'inline', marginRight: 2 }} /> : null}
           {isNegative ? <ArrowDownRight size={10} style={{ display: 'inline', marginRight: 2 }} /> : null}
           {delta}
         </span>
-      )}
+      ) : null}
     </div>
   )
 }
 
-function TimeRangePill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '6px 14px', borderRadius: layout.pillRadius,
-      background: active ? colors.activePurpleBg : 'transparent',
-      border: `1px solid ${active ? colors.borderPurple : colors.border}`,
-      color: active ? colors.purple : colors.textMuted,
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600,
-      cursor: 'pointer', transition: 'all 150ms ease',
-    }}>
-      {label}
-    </button>
-  )
+function StatusDot({ color }: { color: string }) {
+  return <div style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
 }
 
-function RiskBadge({ level }: { level: 'High' | 'Medium' | 'Low' }) {
-  const colorMap = { High: colors.red, Medium: colors.orange, Low: colors.green };
-  const bgMap = { High: `${colors.red}15`, Medium: `${colors.orange}15`, Low: `${colors.green}15` };
+function RiskBadge({ level }: { level: 'High' | 'Medium' | 'Low' | '—' }) {
+  if (level === '—') {
+    return <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>—</span>
+  }
+  const colorMap = { High: colors.red, Medium: colors.orange, Low: colors.green }
+  const bgMap = { High: `${colors.red}15`, Medium: `${colors.orange}15`, Low: `${colors.green}15` }
   return (
     <span style={{
       fontFamily: 'JetBrains Mono, monospace', fontSize: 10, fontWeight: 600,
@@ -91,41 +76,31 @@ function RiskBadge({ level }: { level: 'High' | 'Medium' | 'Low' }) {
   )
 }
 
-function StatusDot({ color }: { color: string }) {
-  return <div style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />;
-}
-
-function AllocationGauge({ deployed, cash, hedged }: { deployed: number; cash: number; hedged: number }) {
-  const size = 140;
-  const stroke = 14;
-  const r = (size - stroke) / 2;
-  const cx = size / 2;
-  const cy = size / 2;
-  const total = deployed + cash + hedged;
-  const deployedPct = (deployed / total) * 100;
-  const cashPct = (cash / total) * 100;
-  const hedgedPct = (hedged / total) * 100;
-  const circumference = 2 * Math.PI * r;
-  const getDash = (pct: number) => (pct / 100) * circumference;
-  const d1 = getDash(deployedPct);
-  const d2 = getDash(cashPct);
-  const d3 = getDash(hedgedPct);
+function AllocationGauge({ deployed, cash }: { deployed: number; cash: number }) {
+  const size = 140
+  const stroke = 14
+  const r = (size - stroke) / 2
+  const cx = size / 2
+  const cy = size / 2
+  const total = Math.max(deployed + cash, 1)
+  const deployedPct = (deployed / total) * 100
+  const cashPct = (cash / total) * 100
+  const circumference = 2 * Math.PI * r
+  const d1 = (deployedPct / 100) * circumference
+  const d2 = (cashPct / 100) * circumference
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={cx} cy={cy} r={r} fill='none' stroke='rgba(255,255,255,0.04)' strokeWidth={stroke} />
+        <circle cx={cx} cy={cy} r={r} fill='none' stroke='rgba(15,23,42,0.06)' strokeWidth={stroke} />
         <circle cx={cx} cy={cy} r={r} fill='none' stroke={colors.purple} strokeWidth={stroke}
           strokeDasharray={`${d1} ${circumference}`} strokeDashoffset={0}
           strokeLinecap='round' transform={`rotate(-90 ${cx} ${cy})`} />
         <circle cx={cx} cy={cy} r={r} fill='none' stroke={colors.blue} strokeWidth={stroke}
           strokeDasharray={`${d2} ${circumference}`} strokeDashoffset={-d1}
           strokeLinecap='round' transform={`rotate(-90 ${cx} ${cy})`} />
-        <circle cx={cx} cy={cy} r={r} fill='none' stroke={colors.green} strokeWidth={stroke}
-          strokeDasharray={`${d3} ${circumference}`} strokeDashoffset={-(d1 + d2)}
-          strokeLinecap='round' transform={`rotate(-90 ${cx} ${cy})`} />
       </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 120 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <StatusDot color={colors.purple} />
           <span style={{ fontSize: 12, color: colors.textSecondary }}>Deployed</span>
@@ -133,22 +108,17 @@ function AllocationGauge({ deployed, cash, hedged }: { deployed: number; cash: n
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <StatusDot color={colors.blue} />
-          <span style={{ fontSize: 12, color: colors.textSecondary }}>Cash Reserve</span>
+          <span style={{ fontSize: 12, color: colors.textSecondary }}>Cash / buying power</span>
           <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: colors.textPrimary, marginLeft: 'auto' }}>{cashPct.toFixed(1)}%</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <StatusDot color={colors.green} />
-          <span style={{ fontSize: 12, color: colors.textSecondary }}>Hedged</span>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: colors.textPrimary, marginLeft: 'auto' }}>{hedgedPct.toFixed(1)}%</span>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function FeedItem({ icon: Icon, iconColor, title, detail, time, highlight }: {
-  icon: React.ElementType; iconColor: string;
-  title: string; detail: string; time: string; highlight?: boolean;
+  icon: React.ElementType; iconColor: string
+  title: string; detail: string; time: string; highlight?: boolean
 }) {
   return (
     <div style={{
@@ -165,190 +135,540 @@ function FeedItem({ icon: Icon, iconColor, title, detail, time, highlight }: {
       </div>
       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, flexShrink: 0, whiteSpace: 'nowrap' }}>{time}</span>
     </div>
-  );
+  )
+}
+
+function money(n: number, digits = 0) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+}
+
+function ago(iso: Date | string | null | undefined): string {
+  if (!iso) return '—'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 60_000) return `${Math.max(1, Math.floor(ms / 1000))}s ago`
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
+  return `${Math.floor(ms / 86_400_000)}d ago`
+}
+
+function phaseIcon(phase: string, kind?: string | null) {
+  const p = (phase || '').toUpperCase()
+  const k = (kind || '').toLowerCase()
+  if (p.includes('ERROR') || k === 'error') return { icon: Shield, color: colors.red }
+  if (p.includes('RISK')) return { icon: Shield, color: colors.orange }
+  if (p.includes('ORDER') || p.includes('BROKER') || p.includes('FILL')) return { icon: TrendingUp, color: colors.green }
+  if (p.includes('STRATEGY') || p.includes('OPPORTUNITY')) return { icon: Zap, color: colors.purple }
+  if (p.includes('SCAN') || p.includes('MARKET')) return { icon: Radio, color: colors.blue }
+  if (p.includes('LIFE')) return { icon: Activity, color: colors.green }
+  return { icon: Clock, color: colors.textMuted }
+}
+
+function riskFromStop(entry: number, stop: number | null): 'High' | 'Medium' | 'Low' | '—' {
+  if (!(entry > 0) || stop == null || !(stop > 0)) return '—'
+  const pct = Math.abs(entry - stop) / entry
+  if (pct >= 0.04) return 'High'
+  if (pct >= 0.02) return 'Medium'
+  return 'Low'
 }
 
 export default function OverviewTab() {
-  const { overview } = useOverviewData()
-  const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M' | 'YTD'>('1D')
   const [showAllActions, setShowAllActions] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState<'all' | 'High' | 'Medium' | 'Low'>('all')
+  const [chartSymbolOverride, setChartSymbolOverride] = useState<string | null>(null)
 
-  const engine = overview?.engine ?? null
-  const equity = engineConfig.equity
-  const nav = `$${equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-  const navDelta = `+${engineConfig.dailyReturnPct}%`
-  const candleData = generateCandleData(120)
-  const buyMarkers = [
-    { time: candleData[30].time, position: 'belowBar' as const, color: colors.green, shape: 'arrowUp' as const, text: 'BUY' },
-    { time: candleData[55].time, position: 'belowBar' as const, color: colors.green, shape: 'arrowUp' as const, text: 'BUY' },
-    { time: candleData[85].time, position: 'aboveBar' as const, color: colors.red, shape: 'arrowDown' as const, text: 'SELL' },
-  ]
+  const { data: state } = trpc.autonomous.state.useQuery(undefined, { refetchInterval: 4000 })
+  const { data: ibkr } = trpc.trading.ibkrStatus.useQuery(undefined, { refetchInterval: 10000 })
+  const { data: positions = [], isLoading: posLoading } = trpc.autonomous.positions.useQuery(undefined, { refetchInterval: 4000 })
+  const { data: orders = [], isLoading: ordLoading } = trpc.autonomous.orders.useQuery(undefined, { refetchInterval: 4000 })
+  const { data: events = [] } = trpc.autonomous.stream.useQuery(undefined, { refetchInterval: 4000 })
+  const { data: brokerPos } = trpc.execution.positions.useQuery(
+    { broker: 'IBKR' },
+    { refetchInterval: 12_000, retry: 1 },
+  )
 
-  const holdings = [
-    { ticker: 'SNOW', strategy: 'Post-Earnings Momentum', qty: 80, entry: 184.50, current: 192.15, exposure: 15372, pnl: '+4.2%', risk: 'Medium' as const, status: 'OPEN' },
-    { ticker: 'NVDA', strategy: 'Gap Continuation', qty: 45, entry: 124.30, current: 127.80, exposure: 5751, pnl: '+2.8%', risk: 'High' as const, status: 'OPEN' },
-    { ticker: 'TSLA', strategy: 'Fade the Move', qty: 120, entry: 248.20, current: 245.10, exposure: 29412, pnl: '-1.2%', risk: 'Low' as const, status: 'OPEN' },
-    { ticker: 'AAPL', strategy: 'Post-Earnings Momentum', qty: 200, entry: 189.40, current: 191.25, exposure: 38250, pnl: '+1.0%', risk: 'Low' as const, status: 'CLOSED' },
-    { ticker: 'META', strategy: 'Contrarian Reversal', qty: 60, entry: 512.80, current: 518.40, exposure: 31104, pnl: '+1.1%', risk: 'Medium' as const, status: 'CLOSED' },
-  ]
+  const chartCandidates = useMemo(() => {
+    const syms: string[] = []
+    for (const p of positions) {
+      if (p.symbol && !syms.includes(p.symbol)) syms.push(p.symbol)
+    }
+    for (const r of brokerPos?.positions ?? []) {
+      if (r.symbol && Number(r.quantity) !== 0 && !syms.includes(String(r.symbol))) syms.push(String(r.symbol))
+    }
+    for (const o of orders) {
+      if (['READY_FOR_CONFIRMATION', 'WORKING', 'FILLED', 'SUBMITTING'].includes(o.state) && o.symbol && !syms.includes(o.symbol)) {
+        syms.push(o.symbol)
+      }
+    }
+    if (!syms.includes('SPY')) syms.push('SPY')
+    return syms.slice(0, 8)
+  }, [positions, orders, brokerPos])
 
-  const filteredHoldings = holdings.filter(h => {
-    if (riskFilter !== 'all' && h.risk !== riskFilter) return false;
-    if (searchQuery && !h.ticker.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
+  const chartSymbol = (chartSymbolOverride && chartCandidates.includes(chartSymbolOverride)
+    ? chartSymbolOverride
+    : chartCandidates[0]) || 'SPY'
+
+  const { data: history, isLoading: histLoading, isError: histError } = trpc.marketData.gatewayHistory.useQuery(
+    { symbol: chartSymbol, period: '1d', interval: '1m', limit: 120 },
+    { refetchInterval: 60_000, retry: 1 },
+  )
+
+  const candleData = useMemo(() => {
+    const bars = history?.bars ?? []
+    let cumPv = 0
+    let cumV = 0
+    return bars.map((b) => {
+      cumPv += b.close * (b.volume || 0)
+      cumV += b.volume || 0
+      return {
+        time: b.time,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
+        vwap: cumV > 0 ? cumPv / cumV : b.close,
+      }
+    })
+  }, [history?.bars])
+
+  const chartMarkers = useMemo(() => {
+    if (candleData.length === 0) return []
+    const times = candleData.map((b) => b.time)
+    const nearest = (iso: Date | string | null | undefined) => {
+      if (!iso) return null
+      const sec = Math.floor(new Date(iso).getTime() / 1000)
+      let best = times[0]
+      let bestDiff = Math.abs(times[0] - sec)
+      for (const t of times) {
+        const d = Math.abs(t - sec)
+        if (d < bestDiff) {
+          best = t
+          bestDiff = d
+        }
+      }
+      // Only mark if within ~30 minutes of a bar
+      return bestDiff <= 1800 ? best : null
+    }
+    const out: Array<{
+      time: number
+      position: 'aboveBar' | 'belowBar'
+      color: string
+      shape: 'arrowUp' | 'arrowDown'
+      text: string
+    }> = []
+    for (const o of orders) {
+      if (o.symbol !== chartSymbol) continue
+      if (!['FILLED', 'WORKING', 'PARTIALLY_FILLED'].includes(o.state)) continue
+      const t = nearest(o.submittedAt ?? o.createdAt)
+      if (t == null) continue
+      const buy = o.side === 'BUY'
+      out.push({
+        time: t,
+        position: buy ? 'belowBar' : 'aboveBar',
+        color: buy ? colors.green : colors.red,
+        shape: buy ? 'arrowUp' : 'arrowDown',
+        text: buy ? 'BUY' : 'SELL',
+      })
+    }
+    return out
+  }, [orders, chartSymbol, candleData])
+
+  const equity = Number(ibkr?.equity || state?.account?.equity || 0)
+  const cash = Number(ibkr?.cash || 0)
+  const buyingPower = Number(ibkr?.buyingPower || 0)
+  const allocated = Number(state?.metrics?.allocated || 0)
+  const deployed = Number(state?.metrics?.deployed || 0)
+  const todayPnl = Number(state?.metrics?.todayPnl || 0)
+  const sessionStatus = state?.session?.status ?? 'IDLE'
+  const mode = state?.config?.mode ?? 'PAPER'
+  const accountLabel = state?.account?.label ?? ibkr?.label ?? 'IBKR Paper'
+  const accountId = ibkr?.accountId ?? null
+
+  // Open at broker ≠ awaiting confirm. Mixing them made "Open / Staged: 1" look wrong next to "Awaiting confirm 0".
+  const openAtBroker = orders.filter((o) =>
+    ['WORKING', 'SUBMITTING', 'CONFIRMED', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
+  )
+  const stagedCount = orders.filter((o) => o.state === 'READY_FOR_CONFIRMATION').length
+  const workingOnlyCount = openAtBroker.filter((o) =>
+    ['WORKING', 'SUBMITTING', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
+  ).length
+  const filledCount = orders.filter((o) => o.state === 'FILLED').length
+
+  const holdings = useMemo(() => {
+    const localSyms = new Set(positions.map((p) => p.symbol.toUpperCase()))
+    const fromLedger = positions.map((p) => {
+      const entry = parseFloat(p.avgEntry)
+      const mark = p.highestPrice != null ? parseFloat(p.highestPrice) : entry
+      const stop = p.stopPrice != null ? parseFloat(p.stopPrice) : null
+      const exp = p.quantity * entry
+      const unreal = (mark - entry) * p.quantity
+      const pnlPct = entry > 0 && p.quantity ? (unreal / (entry * p.quantity)) * 100 : 0
+      const pnlStr = mark === entry ? '—' : `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`
+      return {
+        ticker: p.symbol,
+        strategy: p.strategy ?? 'Autonomous',
+        qty: p.quantity,
+        entry,
+        current: mark,
+        exposure: exp,
+        pnl: pnlStr,
+        risk: riskFromStop(entry, stop),
+        status: p.status as string,
+        broker: p.broker === 'IBKR' ? 'IBKR Paper' : p.broker,
+      }
+    })
+    const fromGateway = (brokerPos?.positions ?? [])
+      .filter((r) => Number(r.quantity) !== 0 && r.symbol && !localSyms.has(String(r.symbol).toUpperCase()))
+      .map((r) => {
+        const entry = Number(r.averageCost) || 0
+        const qty = Number(r.quantity)
+        const mkt = Number(r.marketValue) || entry * qty
+        const mark = qty !== 0 ? mkt / qty : entry
+        const unreal = Number(r.unrealizedPnl)
+        const pnlPct = entry > 0 && qty ? (unreal / (entry * Math.abs(qty))) * 100 : 0
+        return {
+          ticker: String(r.symbol),
+          strategy: 'IBKR Paper account',
+          qty,
+          entry,
+          current: mark,
+          exposure: Math.abs(entry * qty),
+          pnl: Number.isFinite(pnlPct) ? `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%` : '—',
+          risk: 'Low' as const,
+          status: 'OPEN',
+          broker: 'IBKR Paper',
+        }
+      })
+    return [...fromLedger, ...fromGateway]
+  }, [positions, brokerPos])
+
+  const openPositions = holdings.length
+  const exposure = holdings.reduce((sum, h) => sum + h.exposure, 0)
+  // Notional at risk to stop (when stop known); otherwise show deployed exposure honestly — never invent %.
+  const stopRisk = positions.reduce((sum, p) => {
+    const entry = parseFloat(p.avgEntry)
+    const stop = p.stopPrice != null ? parseFloat(p.stopPrice) : null
+    if (!(entry > 0) || stop == null || !(stop > 0)) return sum
+    return sum + Math.abs(entry - stop) * p.quantity
+  }, 0)
+
+  const navDelta =
+    equity > 0 && todayPnl !== 0
+      ? `${todayPnl >= 0 ? '+' : ''}${((todayPnl / equity) * 100).toFixed(2)}%`
+      : todayPnl !== 0
+        ? `${todayPnl >= 0 ? '+' : ''}$${money(Math.abs(todayPnl), 2)}`
+        : undefined
+
+  const cashReserve = cash > 0 ? cash : Math.max(0, equity - exposure)
+  const gaugeDeployed = exposure > 0 ? exposure : deployed
+  const gaugeCash = cashReserve > 0 ? cashReserve : Math.max(buyingPower || allocated || equity - gaugeDeployed, 0)
+
+  const filteredHoldings = holdings.filter((h) => {
+    if (riskFilter !== 'all' && h.risk !== riskFilter) return false
+    if (searchQuery && !h.ticker.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    return true
   })
 
-  const feedActions = [
-    { icon: Zap, iconColor: colors.purple, title: 'Strategy Selected', detail: 'Post-Earnings Momentum for SNOW', time: '2m ago', highlight: true },
-    { icon: TrendingUp, iconColor: colors.green, title: 'Order Filled', detail: 'Bought 80 SNOW @ $184.50', time: '5m ago' },
-    { icon: Shield, iconColor: colors.orange, title: 'Dynamic Stop Adjusted', detail: 'SNOW trail tightened to $183.10', time: '8m ago' },
-    { icon: Activity, iconColor: colors.blue, title: 'Risk Check Passed', detail: 'Event exposure within limits', time: '12m ago' },
-    { icon: Radio, iconColor: colors.purple, title: 'New Earnings Event', detail: 'ZS detected at 16:30 ET', time: '15m ago' },
-    { icon: TrendingUp, iconColor: colors.green, title: 'Position Exited', detail: 'Sold 200 AAPL @ $191.25 (+$370)', time: '32m ago' },
-    { icon: Shield, iconColor: colors.red, title: 'Risk Warning', detail: 'Sector exposure at 22% (limit 25%)', time: '45m ago' },
-    { icon: Zap, iconColor: colors.purple, title: 'APMA Tightened', detail: 'NVDA stop moved to breakeven', time: '1h ago' },
-  ]
-  const displayedActions = showAllActions ? feedActions : feedActions.slice(0, 5)
-  const openPositions = holdings.filter(h => h.status === 'OPEN').length
-  const totalExposure = holdings.filter(h => h.status === 'OPEN').reduce((s, h) => s + h.exposure, 0)
-  const unhedgedRisk = totalExposure * 0.15
+  const feedActions = useMemo(() => {
+    return (events ?? []).slice(0, 20).map((ev) => {
+      const { icon, color } = phaseIcon(ev.phase, ev.kind)
+      return {
+        icon,
+        iconColor: color,
+        title: ev.phase.replace(/_/g, ' '),
+        detail: ev.symbol ? `${ev.symbol} · ${ev.message}` : ev.message,
+        time: ago(ev.createdAt),
+        highlight: ev.kind === 'success' || ev.kind === 'trade' || ev.phase === 'ORDER_SUBMITTED',
+      }
+    })
+  }, [events])
+
+  const displayedActions = showAllActions ? feedActions : feedActions.slice(0, 6)
+
+  const pendingTickets = orders
+    .filter((o) => o.state === 'READY_FOR_CONFIRMATION')
+    .slice(0, 5)
+  const recentWorking = orders
+    .filter((o) => o.state === 'WORKING' || o.state === 'FILLED' || o.state === 'SUBMITTING')
+    .slice(0, 5)
+
+  const engineLive = sessionStatus === 'RUNNING'
+  const ibkrLive = Boolean(ibkr?.gatewayOk && ibkr?.connectedForUser)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* HEADER: Quick Metrics + Time Range */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <MetricPill label='Total NAV' value={nav} delta={navDelta} color={colors.textPrimary} />
-        <MetricPill label='Active Positions' value={openPositions.toString()} />
-        <MetricPill label='Open Orders' value={overview?.openOrderCount?.toString() ?? '3'} />
-        <MetricPill label='Unhedged Risk' value={`$${unhedgedRisk.toLocaleString()}`} delta='-2.1%' />
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, background: colors.bgElevated, borderRadius: layout.pillRadius, padding: 4, border: `1px solid ${colors.border}` }}>
-          {(['1D', '1W', '1M', 'YTD'] as const).map(r => (
-            <TimeRangePill key={r} label={r} active={timeRange === r} onClick={() => setTimeRange(r)} />
-          ))}
-        </div>
+      <div style={{
+        padding: '10px 14px',
+        background: `${colors.chipBlue}10`,
+        border: `1px solid ${colors.chipBlue}35`,
+        borderRadius: layout.cardRadiusSmall,
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: 11,
+        color: colors.textSecondary,
+      }}>
+        Live IBKR Paper overview · {accountLabel}
+        {accountId ? ` (${accountId})` : ''} · gateway {ibkrLive ? 'authenticated' : (ibkr?.detail ?? 'checking…')}
+        {' · '}session {sessionStatus} · mode {mode}
       </div>
 
-      {/* MAIN GRID: Chart + Right Panel */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
-        {/* LEFT COLUMN */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <MetricPill
+          label='IBKR Paper NAV'
+          value={equity > 0 ? `$${money(equity, 0)}` : '—'}
+          delta={navDelta}
+          color={colors.textPrimary}
+        />
+        <MetricPill
+          label='Cash'
+          value={cash > 0 ? `$${money(cash, 0)}` : '—'}
+          color={colors.blue}
+        />
+        <MetricPill label='Buying Power' value={buyingPower > 0 ? `$${money(buyingPower, 0)}` : '—'} />
+        <MetricPill label='Active Positions' value={posLoading ? '…' : String(openPositions)} />
+        <MetricPill
+          label='Open Orders'
+          value={ordLoading ? '…' : String(openAtBroker.length)}
+          delta={
+            ordLoading
+              ? undefined
+              : openAtBroker.length > 0
+                ? `${workingOnlyCount} working at IBKR`
+                : 'none at broker'
+          }
+          color={openAtBroker.length > 0 ? colors.orange : undefined}
+        />
+        <MetricPill
+          label='Awaiting Confirm'
+          value={ordLoading ? '…' : String(stagedCount)}
+          delta={stagedCount > 0 ? 'confirm in Orders' : 'none staged'}
+          color={stagedCount > 0 ? colors.orange : undefined}
+        />
+        <MetricPill
+          label='Stop Risk (known)'
+          value={stopRisk > 0 ? `$${money(stopRisk, 0)}` : (exposure > 0 ? `$${money(exposure, 0)} notional` : '$0')}
+          delta={todayPnl !== 0 ? `${todayPnl >= 0 ? '+' : '−'}$${money(Math.abs(todayPnl), 2)} today` : undefined}
+        />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 340px)', gap: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Interactive Chart */}
           <Card noPadding>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Activity size={16} color={colors.purple} strokeWidth={2} />
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Live Execution</h3>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>PAPER MODE</span>
+                <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Live execution</h3>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+                  {chartSymbol} · 1m
+                </span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: history?.available ? colors.green : colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+                  {histLoading ? 'LOADING…' : history?.available ? `via ${history.source ?? 'gateway'}` : 'NO BARS'}
+                </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: colors.green }}>● LIVE</span>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>{timeRange}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {chartCandidates.map((s) => (
+                  <button
+                    key={s}
+                    type='button'
+                    onClick={() => setChartSymbolOverride(s)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: layout.pillRadius,
+                      border: `1px solid ${s === chartSymbol ? colors.borderPurple : colors.border}`,
+                      background: s === chartSymbol ? colors.activePurpleBg : colors.bgElevated,
+                      color: s === chartSymbol ? colors.purple : colors.textMuted,
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             </div>
-            <div style={{ padding: 12 }}>
-              <TradingChart data={candleData} height={280} markers={buyMarkers} showVolume={true} showVwap={true} />
+            <div style={{ padding: 12, minHeight: 280 }}>
+              {histLoading && (
+                <p style={{ margin: 40, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+                  Fetching {chartSymbol} bars from market-data gateway…
+                </p>
+              )}
+              {!histLoading && (histError || !history?.available || candleData.length === 0) && (
+                <p style={{ margin: 40, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+                  No verified {chartSymbol} candles right now (gateway/Yahoo unavailable or market closed). Nothing invented.
+                </p>
+              )}
+              {!histLoading && candleData.length > 0 && (
+                <TradingChart data={candleData} height={280} markers={chartMarkers} showVolume={true} showVwap={true} />
+              )}
             </div>
           </Card>
 
-          {/* Asset Allocation + Metrics */}
           <Card>
-            <SectionHeader icon={Shield} title='Asset Allocation' right={
+            <SectionHeader
+              icon={Activity}
+              title='Session status'
+              right={
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: engineLive ? colors.green : colors.textMuted }}>
+                  ● {engineLive ? 'ENGINE RUNNING' : sessionStatus}
+                </span>
+              }
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[
+                { label: 'Broker', value: ibkrLive ? 'IBKR PAPER · LIVE GATEWAY' : 'IBKR PAPER · CHECK GATEWAY' },
+                { label: 'Allocation authorized', value: allocated > 0 ? `$${money(allocated, 0)}` : '—' },
+                { label: 'Deployed (autonomous)', value: `$${money(deployed, 0)}` },
+                { label: 'Buying power', value: buyingPower > 0 ? `$${money(buyingPower, 0)}` : (cash > 0 ? `$${money(cash, 0)} cash` : '—') },
+                { label: 'Trades today', value: String(state?.metrics?.tradesToday ?? 0) },
+                { label: 'Realized P&L', value: `$${money(Number(state?.metrics?.realizedPnl || 0), 2)}` },
+              ].map((row) => (
+                <div key={row.label} style={{ padding: '12px 14px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>{row.label}</div>
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: colors.textPrimary }}>{row.value}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeader icon={Shield} title='Capital allocation (paper)' right={
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>Total Assets</span>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, fontWeight: 600, color: colors.textPrimary, letterSpacing: '-0.02em' }}>284,750.50</span>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: colors.green, fontWeight: 500, padding: '2px 8px', background: `${colors.green}12`, borderRadius: 12 }}>+0.44%</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>IBKR equity</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>
+                  {equity > 0 ? money(equity, 2) : '—'}
+                </span>
               </div>
             } />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'center' }}>
-              <AllocationGauge deployed={39.5} cash={51.4} hedged={9.1} />
+              <AllocationGauge deployed={gaugeDeployed} cash={gaugeCash} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Active Exposure</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.purple }}>$112,535</span>
+                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Open exposure</span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.purple }}>${money(exposure, 0)}</span>
                 </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
-                  <div style={{ width: '39.5%', height: '100%', background: colors.purple, borderRadius: 2 }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Drawdown Risk</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.red }}>-$2,850</span>
-                </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
-                  <div style={{ width: '12%', height: '100%', background: colors.red, borderRadius: 2 }} />
+                <div style={{ height: 4, background: 'rgba(15,23,42,0.06)', borderRadius: 2 }}>
+                  <div style={{ width: `${Math.min(100, equity > 0 ? (exposure / equity) * 100 : 0)}%`, height: '100%', background: colors.purple, borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Cash Reserve</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.blue }}>$146,428</span>
+                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Cash reserve</span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.blue }}>${money(cashReserve, 0)}</span>
                 </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
-                  <div style={{ width: '51.4%', height: '100%', background: colors.blue, borderRadius: 2 }} />
+                <div style={{ height: 4, background: 'rgba(15,23,42,0.06)', borderRadius: 2 }}>
+                  <div style={{ width: `${Math.min(100, equity > 0 ? (cashReserve / equity) * 100 : 0)}%`, height: '100%', background: colors.blue, borderRadius: 2 }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: colors.textSecondary }}>Autonomous allocation</span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.textPrimary }}>${money(allocated, 0)}</span>
                 </div>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* RIGHT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
-          {/* Active Agents */}
           <Card>
-            <SectionHeader icon={Zap} title='Active Agents' right={
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.purple, fontWeight: 600 }}>3 SWARMS</span>
+            <SectionHeader icon={Zap} title='Awaiting confirm' right={
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.purple, fontWeight: 600 }}>
+                {stagedCount} TICKET{stagedCount === 1 ? '' : 'S'}
+              </span>
             } />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {['Post-Earnings Momentum', 'Gap Continuation', 'APMA Monitor'].map((agent, i) => (
-                <div key={agent} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${colors.purple}30, ${colors.violet}40)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Zap size={14} color={colors.purple} strokeWidth={2.5} />
+            {pendingTickets.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: colors.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
+                {openAtBroker.length > 0
+                  ? `No tickets waiting for confirm (${stagedCount}). ${openAtBroker.length} order(s) already open at IBKR — listed under Working / Filled below.`
+                  : 'No staged IBKR tickets. While ENGINE is RUNNING, new opportunities appear here and under Orders.'}
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingTickets.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${colors.purple}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Zap size={14} color={colors.purple} strokeWidth={2.5} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: colors.textSecondary, margin: '0 0 2px 0' }}>
+                        {t.side} {t.quantity} {t.symbol}
+                      </p>
+                      <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: 0 }}>
+                        {t.ticketId} · {t.broker} · Confirm in Orders
+                      </p>
+                    </div>
+                    <StatusDot color={colors.orange} />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 12, fontWeight: 500, color: colors.textSecondary, margin: '0 0 2px 0' }}>{agent}</p>
-                    <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: 0 }}>{['SNOW', 'NVDA', 'ALL'][i]} • {['LIVE', 'LIVE', 'ACTIVE'][i]}</p>
-                  </div>
-                  <StatusDot color={colors.green} />
+                ))}
+              </div>
+            )}
+            {recentWorking.length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
+                <p style={{ margin: '0 0 8px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, textTransform: 'uppercase' }}>
+                  Confirmed · {workingOnlyCount} working · {filledCount} filled
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {recentWorking.map((t) => (
+                    <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                      <span style={{ color: colors.textSecondary }}>
+                        {t.side} {t.quantity} {t.symbol} · {t.ticketId}
+                      </span>
+                      <span style={{ color: t.state === 'FILLED' ? colors.green : colors.orange }}>{t.state}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </Card>
 
-          {/* Last Actions Feed */}
           <Card>
-            <SectionHeader icon={Clock} title='Last Actions' right={
-              <button onClick={() => setShowAllActions(!showAllActions)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: colors.textMuted, fontSize: 11 }}>
+            <SectionHeader icon={Clock} title='Last actions' right={
+              <button
+                type='button'
+                onClick={() => setShowAllActions(!showAllActions)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: colors.textMuted, fontSize: 11 }}
+              >
                 <ChevronDown size={14} />
-                {showAllActions ? 'Collapse' : 'Show all'}
+                {showAllActions ? 'Collapse' : 'Show more'}
               </button>
             } />
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {displayedActions.map((action, i) => (
-                <FeedItem key={i} {...action} />
-              ))}
-            </div>
+            {displayedActions.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: colors.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
+                No autonomous events yet. Start the engine to see live scans and tickets here.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {displayedActions.map((action, i) => (
+                  <FeedItem key={i} {...action} />
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </div>
 
-      {/* BOTTOM: Holdings & Risk Table */}
       <Card noPadding>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Shield size={16} color={colors.purple} strokeWidth={2} />
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Active Holdings & Risk</h3>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>{filteredHoldings.length} POSITIONS</span>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Open holdings (IBKR / autonomous)</h3>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+              {filteredHoldings.length} OPEN
+            </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusControl, border: `1px solid ${colors.border}` }}>
               <Search size={14} color={colors.textMuted} />
               <input
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder='Filter ticker...'
                 style={{ background: 'transparent', border: 'none', color: colors.textSecondary, fontSize: 12, outline: 'none', width: 120, fontFamily: 'inherit' }}
               />
             </div>
-            <button onClick={() => setRiskFilter(riskFilter === 'all' ? 'High' : riskFilter === 'High' ? 'Medium' : riskFilter === 'Medium' ? 'Low' : 'all')} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: colors.bgElevated, border: `1px solid ${riskFilter !== 'all' ? colors.borderPurple : colors.border}`, borderRadius: layout.cardRadiusControl, color: colors.textMuted, fontSize: 12, cursor: 'pointer' }}>
+            <button
+              type='button'
+              onClick={() => setRiskFilter(riskFilter === 'all' ? 'High' : riskFilter === 'High' ? 'Medium' : riskFilter === 'Medium' ? 'Low' : 'all')}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: colors.bgElevated, border: `1px solid ${riskFilter !== 'all' ? colors.borderPurple : colors.border}`, borderRadius: layout.cardRadiusControl, color: colors.textMuted, fontSize: 12, cursor: 'pointer' }}
+            >
               <Filter size={14} />
               {riskFilter === 'all' ? 'All Risk' : `${riskFilter} Risk`}
             </button>
@@ -358,31 +678,42 @@ export default function OverviewTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Ticker', 'Strategy', 'Qty', 'Entry', 'Current', 'Exposure', 'P&L', 'Risk', 'Status'].map(h => (
+                {['Ticker', 'Strategy', 'Qty', 'Entry', 'Session high', 'Exposure', 'P&L vs entry', 'Risk', 'Broker', 'Status'].map((h) => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filteredHoldings.map((h, i) => {
-                const pnlPositive = h.pnl.startsWith('+');
-                const pnlNegative = h.pnl.startsWith('-');
+              {posLoading && (
+                <tr>
+                  <td colSpan={10} style={{ padding: 24, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>Loading positions…</td>
+                </tr>
+              )}
+              {!posLoading && filteredHoldings.length === 0 && (
+                <tr>
+                  <td colSpan={10} style={{ padding: 24, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+                    No open positions yet. Confirm a staged IBKR Paper ticket under Orders — fills show here (not demo SNOW/NVDA rows).
+                  </td>
+                </tr>
+              )}
+              {filteredHoldings.map((h) => {
+                const pnlPositive = h.pnl.startsWith('+')
+                const pnlNegative = h.pnl.startsWith('-')
                 return (
-                  <tr key={i} style={{ transition: 'background 150ms ease' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <tr key={`${h.ticker}-${h.entry}-${h.qty}`}>
                     <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>{h.ticker}</td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: colors.textSecondary, borderBottom: `1px solid ${colors.border}` }}>{h.strategy}</td>
                     <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>{h.qty}</td>
                     <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textSecondary, borderBottom: `1px solid ${colors.border}` }}>${h.entry.toFixed(2)}</td>
                     <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>${h.current.toFixed(2)}</td>
-                    <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>${h.exposure.toLocaleString()}</td>
+                    <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: colors.textPrimary, borderBottom: `1px solid ${colors.border}` }}>${money(h.exposure, 0)}</td>
                     <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: pnlPositive ? colors.green : pnlNegative ? colors.red : colors.textSecondary, borderBottom: `1px solid ${colors.border}` }}>
-                      {pnlPositive ? <ArrowUpRight size={12} style={{ display: 'inline', marginRight: 2 }} /> : null}
-                      {pnlNegative ? <ArrowDownRight size={12} style={{ display: 'inline', marginRight: 2 }} /> : null}
                       {h.pnl}
                     </td>
                     <td style={{ padding: '14px 16px', borderBottom: `1px solid ${colors.border}` }}>
                       <RiskBadge level={h.risk} />
                     </td>
+                    <td style={{ padding: '14px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>{h.broker}</td>
                     <td style={{ padding: '14px 16px', borderBottom: `1px solid ${colors.border}` }}>
                       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, fontWeight: 600, color: h.status === 'OPEN' ? colors.purple : colors.textMuted, padding: '2px 8px', background: h.status === 'OPEN' ? colors.activePurpleBg : 'transparent', borderRadius: 4 }}>
                         {h.status}
@@ -395,41 +726,6 @@ export default function OverviewTab() {
           </table>
         </div>
       </Card>
-
-      {/* Active Events (Bottom) */}
-      <div>
-        <SectionHeader icon={Radio} title='Active Earnings Events' right={
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>{activeEvents.length} EVENTS</span>
-        } />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
-          {activeEvents.slice(0, 3).map((evt) => {
-            const isGood = evt.fis && evt.fis >= 2.0 && evt.rcs && evt.rcs >= 0.5
-            return (
-              <div key={evt.ticker} style={{
-                background: colors.bgPanel, border: `1px solid ${isGood ? colors.borderPurple : colors.border}`,
-                borderRadius: layout.cardRadius, padding: 16,
-                transition: 'border-color 200ms ease',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <h4 style={{ fontSize: 16, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>{evt.ticker}</h4>
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>{evt.earningsTime}</span>
-                  </div>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: evt.decisionState === 'ORDER_READY' ? colors.green : evt.decisionState === 'NO_ACTION' ? colors.red : colors.orange, fontWeight: 600, padding: '3px 10px', background: `${evt.decisionState === 'ORDER_READY' ? colors.green : evt.decisionState === 'NO_ACTION' ? colors.red : colors.orange}12`, borderRadius: 6 }}>
-                    {evt.decisionState}
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px 12px', fontFamily: 'JetBrains Mono, monospace' }}>
-                  <div><span style={{ fontSize: 9, color: colors.textMuted }}>RPERS</span><p style={{ fontSize: 13, color: evt.rpers >= 80 ? colors.purple : evt.rpers >= 60 ? colors.orange : colors.red, fontWeight: 500, margin: '2px 0 0 0' }}>{evt.rpers}</p></div>
-                  <div><span style={{ fontSize: 9, color: colors.textMuted }}>FIS</span><p style={{ fontSize: 13, color: evt.fis && evt.fis >= 2.0 ? colors.purple : colors.orange, fontWeight: 500, margin: '2px 0 0 0' }}>{evt.fis !== null ? evt.fis.toFixed(1) : '—'}</p></div>
-                  <div><span style={{ fontSize: 9, color: colors.textMuted }}>RCS</span><p style={{ fontSize: 13, color: evt.rcs && evt.rcs >= 0.5 ? colors.purple : colors.red, fontWeight: 500, margin: '2px 0 0 0' }}>{evt.rcs !== null ? evt.rcs.toFixed(2) : '—'}</p></div>
-                  <div><span style={{ fontSize: 9, color: colors.textMuted }}>REACTION</span><p style={{ fontSize: 13, color: evt.priceReaction.startsWith('+') ? colors.green : colors.red, fontWeight: 500, margin: '2px 0 0 0' }}>{evt.priceReaction}</p></div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
     </div>
   )
 }

@@ -1,4 +1,9 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "node:path";
+
+// Keep Health `.env` intact; trading overrides live in `.env.local` (gitignored).
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local"), override: true });
 
 function required(name: string): string {
   const value = process.env[name];

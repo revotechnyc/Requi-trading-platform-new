@@ -1,4 +1,6 @@
 import type { BrokerAdapter, BrokerAccount, BrokerCapabilities, BrokerOpenOrder, BrokerOrderAck, BrokerPosition, OrderIntent } from "./types";
+import https from "node:https";
+import { URL } from "node:url";
 
 /**
  * Interactive Brokers adapter — Client Portal Web API (CPAPI).
@@ -21,8 +23,79 @@ import type { BrokerAdapter, BrokerAccount, BrokerCapabilities, BrokerOpenOrder,
  * programmatically — the operator authenticates the gateway out-of-band.
  */
 
-const BASE = (process.env.IBKR_GATEWAY_URL ?? "https://localhost:5000/v1/api").replace(/\/$/, "");
-const DEFAULT_ACCOUNT = process.env.IBKR_ACCOUNT ?? "";
+/** Read at call-time — Vite/HMR can import this module before dotenv finishes. */
+function gatewayBase(): string {
+  return (process.env.IBKR_GATEWAY_URL ?? "https://localhost:5000/v1/api").replace(/\/$/, "");
+}
+function defaultAccount(): string {
+  return process.env.IBKR_ACCOUNT ?? "";
+}
+
+/** Client Portal Gateway ships a self-signed cert — Node fetch fails without this. */
+function allowInsecureGatewayTls(): boolean {
+  if (process.env.IBKR_GATEWAY_INSECURE_TLS === "0") return false;
+  if (process.env.IBKR_GATEWAY_INSECURE_TLS === "1") return true;
+  try {
+    const host = new URL(gatewayBase()).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+/** CP Gateway returns 403 Access Denied when User-Agent is missing (Node https default). */
+const GATEWAY_HEADERS: Record<string, string> = {
+  Accept: "application/json",
+  "User-Agent": "RequiTrading/1.0 (IBKR Client Portal)",
+};
+
+/** Shared CP Gateway HTTP client — self-signed TLS for localhost + required User-Agent. */
+export async function ibkrGatewayFetch(
+  path: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+): Promise<Response> {
+  const url = `${gatewayBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const baseHeaders = { ...GATEWAY_HEADERS, ...init?.headers };
+  if (!allowInsecureGatewayTls()) {
+    return fetch(url, { ...init, headers: baseHeaders });
+  }
+  // Local CP Gateway: accept self-signed cert (same as curl -k).
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const bodyBuf = init?.body != null ? Buffer.from(init.body) : undefined;
+    const headers: Record<string, string | number> = { ...baseHeaders };
+    if (bodyBuf) {
+      headers["Content-Length"] = bodyBuf.length;
+    }
+    const req = https.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: `${u.pathname}${u.search}`,
+        method: init?.method ?? "GET",
+        headers,
+        rejectUnauthorized: false,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks);
+          resolve(
+            new Response(body, {
+              status: res.statusCode ?? 500,
+              statusText: res.statusMessage,
+            }),
+          );
+        });
+      },
+    );
+    req.on("error", reject);
+    if (bodyBuf) req.write(bodyBuf);
+    req.end();
+  });
+}
 
 const ORDER_TYPE_MAP: Record<string, string> = {
   MKT: "MKT",
@@ -32,13 +105,29 @@ const ORDER_TYPE_MAP: Record<string, string> = {
   TRAIL: "TRAIL",
 };
 
+/** Parse CPAPI /trsrv/stocks payload → prefer US STK conid. */
+function pickUsConidFromTrsrv(raw: unknown, symbol: string): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  // Flat array form (rare)
+  if (Array.isArray(raw)) {
+    const id = Number((raw[0] as { conid?: number })?.conid);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  const map = raw as Record<string, Array<{ contracts?: Array<{ conid?: number; isUS?: boolean; exchange?: string }> }>>;
+  const key = Object.keys(map).find((k) => k.toUpperCase() === symbol.toUpperCase()) ?? Object.keys(map)[0];
+  const contracts = map[key]?.[0]?.contracts ?? [];
+  const us = contracts.find((c) => c.isUS) ?? contracts.find((c) => /NASDAQ|NYSE|ARCA|AMEX/i.test(String(c.exchange ?? ""))) ?? contracts[0];
+  const id = us?.conid != null ? Number(us.conid) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 export class IbkrBroker implements BrokerAdapter {
   readonly code = "IBKR" as const;
   readonly displayName = "Interactive Brokers (Client Portal API)";
   private conidCache = new Map<string, number>();
   private accountId: string;
 
-  constructor(accountId: string = DEFAULT_ACCOUNT) {
+  constructor(accountId: string = defaultAccount()) {
     this.accountId = accountId;
   }
 
@@ -56,12 +145,11 @@ export class IbkrBroker implements BrokerAdapter {
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${BASE}${path}`, {
+    const hasBody = body !== undefined;
+    const res = await ibkrGatewayFetch(path, {
       method,
-      headers: { "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      // Gateway uses a self-signed cert in local deployments — operators mount
-      // the CA or run the adapter beside the gateway (see deployment docs).
+      headers: hasBody ? { "content-type": "application/json" } : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -72,21 +160,96 @@ export class IbkrBroker implements BrokerAdapter {
 
   async healthCheck() {
     try {
-      const status = await this.req<{ authenticated?: boolean; connected?: boolean }>("GET", "/iserver/auth/status");
-      if (status.authenticated) return { ok: true, detail: "gateway authenticated · brokerage session live" };
+      await this.ensureBrokerageBridge().catch(() => undefined);
+      const status = await this.authStatus();
+      if (status.authenticated && status.connected !== false) {
+        return { ok: true, detail: "gateway authenticated · brokerage session live" };
+      }
+      if (status.authenticated) {
+        return { ok: false, detail: "gateway authenticated but brokerage bridge not connected — open https://localhost:5000 and re-login, or retry Confirm" };
+      }
       return { ok: false, detail: "gateway reachable but not authenticated — operator must log in to the Client Portal Gateway" };
     } catch (e) {
       return { ok: false, detail: (e as Error).message };
     }
   }
 
+  private async authStatus(): Promise<{ authenticated?: boolean; connected?: boolean; competing?: boolean }> {
+    try {
+      return await this.req<{ authenticated?: boolean; connected?: boolean; competing?: boolean }>("GET", "/iserver/auth/status");
+    } catch {
+      // Some gateway builds prefer POST.
+      return await this.req<{ authenticated?: boolean; connected?: boolean; competing?: boolean }>("POST", "/iserver/auth/status", {});
+    }
+  }
+
+  /**
+   * CPAPI "no bridge" means SSO login exists but the trading bridge is down.
+   * Re-init via ssodh/init + tickle + accounts warm-up before placing orders.
+   */
+  private async ensureBrokerageBridge(): Promise<void> {
+    let status = await this.authStatus().catch(() => null);
+    if (status?.authenticated && status.connected !== false) {
+      await this.req("GET", "/iserver/accounts").catch(() => undefined);
+      return;
+    }
+
+    try {
+      await this.req("POST", "/iserver/auth/ssodh/init", { publish: true, compete: true });
+    } catch {
+      /* init can 500 while bridge is coming up — wait and re-check */
+    }
+    await new Promise((r) => setTimeout(r, 1200));
+    await this.tickle().catch(() => undefined);
+    await this.req("GET", "/iserver/accounts").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 800));
+
+    status = await this.authStatus().catch(() => null);
+    if (!status?.authenticated) {
+      throw new Error(
+        "IBKR gateway not authenticated — open https://localhost:5000, complete login/2FA, then retry Confirm",
+      );
+    }
+    if (status.connected === false) {
+      try {
+        await this.req("POST", "/iserver/auth/ssodh/init", { publish: true, compete: true });
+      } catch {
+        /* ignore */
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      await this.req("GET", "/iserver/accounts").catch(() => undefined);
+    }
+  }
+
+  private isNoBridgeError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return /no bridge/i.test(msg) || /HTTP 400.*bridge/i.test(msg);
+  }
+
   /** Resolve a US stock symbol to an IBKR conid (cached). */
   private async conid(symbol: string): Promise<number> {
     const hit = this.conidCache.get(symbol);
     if (hit) return hit;
-    const rows = await this.req<Array<{ conid?: number }>>("GET", `/trsrv/stocks?symbols=${encodeURIComponent(symbol)}`);
-    const id = rows?.[0]?.conid;
-    if (!id) throw new Error(`IBKR could not resolve symbol ${symbol} to a conid`);
+
+    // CPAPI /trsrv/stocks returns { SYMBOL: [ { contracts: [ { conid, exchange, isUS } ] } ] } — not a flat array.
+    try {
+      const raw = await this.req<unknown>("GET", `/trsrv/stocks?symbols=${encodeURIComponent(symbol)}`);
+      const fromTrsrv = pickUsConidFromTrsrv(raw, symbol);
+      if (fromTrsrv) {
+        this.conidCache.set(symbol, fromTrsrv);
+        return fromTrsrv;
+      }
+    } catch {
+      // fall through to secdef search
+    }
+
+    const search = await this.req<Array<{ conid?: string | number; sections?: Array<{ secType?: string }> }>>(
+      "GET",
+      `/iserver/secdef/search?symbol=${encodeURIComponent(symbol)}`,
+    );
+    const stk = (search ?? []).find((row) => (row.sections ?? []).some((s) => String(s.secType).toUpperCase() === "STK")) ?? search?.[0];
+    const id = stk?.conid != null ? Number(stk.conid) : NaN;
+    if (!Number.isFinite(id) || id <= 0) throw new Error(`IBKR could not resolve symbol ${symbol} to a conid`);
     this.conidCache.set(symbol, id);
     return id;
   }
@@ -124,12 +287,26 @@ export class IbkrBroker implements BrokerAdapter {
   }
 
   private async accountSummary(accountId: string): Promise<{ equity: number; cash: number; buyingPower: number } | null> {
-    const rows = await this.req<Array<{ tag?: string; value?: string; amount?: number }>>("GET", `/portfolio/${accountId}/summary`);
-    const num = (tag: string) => {
-      const hit = (rows ?? []).find((r) => String(r.tag ?? "").toLowerCase() === tag.toLowerCase());
-      if (!hit) return 0;
-      const n = hit.amount !== undefined ? Number(hit.amount) : Number(hit.value);
-      return Number.isFinite(n) ? n : 0;
+    // CPAPI returns either a tag array or a lowercase-keyed map of { amount, value }.
+    const raw = await this.req<unknown>("GET", `/portfolio/${accountId}/summary`);
+    const num = (tag: string): number => {
+      if (Array.isArray(raw)) {
+        const hit = (raw as Array<{ tag?: string; value?: string; amount?: number }>).find(
+          (r) => String(r.tag ?? "").toLowerCase() === tag.toLowerCase(),
+        );
+        if (!hit) return 0;
+        const n = hit.amount !== undefined ? Number(hit.amount) : Number(hit.value);
+        return Number.isFinite(n) ? n : 0;
+      }
+      if (raw && typeof raw === "object") {
+        const obj = raw as Record<string, { amount?: number | null; value?: string | null }>;
+        const key = Object.keys(obj).find((k) => k.toLowerCase() === tag.toLowerCase());
+        const hit = key ? obj[key] : undefined;
+        if (!hit) return 0;
+        const n = hit.amount != null ? Number(hit.amount) : Number(hit.value);
+        return Number.isFinite(n) ? n : 0;
+      }
+      return 0;
     };
     return {
       equity: num("NetLiquidation") || num("EquityWithLoanValue"),
@@ -170,17 +347,33 @@ export class IbkrBroker implements BrokerAdapter {
 
   /** Some order submissions return question prompts that must be answered. */
   private async handleReplies<T extends Array<Record<string, unknown>>>(payload: T): Promise<T> {
-    const first = payload?.[0];
-    if (first && Array.isArray(first.message_ids) && typeof first.id === "string") {
-      const confirmed = await this.req<Array<Record<string, unknown>>>("POST", `/iserver/reply/${first.id}`, { confirmed: true });
-      return confirmed as T;
+    let current = payload;
+    // IBKR can return a chain of confirmation dialogs before the real order ack.
+    for (let i = 0; i < 5; i++) {
+      const first = current?.[0];
+      if (!first || typeof first !== "object") break;
+      const replyId = typeof first.id === "string" ? first.id : null;
+      const hasPrompt =
+        replyId &&
+        (Array.isArray(first.message_ids) ||
+          Array.isArray(first.messageIds) ||
+          Array.isArray(first.message) ||
+          first.confirm === false ||
+          typeof first.message === "string");
+      // Real order acks have order_id / orderId — don't treat those as prompts.
+      if (first.order_id != null || first.orderId != null) break;
+      if (!hasPrompt || !replyId) break;
+      current = (await this.req<Array<Record<string, unknown>>>("POST", `/iserver/reply/${replyId}`, {
+        confirmed: true,
+      })) as T;
     }
-    return payload;
+    return current;
   }
 
   async placeOrder(accountId: string, intent: OrderIntent): Promise<BrokerOrderAck> {
     const acct = accountId || this.accountId;
     assertIbkrPaperUnlessLiveUnlocked(acct);
+    await this.ensureBrokerageBridge();
     const conid = await this.conid(intent.symbol);
     const order: Record<string, unknown> = {
       acctId: acct,
@@ -200,8 +393,29 @@ export class IbkrBroker implements BrokerAdapter {
       order.trailingType = "amt";
     }
 
-    let response = await this.req<Array<Record<string, unknown>>>("POST", `/iserver/account/${acct}/orders`, { orders: [order] });
-    response = await this.handleReplies(response);
+    const submit = async () => {
+      let response = await this.req<Array<Record<string, unknown>>>("POST", `/iserver/account/${acct}/orders`, { orders: [order] });
+      return this.handleReplies(response);
+    };
+
+    let response: Array<Record<string, unknown>>;
+    try {
+      response = await submit();
+    } catch (e) {
+      if (!this.isNoBridgeError(e)) throw e;
+      // Bridge dropped mid-session — re-init once and retry the same order (same cOID for idempotency).
+      await this.ensureBrokerageBridge();
+      try {
+        response = await submit();
+      } catch (e2) {
+        if (this.isNoBridgeError(e2)) {
+          throw new Error(
+            'IBKR "no bridge" — brokerage session not connected. Restart Client Portal Gateway, log in at https://localhost:5000 (2FA), then retry Confirm.',
+          );
+        }
+        throw e2;
+      }
+    }
 
     const ack = response?.[0] ?? {};
     const orderId = String(ack.order_id ?? ack.orderId ?? "");
@@ -209,11 +423,43 @@ export class IbkrBroker implements BrokerAdapter {
     if (!orderId) {
       return { brokerOrderId: "", status: "UNKNOWN", message: JSON.stringify(ack).slice(0, 200) };
     }
-    return {
+    let result: BrokerOrderAck = {
       brokerOrderId: orderId,
       status: statusText.includes("fill") ? "FILLED" : statusText.includes("reject") || statusText.includes("error") ? "REJECTED" : "ACKNOWLEDGED",
       message: statusText || "submitted",
+      filledQuantity: Number(ack.filledQuantity ?? ack.filled_quantity ?? 0) || undefined,
+      averagePrice: Number(ack.avgPrice ?? ack.average_price ?? 0) || undefined,
     };
+
+    // CPAPI usually ACKs first; paper often fills within ~1–3s. Poll so confirm→recordFill can populate Positions.
+    if (result.status === "ACKNOWLEDGED") {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const st = await this.getOrderStatus(acct, orderId);
+          if (st.status === "FILLED" || st.status === "REJECTED") return st;
+        } catch {
+          /* keep ACKNOWLEDGED */
+        }
+      }
+      // Final fallback: position already in the portfolio (common when /orders drops the row after fill).
+      try {
+        const pos = await this.getPositions(acct);
+        const hit = pos.find((p) => String(p.symbol).toUpperCase() === intent.symbol.toUpperCase() && Number(p.quantity) !== 0);
+        if (hit) {
+          return {
+            brokerOrderId: orderId,
+            status: "FILLED",
+            filledQuantity: Math.min(intent.quantity, Math.abs(Number(hit.quantity)) || intent.quantity),
+            averagePrice: Number(hit.averageCost) || intent.limitPrice || undefined,
+            message: "filled (inferred from IBKR position)",
+          };
+        }
+      } catch {
+        /* keep ACKNOWLEDGED */
+      }
+    }
+    return result;
   }
 
   async cancelOrder(accountId: string, brokerOrderId: string) {
@@ -228,15 +474,37 @@ export class IbkrBroker implements BrokerAdapter {
   async getOrderStatus(_accountId: string, brokerOrderId: string): Promise<BrokerOrderAck> {
     const data = await this.req<{ orders?: Array<Record<string, unknown>> }>("GET", "/iserver/account/orders");
     const o = (data.orders ?? []).find((x) => String(x.orderId ?? x.order_id) === brokerOrderId);
-    if (!o) return { brokerOrderId, status: "UNKNOWN", message: "not in live orders (may be filled/canceled)" };
-    const statusText = String(o.status ?? "").toLowerCase();
-    return {
-      brokerOrderId,
-      status: statusText.includes("fill") ? "FILLED" : statusText.includes("reject") || statusText.includes("cancel") ? "REJECTED" : "WORKING",
-      filledQuantity: Number(o.filledQuantity ?? 0) || undefined,
-      averagePrice: Number(o.avgPrice ?? 0) || undefined,
-      message: statusText,
-    };
+    if (o) {
+      const statusText = String(o.status ?? "").toLowerCase();
+      const filledQty = Number(o.filledQuantity ?? o.filled_quantity ?? 0) || 0;
+      const filled = statusText.includes("fill") || filledQty > 0;
+      return {
+        brokerOrderId,
+        status: filled ? "FILLED" : statusText.includes("reject") || statusText.includes("cancel") ? "REJECTED" : "WORKING",
+        filledQuantity: filledQty || undefined,
+        averagePrice: Number(o.avgPrice ?? o.averagePrice ?? 0) || undefined,
+        message: statusText,
+      };
+    }
+    // Not in live book — check recent trades (filled orders drop out of /orders quickly).
+    try {
+      const trades = await this.req<Array<Record<string, unknown>>>("GET", "/iserver/account/trades");
+      const t = (trades ?? []).find(
+        (x) => String(x.order_id ?? x.orderId ?? x.order_ref ?? "") === brokerOrderId,
+      );
+      if (t) {
+        return {
+          brokerOrderId,
+          status: "FILLED",
+          filledQuantity: Number(t.size ?? t.quantity ?? t.filledQuantity ?? 0) || undefined,
+          averagePrice: Number(t.price ?? t.avgPrice ?? 0) || undefined,
+          message: "filled (from trades)",
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+    return { brokerOrderId, status: "UNKNOWN", message: "not in live orders (may be filled/canceled)" };
   }
 }
 

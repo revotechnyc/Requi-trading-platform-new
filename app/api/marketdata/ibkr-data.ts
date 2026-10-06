@@ -20,12 +20,12 @@ import type { Bar } from "./indicators";
  * service degrades honestly rather than fabricating bars.
  */
 
-const BASE = (process.env.IBKR_GATEWAY_URL ?? "https://localhost:5000/v1/api").replace(/\/$/, "");
+import { ibkrGatewayFetch } from "../brokers/ibkr";
 
 const conidCache = new Map<string, number>();
 
 async function req<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "GET" });
+  const res = await ibkrGatewayFetch(path, { method: "GET" });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`IBKR marketdata GET ${path} → HTTP ${res.status} ${text.slice(0, 160)}`);
@@ -38,13 +38,26 @@ export interface GatewayHealth {
   detail: string;
 }
 
+/** Short TTL so the 2.5s autonomous tick does not hammer /iserver/auth/status. */
+let healthCache: { at: number; value: GatewayHealth } | null = null;
+const HEALTH_CACHE_MS = 5_000;
+
 export async function gatewayHealth(): Promise<GatewayHealth> {
+  if (healthCache && Date.now() - healthCache.at < HEALTH_CACHE_MS) {
+    return healthCache.value;
+  }
   try {
     const status = await req<{ authenticated?: boolean; connected?: boolean }>("/iserver/auth/status");
-    if (status.authenticated) return { ok: true, detail: "gateway authenticated · market data live" };
-    return { ok: false, detail: "gateway reachable but not authenticated — operator must log in to the Client Portal Gateway" };
+    const value: GatewayHealth = status.authenticated
+      ? { ok: true, detail: "gateway authenticated · market data live" }
+      : { ok: false, detail: "gateway reachable but not authenticated — operator must log in to the Client Portal Gateway" };
+    healthCache = { at: Date.now(), value };
+    return value;
   } catch (e) {
-    return { ok: false, detail: (e as Error).message };
+    const value = { ok: false, detail: (e as Error).message };
+    // Cache failures briefly too so a single blip does not trip every concurrent caller.
+    healthCache = { at: Date.now(), value };
+    return value;
   }
 }
 
@@ -53,9 +66,27 @@ export async function resolveConid(symbol: string): Promise<number> {
   const key = symbol.toUpperCase();
   const hit = conidCache.get(key);
   if (hit) return hit;
-  const rows = await req<Array<{ conid?: number }>>(`/trsrv/stocks?symbols=${encodeURIComponent(key)}`);
-  const id = rows?.[0]?.conid;
-  if (!id) throw new Error(`IBKR could not resolve symbol ${key} to a conid`);
+
+  const raw = await req<unknown>(`/trsrv/stocks?symbols=${encodeURIComponent(key)}`);
+  let id: number | null = null;
+  if (Array.isArray(raw)) {
+    id = Number((raw[0] as { conid?: number })?.conid) || null;
+  } else if (raw && typeof raw === "object") {
+    const map = raw as Record<string, Array<{ contracts?: Array<{ conid?: number; isUS?: boolean }> }>>;
+    const entry = map[key] ?? map[Object.keys(map)[0]];
+    const contracts = entry?.[0]?.contracts ?? [];
+    const us = contracts.find((c) => c.isUS) ?? contracts[0];
+    id = us?.conid != null ? Number(us.conid) : null;
+  }
+  if (!id || !Number.isFinite(id)) {
+    // Fallback: secdef search
+    const search = await req<Array<{ conid?: string | number; sections?: Array<{ secType?: string }> }>>(
+      `/iserver/secdef/search?symbol=${encodeURIComponent(key)}`,
+    );
+    const stk = (search ?? []).find((row) => (row.sections ?? []).some((s) => String(s.secType).toUpperCase() === "STK")) ?? search?.[0];
+    id = stk?.conid != null ? Number(stk.conid) : null;
+  }
+  if (!id || !Number.isFinite(id)) throw new Error(`IBKR could not resolve symbol ${key} to a conid`);
   conidCache.set(key, id);
   return id;
 }

@@ -1,8 +1,9 @@
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { gatewayHealth } from "../marketdata/ibkr-data";
 import { sourceStatus } from "../marketdata/gateway/gateway";
 import { assertIbkrPaperUnlessLiveUnlocked, configuredIbkrAccountId, isIbkrBrokerAccount } from "../brokers/ibkr";
+import { refreshIbkrPaperAccount } from "../brokers/ibkr-paper";
 import {
   aiLimits,
   autonomousConfigs,
@@ -151,16 +152,31 @@ export async function start(userId: string) {
   if (limits.killSwitch) throw new Error("Emergency stop is engaged — release the kill switch before starting.");
 
   const existing = await getActiveSession(userId);
-  if (existing && existing.status !== "STOPPED") {
+  if (existing) {
+    if (existing.status === "RUNNING") return existing;
     if (existing.status === "PAUSED" || existing.status === "ERROR") return resume(userId);
-    return existing;
+    if (existing.status === "BROKER_DISCONNECTED") {
+      // Prior gateway drop left a zombie session — close it so START can open a fresh RUNNING session.
+      await db
+        .update(autonomousSessions)
+        .set({
+          status: "STOPPED",
+          stoppedAt: new Date(),
+          endedReason: "BROKER_DISCONNECT",
+          lastError: existing.lastError ?? "gateway was unhealthy; restarting",
+        })
+        .where(eq(autonomousSessions.id, existing.id));
+    }
   }
   if (!cfg.accountId) throw new Error("Choose a broker account before starting Autonomous.");
-  const [account] = await db.select().from(brokerAccounts).where(eq(brokerAccounts.id, cfg.accountId));
+  let [account] = await db.select().from(brokerAccounts).where(eq(brokerAccounts.id, cfg.accountId));
   if (!account) throw new Error("Selected broker account no longer exists.");
   if (account.status !== "Connected") throw new Error(`Broker account is ${account.status} — reconnect before starting.`);
   if (isIbkrBrokerAccount(account.broker)) {
     assertIbkrPaperUnlessLiveUnlocked(configuredIbkrAccountId());
+    await refreshIbkrPaperAccount(userId).catch(() => null);
+    [account] = await db.select().from(brokerAccounts).where(eq(brokerAccounts.id, cfg.accountId));
+    if (!account) throw new Error("Selected broker account no longer exists.");
     const health = await gatewayHealth().catch(() => ({ ok: false, detail: "unreachable" }));
     if (!configuredIbkrAccountId() || !health.ok) {
       throw new Error(
@@ -280,8 +296,16 @@ async function getLimits(userId: string) {
 export function computedAllocation(cfg: typeof autonomousConfigs.$inferSelect, account: typeof brokerAccounts.$inferSelect): number {
   const equity = parseFloat(account.equity);
   const v = parseFloat(cfg.allocationValue);
-  if (cfg.allocationType === "PERCENT") return Math.max(0, Math.min(equity, (equity * v) / 100));
-  return Math.max(0, Math.min(equity, v));
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  // PERCENT needs a real equity base.
+  if (cfg.allocationType === "PERCENT") {
+    if (!Number.isFinite(equity) || equity <= 0) return 0;
+    return Math.max(0, Math.min(equity, (equity * v) / 100));
+  }
+  // DOLLAR: honor configured allocation; only clamp to equity when equity is known (>0).
+  // Stale $0 equity (pre-summary sync) must not zero out a valid paper allocation.
+  if (Number.isFinite(equity) && equity > 0) return Math.max(0, Math.min(equity, v));
+  return v;
 }
 
 async function sessionIds(userId: string): Promise<string[]> {
@@ -395,20 +419,119 @@ async function sessionTickets(userId: string) {
 
 export async function listAutonomousPositions(userId: string) {
   const db = getDb();
+  // Keep platform ledger aligned with IBKR Paper gateway so Overview/Financials/Risk match Positions.
+  await reconcileIbkrGatewayIntoLedger(userId).catch(() => undefined);
+
   const tickets = await sessionTickets(userId);
   const ticketIds = tickets.map((t) => t.ticketId);
-  if (ticketIds.length === 0) return [];
-  const rows = await db
-    .select()
-    .from(positions)
-    .where(and(eq(positions.userId, userId), inArray(positions.sourceTicketId, ticketIds), eq(positions.status, "OPEN")))
-    .orderBy(desc(positions.openedAt));
   const byTicket = new Map(tickets.map((t) => [t.ticketId, t]));
-  return rows.map((p) => ({ ...p, strategy: byTicket.get(p.sourceTicketId ?? "")?.strategy ?? null }));
+
+  // Autonomous session fills + any open IBKR Paper positions for this user (paper testing).
+  const rows =
+    ticketIds.length > 0
+      ? await db
+          .select()
+          .from(positions)
+          .where(
+            and(
+              eq(positions.userId, userId),
+              eq(positions.status, "OPEN"),
+              or(inArray(positions.sourceTicketId, ticketIds), eq(positions.broker, "IBKR")),
+            ),
+          )
+          .orderBy(desc(positions.openedAt))
+      : await db
+          .select()
+          .from(positions)
+          .where(and(eq(positions.userId, userId), eq(positions.status, "OPEN"), eq(positions.broker, "IBKR")))
+          .orderBy(desc(positions.openedAt));
+
+  const seen = new Set<string>();
+  const unique = rows.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+
+  return unique.map((p) => ({
+    ...p,
+    strategy: byTicket.get(p.sourceTicketId ?? "")?.strategy ?? (p.broker === "IBKR" ? "IBKR Paper" : null),
+  }));
+}
+
+/** Upsert OPEN IBKR rows from Client Portal positions for symbols missing in the ledger. */
+async function reconcileIbkrGatewayIntoLedger(userId: string): Promise<void> {
+  const { IbkrBroker } = await import("../brokers/ibkr");
+  const broker = new IbkrBroker();
+  const accounts = await broker.getAccounts().catch(() => []);
+  const accountId = accounts[0]?.accountId;
+  if (!accountId) return;
+  const gw = await broker.getPositions(accountId).catch(() => []);
+  if (!gw.length) return;
+
+  const db = getDb();
+  const open = await db
+    .select({ symbol: positions.symbol, quantity: positions.quantity, id: positions.id })
+    .from(positions)
+    .where(and(eq(positions.userId, userId), eq(positions.status, "OPEN"), eq(positions.broker, "IBKR")));
+  const bySym = new Map(open.map((p) => [p.symbol.toUpperCase(), p]));
+
+  for (const row of gw) {
+    const sym = String(row.symbol || "").toUpperCase();
+    const qty = Number(row.quantity);
+    if (!sym || !Number.isFinite(qty) || qty === 0) continue;
+    const avg = Number(row.averageCost) || 0;
+    const existing = bySym.get(sym);
+    if (existing) {
+      if (existing.quantity !== qty && avg > 0) {
+        await db
+          .update(positions)
+          .set({ quantity: Math.abs(Math.trunc(qty)), avgEntry: avg.toFixed(4), highestPrice: avg.toFixed(4) })
+          .where(eq(positions.id, existing.id));
+      }
+      continue;
+    }
+    if (!(avg > 0)) continue;
+    await db.insert(positions).values({
+      userId,
+      symbol: sym,
+      quantity: Math.abs(Math.trunc(qty)),
+      avgEntry: String(avg),
+      broker: "IBKR",
+      status: "OPEN",
+      highestPrice: String(avg),
+    });
+  }
 }
 
 export async function listAutonomousOrders(userId: string) {
-  return sessionTickets(userId);
+  const db = getDb();
+  const fromSession = await sessionTickets(userId);
+  // Intelligence-staged tickets have no autonomous runSessionId — still show them
+  // so Confirm/Reject is visible on the Orders tab.
+  const intelReady = await db
+    .select()
+    .from(orderTickets)
+    .where(
+      and(
+        eq(orderTickets.userId, userId),
+        or(
+          eq(orderTickets.strategy, "INTELLIGENCE_NL"),
+          eq(orderTickets.strategy, "MANUAL"),
+          sql`${orderTickets.ticketId} LIKE 'INTELL-%'`,
+        ),
+      ),
+    )
+    .orderBy(desc(orderTickets.createdAt))
+    .limit(100);
+
+  const byId = new Map<string, (typeof fromSession)[number]>();
+  for (const t of [...intelReady, ...fromSession]) {
+    if (!byId.has(t.ticketId)) byId.set(t.ticketId, t);
+  }
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 }
 
 export async function listAutonomousTrades(userId: string) {

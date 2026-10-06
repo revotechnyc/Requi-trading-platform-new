@@ -25,7 +25,7 @@ import { recordAudit } from "./audit";
  * - UNKNOWN broker outcomes are a dead end — never blindly resubmitted.
  */
 
-const TICKET_TTL_MS = 5 * 60 * 1000; // confirmation window: 5 minutes
+const TICKET_TTL_MS = 30 * 60 * 1000; // confirmation window: 30 minutes (paper + client testing)
 
 export interface ProposeInput {
   strategy: string;
@@ -158,7 +158,7 @@ export async function proposeTicket(userId: string, input: ProposeInput): Promis
     type: "CONFIRMATION_REQUEST",
     priority: "HIGH",
     title: "Action Required: Confirm Trade",
-    body: `Ticket ${ticketId} · ${input.symbol.toUpperCase()} ${input.side} ${input.quantity} @ ${input.orderType}${input.limitPrice ? ` ${input.limitPrice}` : ""}${maxLoss !== undefined ? ` · Max loss $${maxLoss.toFixed(2)}` : ""}${rr !== undefined ? ` · R:R ${rr.toFixed(1)}` : ""} · via ${effective}${degraded ? " (paper fallback)" : ""} · Origin ${input.origin} · Expires in 5:00. Respond CONFIRM ORDER ${ticketId} or REJECT ORDER ${ticketId}.`,
+    body: `Ticket ${ticketId} · ${input.symbol.toUpperCase()} ${input.side} ${input.quantity} @ ${input.orderType}${input.limitPrice ? ` ${input.limitPrice}` : ""}${maxLoss !== undefined ? ` · Max loss $${maxLoss.toFixed(2)}` : ""}${rr !== undefined ? ` · R:R ${rr.toFixed(1)}` : ""} · via ${effective}${degraded ? " (paper fallback)" : ""} · Origin ${input.origin} · Expires in 30:00. Respond CONFIRM ORDER ${ticketId} or REJECT ORDER ${ticketId}.`,
     symbol: input.symbol.toUpperCase(),
     state: "AWAITING_CONFIRMATION",
   });
@@ -285,27 +285,57 @@ export async function confirmTicket(userId: string, ticketIdRaw: string, confirm
   });
   if (filled) {
     await recordFill(userId, ticket, Number(ack.averagePrice ?? ticket.entry ?? 0), ack.filledQuantity ?? ticket.quantity).catch(() => undefined);
+  } else if (ticket.side === "BUY") {
+    // Paper LMT often ACKs as WORKING while the fill already sits in the IBKR portfolio.
+    // Reconcile so Overview / Positions ledger stay in sync without waiting for a later poll.
+    try {
+      const brokerPos = await adapter.getPositions(accountId);
+      const hit = brokerPos.find((p) => String(p.symbol).toUpperCase() === ticket.symbol.toUpperCase() && Number(p.quantity) !== 0);
+      if (hit) {
+        const px = Number(ack.averagePrice ?? hit.averageCost ?? ticket.limitPrice ?? ticket.entry ?? 0);
+        const qty = Math.min(ticket.quantity, Math.abs(Number(hit.quantity)) || ticket.quantity);
+        if (px > 0 && qty > 0) {
+          await recordFill(userId, ticket, px, qty).catch(() => undefined);
+          await transition(ticket.ticketId, "FILLED", {
+            filledQuantity: qty,
+            averageFillPrice: String(px),
+            lastMessage: `filled (reconciled from IBKR position) · ${ack.message ?? "submitted"}`,
+          });
+        }
+      }
+    } catch {
+      /* keep WORKING — Positions tab still shows gateway holdings */
+    }
   }
   await resolveSignal(ticket.ticketId, "EXECUTED");
   void recordAudit({ userId, action: "ORDER_BROKER_OUTCOME", entityType: "TICKET", entityId: ticket.ticketId, prevState: "SUBMITTING", newState: filled ? "FILLED" : "WORKING", correlationId: ticket.ticketId, meta: { brokerOrderId: ack.brokerOrderId, venue: effective } });
 
   // Execution alert + resolve the confirmation alert.
   const db = getDb();
+  const [afterReconcile] = await db.select().from(orderTickets).where(eq(orderTickets.ticketId, ticket.ticketId)).limit(1);
+  const effectivelyFilled = afterReconcile?.state === "FILLED" || filled;
   await db.insert(alerts).values({
     userId,
     type: "EXECUTION",
     priority: "HIGH",
-    title: filled ? "Order Executed" : "Order Working",
-    body: filled
-      ? `${ticket.symbol} ${ticket.side} ${ack.filledQuantity ?? ticket.quantity} filled @ ${ack.averagePrice ?? "market"} · broker order ${ack.brokerOrderId} · via ${effective}`
+    title: effectivelyFilled ? "Order Executed" : "Order Working",
+    body: effectivelyFilled
+      ? `${ticket.symbol} ${ticket.side} ${afterReconcile?.filledQuantity ?? ack.filledQuantity ?? ticket.quantity} filled @ ${afterReconcile?.averageFillPrice ?? ack.averagePrice ?? "market"} · broker order ${ack.brokerOrderId} · via ${effective}`
       : `${ticket.symbol} ${ticket.side} ${ticket.quantity} acknowledged (${ack.brokerOrderId}) · working · via ${effective}`,
     symbol: ticket.symbol,
-    state: filled ? "FILLED" : "ACTIVE",
+    state: effectivelyFilled ? "FILLED" : "ACTIVE",
   });
   await db.update(alerts).set({ state: "EXECUTING" }).where(and(eq(alerts.userId, userId), eq(alerts.state, "AWAITING_CONFIRMATION"), sql`${alerts.body} LIKE ${"%" + ticket.ticketId + "%"}`));
 
   const [finalTicket] = await db.select().from(orderTickets).where(eq(orderTickets.ticketId, ticket.ticketId)).limit(1);
-  return { ok: true, reasonCode: filled ? "FILLED" : "SUBMITTED", ticket: toPublic(finalTicket), message: filled ? `Filled ${ack.filledQuantity ?? ticket.quantity} @ ${ack.averagePrice ?? "market"} via ${effective}.` : `Order acknowledged by ${effective} and working.` };
+  return {
+    ok: true,
+    reasonCode: effectivelyFilled ? "FILLED" : "SUBMITTED",
+    ticket: toPublic(finalTicket),
+    message: effectivelyFilled
+      ? `Filled ${finalTicket?.filledQuantity ?? ack.filledQuantity ?? ticket.quantity} @ ${finalTicket?.averageFillPrice ?? ack.averagePrice ?? "market"} via ${effective}.`
+      : `Order acknowledged by ${effective} and working.`,
+  };
 }
 
 /**

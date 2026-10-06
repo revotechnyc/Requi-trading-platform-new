@@ -21,12 +21,55 @@ const TRADE_SKIP = new Set([
   "TODAY",
   "TOMORROW",
   "NOW",
+  "ALL",
+  "EVERY",
+  "EVERYTHING",
+  "HOLDINGS",
+  "HOLDING",
+  "POSITIONS",
+  "POSITION",
+  "ENTIRE",
+  "OPEN",
 ]);
 
+/** True for flatten-everything phrases (no single ticker). */
+export function isCloseAllPositionsIntent(text: string): boolean {
+  const t = text.trim();
+  // Single-symbol close must NOT match: "close my AAPL position"
+  if (/\bclose\s+(?:my\s+|the\s+)?[A-Za-z]{1,5}\s+position\b/i.test(t)) {
+    const m = t.match(/\bclose\s+(?:my\s+|the\s+)?([A-Za-z]{1,5})\s+position\b/i);
+    const tok = (m?.[1] ?? "").toUpperCase();
+    if (tok && !TRADE_SKIP.has(tok) && tok !== "ALL") return false;
+  }
+  if (/\bclose\s+all\b/i.test(t)) return true;
+  if (/\bflatten\b/i.test(t) && /\b(all|everything|book|positions?|holdings?)\b/i.test(t)) return true;
+  if (/\bflatten\s*$/i.test(t)) return true;
+  if (/\bsell\s+all\s+(my\s+)?(positions?|holdings?|everything)\b/i.test(t)) return true;
+  if (/\bclose\s+(all\s+)?(my\s+)?(open\s+)?(positions?|holdings?)\b/i.test(t)) return true;
+  if (/^(all\s+the\s+holdings|all\s+holdings|all\s+positions|all\s+my\s+positions|everything)\s*$/i.test(t)) {
+    return true;
+  }
+  if (/\b(all\s+the\s+holdings|all\s+my\s+holdings|all\s+open\s+positions)\b/i.test(t)) return true;
+  return false;
+}
 /** Resolve a tradable symbol from imperative trade text (buy Apple, buy 1 share of AAPL). */
 export function resolveTradeSymbol(text: string, thread: ThreadState): string | null {
   if (classifyMarketIntelligenceIntent(text)) return null;
   if (isNonImperativeResearchAsk(text)) return null;
+  if (isCloseAllPositionsIntent(text)) return null;
+
+  // "Close my AAPL position" / "close AAPL" / "close my Tesla"
+  const closeSym = text.match(
+    /\bclose\s+(?:my\s+|the\s+)?([A-Za-z.]{1,12})(?:\s+position)?\b/i,
+  );
+  if (closeSym) {
+    const token = closeSym[1].toUpperCase();
+    if (!TRADE_SKIP.has(token)) {
+      const resolved = resolveSymbolsFromText(closeSym[1]);
+      if (resolved[0]) return resolved[0];
+      if (/^[A-Z][A-Z0-9.-]{0,11}$/.test(token)) return token;
+    }
+  }
 
   const shareOf = text.match(
     /\b(?:buy|sell|long|short|add to)\s+(?:\d+|one)\s+shares?\s+of\s+([A-Za-z.]{1,12})\b/i,

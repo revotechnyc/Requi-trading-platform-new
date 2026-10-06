@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Home from './pages/Home';
 import Pricing from './pages/Pricing';
 import Login from './pages/Login';
@@ -56,9 +56,26 @@ function LoadingScreen() {
 
 function Protected({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth({ redirectOnUnauthenticated: true });
-  if (isLoading) return <LoadingScreen />;
-  if (!isAuthenticated) return null;
-  // Legal Revision §7/§8: versioned clickwrap acceptance gates app access.
+  // Escape hatch if auth queries hang (DB / gateway) — force login instead of infinite spinner.
+  const [escape, setEscape] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setEscape(true), 5_000);
+    return () => window.clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (escape && !isAuthenticated) {
+      window.location.replace('/login');
+    }
+  }, [escape, isAuthenticated]);
+
+  if (isLoading && !escape) return <LoadingScreen />;
+  if (!isAuthenticated) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background">
+        <p className="text-sm text-slate-500">Redirecting to sign in…</p>
+      </div>
+    );
+  }
   return <ConsentGate>{children}</ConsentGate>;
 }
 

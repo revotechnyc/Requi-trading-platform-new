@@ -1,0 +1,82 @@
+﻿Γùç injected env (23) from .env // tip: Γîÿ enable debugging { debug: true }
+Γùç injected env (15) from .env.local // tip: Γîÿ custom filepath { path: '/custom/path/.env' }
+{
+  "ok": {
+    "navIsIbkrNotDemo": true,
+    "gatewayOk": true,
+    "accountId": "DUR506819",
+    "session": "RUNNING",
+    "mode": "PAPER",
+    "openOrdersVsAwaitingConsistent": true
+  },
+  "fields": {
+    "nav": 1061833,
+    "cash": 1055087.625,
+    "buyingPower": 4239405.5,
+    "allocated": 10000,
+    "deployed": 5593.4799,
+    "todayPnl": 0,
+    "tradesToday": 14,
+    "openPositions": 5,
+    "openOrdersAtBroker": 1,
+    "stagedAwaitingConfirm": 0,
+    "eventCount": 100
+  },
+  "positions": [
+    {
+      "symbol": "QQQ",
+      "broker": "IBKR",
+      "qty": 1,
+      "entry": "761.4100",
+      "strategy": "IBKR Paper"
+    },
+    {
+      "symbol": "AMZN",
+      "broker": "IBKR",
+      "qty": 3,
+      "entry": "255.8133",
+      "strategy": "Post-Earnings Continuation"
+    },
+    {
+      "symbol": "SPY",
+      "broker": "IBKR",
+      "qty": 3,
+      "entry": "780.9600",
+      "strategy": "General Intraday"
+    },
+    {
+      "symbol": "META",
+      "broker": "IBKR",
+      "qty": 2,
+      "entry": "742.7700",
+      "strategy": "General Intraday"
+    },
+    {
+      "symbol": "AAPL",
+      "broker": "IBKR",
+      "qty": 3,
+      "entry": "332.5400",
+      "strategy": "Post-Earnings Continuation"
+    }
+  ],
+  "stagedTickets": [],
+  "latestEvents": [
+    {
+      "phase": "MARKET_DATA",
+      "message": "Market data provider selected ΓÇö Interactive Brokers ┬╖ validated + normalized through the RTI gateway"
+    },
+    {
+      "phase": "LIFECYCLE",
+      "message": "Autonomous started ΓÇö PAPER mode ┬╖ IBKR \"Interactive Brokers Paper (DUR506819)\" ┬╖ allocation $10,000 "
+    },
+    {
+      "phase": "LIFECYCLE",
+      "message": "EMERGENCY STOP ΓÇö kill switch engaged ┬╖ all new autonomous orders blocked ┬╖ safe shutdown complete"
+    }
+  ],
+  "gaps": [
+    "Mark column uses highestPrice (session high), not a live IBKR last trade ΓÇö labeled accordingly in UI",
+    "No fake candle chart (intentional ΓÇö do not invent OHLCV)",
+    "Earnings swarm cards removed (were demo)"
+  ]
+}

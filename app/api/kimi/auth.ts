@@ -91,7 +91,7 @@ export async function authenticateRequest(headers: Headers) {
   const cookies = cookie.parse(headers.get("cookie") || "");
   const token = cookies[Session.cookieName];
   if (!token) {
-    console.warn("[auth] No session cookie found in request.");
+    // Expected for public routes / logged-out users — don't spam the console.
     throw Errors.forbidden("Invalid authentication token.");
   }
   const claim = await verifySessionToken(token);

@@ -1,12 +1,18 @@
 /**
  * Broker venue policy for Intelligence / Autonomous (new setup).
  *
- * Default stays PAPER (ai_limits.paperOnly). IBKR only when the user is on
- * AUTONOMOUS_LIVE (paperOnly=false) and IBKR_ACCOUNT is set — or when ops
- * forces INTELLIGENCE_BROKER=IBKR / PAPER.
+ * Prefer IBKR Paper (DU…) when configured so Intelligence NL trades hit the
+ * same Client Portal paper account as Autonomous — without enabling live U…
+ * accounts. Ops can still force PAPER or IBKR via INTELLIGENCE_BROKER.
  */
 import { getAiLimits } from "./autonomous";
-import { isIbkrAccountConfigured } from "../brokers/ibkr";
+import {
+  assertIbkrPaperUnlessLiveUnlocked,
+  configuredIbkrAccountId,
+  isIbkrAccountConfigured,
+  isIbkrPaperAccountId,
+  isLiveTradingUnlocked,
+} from "../brokers/ibkr";
 import type { BrokerCode } from "../brokers/registry";
 
 export async function resolveIntelligenceBroker(userId: string): Promise<{
@@ -19,10 +25,40 @@ export async function resolveIntelligenceBroker(userId: string): Promise<{
     return { broker: "PAPER", accountId: "PAPER-001", note: "INTELLIGENCE_BROKER=PAPER" };
   }
   if (forced === "IBKR") {
+    const accountId = configuredIbkrAccountId() || undefined;
+    if (!accountId) {
+      return {
+        broker: "PAPER",
+        accountId: "PAPER-001",
+        note: "INTELLIGENCE_BROKER=IBKR but IBKR_ACCOUNT missing — degraded to PaperBroker",
+      };
+    }
+    try {
+      assertIbkrPaperUnlessLiveUnlocked(accountId);
+    } catch (e) {
+      return {
+        broker: "PAPER",
+        accountId: "PAPER-001",
+        note: `${(e as Error).message} — degraded to PaperBroker`,
+      };
+    }
     return {
       broker: "IBKR",
-      accountId: process.env.IBKR_ACCOUNT?.trim() || undefined,
-      note: "INTELLIGENCE_BROKER=IBKR",
+      accountId,
+      note: isIbkrPaperAccountId(accountId)
+        ? "INTELLIGENCE_BROKER=IBKR → IBKR Paper (Client Portal)"
+        : "INTELLIGENCE_BROKER=IBKR → live unlocked IBKR account",
+    };
+  }
+
+  // Auto-prefer IBKR Paper when a DU… account is configured (paper trading path).
+  // Does not disturb research/CHAT — only used when staging tickets.
+  const ibkrId = configuredIbkrAccountId();
+  if (ibkrId && isIbkrPaperAccountId(ibkrId)) {
+    return {
+      broker: "IBKR",
+      accountId: ibkrId,
+      note: "IBKR_ACCOUNT is paper (DU…) → Intelligence stages to IBKR Paper",
     };
   }
 
@@ -45,9 +81,18 @@ export async function resolveIntelligenceBroker(userId: string): Promise<{
     };
   }
 
+  const accountId = configuredIbkrAccountId();
+  if (!isIbkrPaperAccountId(accountId) && !isLiveTradingUnlocked()) {
+    return {
+      broker: "PAPER",
+      accountId: "PAPER-001",
+      note: "Live IBKR account blocked — LIVE_TRADING_ENABLED required; using PaperBroker",
+    };
+  }
+
   return {
     broker: "IBKR",
-    accountId: process.env.IBKR_ACCOUNT?.trim(),
+    accountId,
     note: "paperOnly=false → IBKR adapter (Client Portal paper/live per gateway login)",
   };
 }

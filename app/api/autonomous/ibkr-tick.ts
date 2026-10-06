@@ -11,6 +11,13 @@ import { configuredIbkrAccountId, isIbkrBrokerAccount } from "../brokers/ibkr";
 const IBKR_UNIVERSE = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "SPY", "QQQ"];
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
+/**
+ * Paper sessions stay RUNNING through gateway blips — we only skip new orders.
+ * Soft warnings every N fails so Events stays informative without killing the engine.
+ */
+const healthFailStreak = new Map<string, number>();
+const HEALTH_WARN_EVERY = 3;
+
 const STRATEGY_NAMES = [
   "Pre-Earnings Sentiment",
   "Through-Earnings Event",
@@ -40,21 +47,31 @@ async function lastPrice(userId: string, symbol: string): Promise<{ price: numbe
 }
 
 export async function tickIbkrSession(s: Session, cfg: Config, account: Account): Promise<void> {
-  const healthy = await gatewayHealth().then((h) => h.ok).catch(() => false);
-  if (!healthy || !configuredIbkrAccountId()) {
-    const db = getDb();
-    await db
-      .update(autonomousSessions)
-      .set({ status: "BROKER_DISCONNECTED", lastError: "IBKR paper gateway unhealthy — no new orders" })
-      .where(eq(autonomousSessions.id, s.id));
-    await emitEvent(s.id, s.userId, {
-      phase: "ERROR",
-      kind: "error",
-      message:
-        "IBKR Paper gateway is not authenticated. Re-login to the Client Portal Gateway to resume. Open protections remain in place.",
-    });
+  const health = await gatewayHealth().catch((e) => ({ ok: false, detail: (e as Error).message }));
+  const accountConfigured = Boolean(configuredIbkrAccountId());
+  if (!health.ok || !accountConfigured) {
+    const fails = (healthFailStreak.get(s.id) ?? 0) + 1;
+    healthFailStreak.set(s.id, fails);
+    // Keep RUNNING — paper engine must not die on a flaky /iserver/auth/status tick.
+    if (fails === 1 || fails % HEALTH_WARN_EVERY === 0) {
+      await emitEvent(s.id, s.userId, {
+        phase: "MARKET_DATA",
+        kind: "warn",
+        message: !accountConfigured
+          ? `IBKR_ACCOUNT missing on server — scanning paused (engine still RUNNING, fail #${fails})`
+          : `IBKR gateway not ready (${health.detail || "unhealthy"}) — no new paper orders (fail #${fails}; engine stays RUNNING)`,
+      });
+    }
     return;
   }
+  if ((healthFailStreak.get(s.id) ?? 0) > 0) {
+    await emitEvent(s.id, s.userId, {
+      phase: "MARKET_DATA",
+      kind: "success",
+      message: "IBKR Paper gateway healthy again — order flow resumed",
+    });
+  }
+  healthFailStreak.set(s.id, 0);
 
   const maxDailyLoss = parseFloat(cfg.maxDailyLoss);
   const dayPnl = parseFloat(s.dayPnl);
@@ -85,12 +102,17 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     )
     .limit(1);
   if (staged) {
-    await emitEvent(s.id, s.userId, {
-      phase: "ORDER_SUBMITTED",
-      kind: "warn",
-      symbol: staged.symbol,
-      message: `Ticket ${staged.ticketId} is waiting — reply CONFIRM ORDER ${staged.ticketId} (or enable auto-execute) · nothing sent to IBKR Paper yet`,
-    });
+    // Avoid spamming Events every 2.5s while a ticket waits for Confirm.
+    const last = (s as { lastEventAt?: Date | string | null }).lastEventAt
+    const lastMs = last ? new Date(last).getTime() : 0
+    if (!lastMs || Date.now() - lastMs >= 30_000) {
+      await emitEvent(s.id, s.userId, {
+        phase: "ORDER_SUBMITTED",
+        kind: "warn",
+        symbol: staged.symbol,
+        message: `Ticket ${staged.ticketId} is waiting — open Orders → Confirm (or reply CONFIRM ORDER ${staged.ticketId}) · nothing sent to IBKR Paper yet`,
+      });
+    }
     return;
   }
 

@@ -50,6 +50,18 @@ import {
   setThreadState,
 } from "./intelligence/intent";
 import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
+import {
+  formatIntelligenceAccountStatus,
+  isPaperIntelligenceVenue,
+  parseLimitPrice,
+  parseStopLossPct,
+  parseTrailPct,
+  resolveSellQtyFromHoldings,
+  stageCloseAllPositions,
+  stageExplicitIntelligenceOrder,
+  stopFromPct,
+} from "./intelligence/ibkr-paper-nl";
+import { isCloseAllPositionsIntent } from "./intelligence/trade-symbol";
 import { isConversationalFundamentalQuery, isDeskCompareQuery } from "./intelligence/gap-intents";
 import { classifyGlobalIntent } from "./intelligence/intent-firewall";
 import {
@@ -774,6 +786,16 @@ export async function runIntelligenceChat(
         // Size-clarification reply after "Buy Apple" (Message 2) — may be CHAT mode ("100 shares").
         if (thread.awaitingQuantityFor && intent.mode !== "TRADE_INTENT") {
           const awaiting = thread.awaitingQuantityFor;
+
+          // User answered a botched "sell ALL" clarify with "all the holdings"
+          if (
+            (awaiting.symbol === "ALL" || isCloseAllPositionsIntent(text)) &&
+            awaiting.side === "SELL"
+          ) {
+            const closed = await stageCloseAllPositions(ctx.user.id, { conversationId });
+            return { kind: "text" as const, reply: closed.reply };
+          }
+
           const qtyParsed = parseTradeQuantity(text);
           const notionalParsed = parseTradeNotional(text);
           if (qtyParsed.error) return { kind: "text" as const, reply: qtyParsed.error };
@@ -802,6 +824,20 @@ export async function runIntelligenceChat(
             };
           }
 
+          // Cap sells to open holdings (e.g. "50 shares" when you only hold 3).
+          if (awaiting.side === "SELL") {
+            const fromHoldings = await resolveSellQtyFromHoldings(
+              ctx.user.id,
+              awaiting.symbol,
+              text,
+              resolvedQty,
+            );
+            if (fromHoldings.note && fromHoldings.quantity == null) {
+              return { kind: "text" as const, reply: fromHoldings.note };
+            }
+            if (fromHoldings.quantity != null) resolvedQty = fromHoldings.quantity;
+          }
+
           // Run advisory with clarified size (same path as sized TRADE_INTENT).
           const snap = await getSnapshot(ctx.user.id, awaiting.symbol).catch(() => null);
           if (!snap?.market_data_available) {
@@ -812,6 +848,24 @@ export async function runIntelligenceChat(
                 `I can't verify **${awaiting.symbol}** as a tradable symbol — ${reason ?? "invalid ticker"}.\n\nNothing was staged.`,
             };
           }
+
+          // Paper venue + explicit size → stage for CONFIRM (same as sized BUY path).
+          if (resolvedQty > 0 && snap.price > 0) {
+            const venue = await resolveIntelligenceBroker(ctx.user.id);
+            if (isPaperIntelligenceVenue(venue.broker, venue.accountId)) {
+              const staged = await stageExplicitIntelligenceOrder({
+                userId: ctx.user.id,
+                symbol: awaiting.symbol,
+                side: awaiting.side,
+                quantity: resolvedQty,
+                lastPrice: snap.price,
+                conversationId,
+                stop: stopFromPct(awaiting.side, snap.price, 1),
+              });
+              return { kind: "text" as const, reply: staged.reply };
+            }
+          }
+
           try {
             const advisory = await composeAdvisory(ctx.user.id, awaiting.symbol, awaiting.side);
             setThreadState(
@@ -867,10 +921,42 @@ export async function runIntelligenceChat(
             return { kind: "text" as const, reply: intent.quantityError };
           }
 
+          // Close / flatten everything — one SELL ticket per open holding (CONFIRM each).
+          if (
+            isCloseAllPositionsIntent(text) ||
+            (intent.side === "SELL" && (!intent.symbol || intent.symbol === "ALL"))
+          ) {
+            // Only treat bare SELL without symbol as close-all when phrase matches;
+            // "sell" alone should still ask for a symbol.
+            if (isCloseAllPositionsIntent(text) || intent.symbol === "ALL") {
+              const closed = await stageCloseAllPositions(ctx.user.id, { conversationId });
+              return { kind: "text" as const, reply: closed.reply };
+            }
+          }
+
           // 2a) "stage it" on a FRESH advisory → deterministic proposeTicket
           if (intent.followUp && advisoryFresh(thread.advisory)) {
-            const staged = await stageTicketFromAdvisory(ctx.user.id, thread.advisory!, {
-              quantity: intent.quantity ?? thread.pendingQuantity ?? undefined,
+            const adv = thread.advisory!;
+            const qty = intent.quantity ?? thread.pendingQuantity ?? undefined;
+            // Explicit-sized paper path: allow stage even when scanner verdict is WAIT
+            // (user already specified size — still requires CONFIRM ORDER).
+            if (adv.verdict === "WAIT" && qty != null && qty > 0 && (adv.proposed?.lastPrice ?? 0) > 0) {
+              const venue = await resolveIntelligenceBroker(ctx.user.id);
+              if (isPaperIntelligenceVenue(venue.broker, venue.accountId)) {
+                const staged = await stageExplicitIntelligenceOrder({
+                  userId: ctx.user.id,
+                  symbol: adv.symbol,
+                  side: adv.side,
+                  quantity: qty,
+                  lastPrice: adv.proposed!.lastPrice!,
+                  conversationId,
+                  stop: stopFromPct(adv.side, adv.proposed!.lastPrice!, 1),
+                });
+                return { kind: "text" as const, reply: staged.reply };
+              }
+            }
+            const staged = await stageTicketFromAdvisory(ctx.user.id, adv, {
+              quantity: qty,
               conversationId,
             });
             return { kind: "text" as const, reply: staged.reply };
@@ -936,8 +1022,60 @@ export async function runIntelligenceChat(
             tradeQty = Math.max(1, Math.floor(notionalSameTurn.notional / snap.price));
           }
 
+          const side = intent.side ?? "BUY";
+
+          // Position-aware sells: "sell half", "close my AAPL", "reduce 25%"
+          if (side === "SELL") {
+            const fromHoldings = await resolveSellQtyFromHoldings(
+              ctx.user.id,
+              intent.symbol,
+              text,
+              tradeQty,
+            );
+            if (fromHoldings.note && fromHoldings.quantity == null) {
+              return { kind: "text" as const, reply: fromHoldings.note };
+            }
+            if (fromHoldings.quantity != null) tradeQty = fromHoldings.quantity;
+          }
+
+          // Explicit size + paper venue → stage immediately (CONFIRM still required).
+          // Leaves research/CHAT and unsized "Buy Apple" advisory path unchanged.
+          if (tradeQty != null && tradeQty > 0 && snap.price > 0) {
+            const venue = await resolveIntelligenceBroker(ctx.user.id);
+            if (isPaperIntelligenceVenue(venue.broker, venue.accountId)) {
+              const stopPct = parseStopLossPct(text);
+              const trailPct = parseTrailPct(text);
+              const limitPx = parseLimitPrice(text);
+              const last = snap.price;
+              const protectivePct = trailPct ?? stopPct ?? 1;
+              const stop = stopFromPct(side, last, protectivePct);
+              const orderType = /\bmarket\b/i.test(text) ? "MKT" : "LMT";
+              const staged = await stageExplicitIntelligenceOrder({
+                userId: ctx.user.id,
+                symbol: intent.symbol,
+                side,
+                quantity: tradeQty,
+                lastPrice: last,
+                conversationId,
+                limitPrice: limitPx ?? undefined,
+                stop,
+                orderType,
+                strategy: "INTELLIGENCE_NL",
+              });
+              if (staged.ok && trailPct != null) {
+                return {
+                  kind: "text" as const,
+                  reply:
+                    staged.reply +
+                    `\n\n_Note: trailing ${trailPct}% was recorded as a **protective stop** at $${stop} for this paper ticket. Native IBKR TRAIL child orders ship in a follow-up slice._`,
+                };
+              }
+              return { kind: "text" as const, reply: staged.reply };
+            }
+          }
+
           try {
-            const advisory = await composeAdvisory(ctx.user.id, intent.symbol, intent.side ?? "BUY");
+            const advisory = await composeAdvisory(ctx.user.id, intent.symbol, side);
             setThreadState(
               ctx.user.id,
               {
@@ -988,6 +1126,13 @@ export async function runIntelligenceChat(
               kind: "text" as const,
               reply: `I couldn't complete the market check for ${intent.symbol}: ${(e as Error).message}. Nothing was staged.`,
             };
+          }
+        }
+
+        if (intent.mode === "STATUS_QUERY") {
+          const accountStatus = await formatIntelligenceAccountStatus(ctx.user.id, text);
+          if (accountStatus) {
+            return { kind: "text" as const, reply: accountStatus };
           }
         }
 

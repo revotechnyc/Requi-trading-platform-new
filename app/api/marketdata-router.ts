@@ -94,6 +94,39 @@ export const marketDataRouter = createRouter({
     return getSnapshot(ctx.user.id, input.symbol);
   }),
 
+  /**
+   * Normalized OHLCV history via the RTI gateway hierarchy (IBKR broker → Yahoo → …).
+   * Never fabricates bars — empty when no provider can serve the symbol.
+   */
+  gatewayHistory: authedQuery
+    .input(
+      symbolInput.extend({
+        period: z.string().min(1).max(8).default("1d"),
+        interval: z.enum(["1m", "5m", "15m", "1d"]).default("1m"),
+        limit: z.number().int().min(10).max(390).default(120),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { getHistory } = await import("./marketdata/gateway/gateway");
+      const hist = await getHistory(ctx.user.id, input.symbol, input.period, input.interval);
+      const bars = hist.bars.slice(-input.limit).map((b) => ({
+        time: Math.floor(b.t / 1000), // lightweight-charts UTCTimestamp (seconds)
+        open: b.o,
+        high: b.h,
+        low: b.l,
+        close: b.c,
+        volume: b.v,
+      }));
+      return {
+        available: hist.available && bars.length > 0,
+        source: hist.source ?? null,
+        symbol: input.symbol.toUpperCase(),
+        period: input.period,
+        interval: input.interval,
+        bars,
+      };
+    }),
+
   /** Internally-computed indicator set (SMA/EMA/RSI/MACD/VWAP/Bollinger/ATR…). */
   gatewayIndicators: authedQuery.input(symbolInput).query(async ({ ctx, input }) => {
     const { getIndicators } = await import("./marketdata/gateway/gateway");

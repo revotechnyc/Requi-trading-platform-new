@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyIntent } from "./intent";
 import {
   clarificationAskSharesOrDollars,
+  isCloseAllPositionsIntent,
   parseTradeNotional,
   parseTradeQuantity,
   resolveTradeSymbol,
@@ -81,6 +82,26 @@ describe("classifyIntent trade flow", () => {
     expect(intent.mode).toBe("TRADE_INTENT");
     expect(intent.symbol).toBe("AAPL");
     expect(intent.quantity).toBeNull();
+  });
+
+  it("Close my AAPL position is SELL TRADE_INTENT (not status dump)", () => {
+    const intent = classifyIntent("Close my AAPL position", emptyThread);
+    expect(intent.mode).toBe("TRADE_INTENT");
+    expect(intent.side).toBe("SELL");
+    expect(intent.symbol).toBe("AAPL");
+  });
+
+  it("Close all positions is TRADE_INTENT with no symbol (not ALL)", () => {
+    const intent = classifyIntent("Close all positions", emptyThread);
+    expect(intent.mode).toBe("TRADE_INTENT");
+    expect(intent.side).toBe("SELL");
+    expect(intent.symbol).toBeNull();
+  });
+
+  it("all the holdings is close-all intent", () => {
+    expect(isCloseAllPositionsIntent("all the holdings")).toBe(true);
+    expect(isCloseAllPositionsIntent("Close all positions")).toBe(true);
+    expect(isCloseAllPositionsIntent("Close my AAPL position")).toBe(false);
   });
 
   it("routes stock-discovery questions to CHAT, not TRADE_INTENT", () => {

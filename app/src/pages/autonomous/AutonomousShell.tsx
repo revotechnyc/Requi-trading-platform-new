@@ -6,7 +6,6 @@ import {
   Search, Bell, ChevronDown, User, Scale
 } from 'lucide-react'
 import { colors, layout, anim } from './design'
-import { engineConfig } from './autonomous.config'
 import { trpc } from '@/providers/trpc'
 import DisclosureModal from './legal/DisclosureModal'
 import PreStartAuth from './legal/PreStartAuth'
@@ -104,6 +103,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const [globalSearch, setGlobalSearch] = useState('')
   const [portfolioOpen, setPortfolioOpen] = useState(false)
 
   // Legal / Compliance Gate State
@@ -149,9 +149,51 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
     onError: (err) => setActionError(err.message),
   })
 
-  const engineRunning = autoState?.session?.status === 'RUNNING'
+  const sessionStatus = autoState?.session?.status ?? null
+  const engineRunning = sessionStatus === 'RUNNING'
+  const engineLabel = !sessionStatus
+    ? 'IDLE'
+    : sessionStatus === 'RUNNING'
+      ? 'RUNNING'
+      : sessionStatus === 'PAUSED'
+        ? 'PAUSED'
+        : sessionStatus === 'BROKER_DISCONNECTED'
+          ? 'IBKR DOWN'
+          : sessionStatus === 'ERROR'
+            ? 'ERROR'
+            : sessionStatus === 'STOPPED'
+              ? 'STOPPED'
+              : String(sessionStatus)
+  // Hide probe/debug leftovers and empty strings — only surface real session faults.
+  const rawSessionError = autoState?.session?.lastError ?? null
+  const sessionError =
+    rawSessionError &&
+    !/^PROBE_/i.test(rawSessionError) &&
+    rawSessionError.trim().length > 0
+      ? rawSessionError
+      : null
   const killSwitchArmed = autoState ? !autoState.killSwitch : true
-  const modeLabel = autoState?.config?.mode ?? engineConfig.mode
+  const modeLabel = autoState?.config?.mode ?? 'PAPER'
+  const dataStatusLabel = !ibkrStatus
+    ? '…'
+    : ibkrStatus.gatewayOk && ibkrStatus.connectedForUser
+      ? 'LIVE'
+      : ibkrStatus.gatewayOk
+        ? 'GATEWAY'
+        : 'OFFLINE'
+  const accountLabel = (() => {
+    const id = ibkrStatus?.accountId ?? autoState?.account?.label
+    const equity = Number(ibkrStatus?.equity || autoState?.account?.equity || 0)
+    const cash = Number(ibkrStatus?.cash || 0)
+    if (!id && equity <= 0) return null
+    const name = ibkrStatus?.accountId
+      ? `Interactive Brokers Paper (${ibkrStatus.accountId})`
+      : String(autoState?.account?.label ?? 'IBKR Paper')
+    const parts = [`${name}`]
+    if (equity > 0) parts.push(`Equity $${equity.toLocaleString('en-US', { maximumFractionDigits: 0 })}`)
+    if (cash > 0) parts.push(`Cash $${cash.toLocaleString('en-US', { maximumFractionDigits: 0 })}`)
+    return parts.join(' · ')
+  })()
   const ibkrLabel = !ibkrStatus
     ? '…'
     : ibkrStatus.connectedForUser && ibkrStatus.gatewayOk
@@ -182,9 +224,13 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
   const topBarH = isMobile ? layout.mobileTopHeight : layout.topBarHeight
 
   const modeColor = getModeColor(modeLabel)
-  const engineColor = getEngineColor(engineRunning ? 'RUNNING' : 'PAUSED')
+  const engineColor = getEngineColor(
+    engineRunning ? 'RUNNING' : sessionStatus === 'BROKER_DISCONNECTED' || sessionStatus === 'ERROR' ? 'ERROR' : 'PAUSED',
+  )
   const ibkrColor = getConnectionColor(ibkrConn)
-  const dataColor = getDataColor(engineConfig.dataStatus)
+  const dataColor = getDataColor(
+    dataStatusLabel === 'LIVE' ? 'CONNECTED' : dataStatusLabel === 'GATEWAY' ? 'DEGRADED' : 'DISCONNECTED',
+  )
 
   const handleKillSwitch = () => {
     if (!killSwitchArmed) {
@@ -368,7 +414,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
             {sidebarExpanded && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Server size={13} color={dataColor} />
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: dataColor, fontWeight: 500 }}>{engineConfig.dataStatus}</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: dataColor, fontWeight: 500 }}>{dataStatusLabel}</span>
               </div>
             )}
           </div>
@@ -395,7 +441,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
             </button>
           )}
 
-          {/* Portfolio Selector */}
+          {/* Portfolio Selector — live IBKR Paper account only (no fake portfolios) */}
           {!isMobile && (
             <div style={{ position: 'relative' }}>
               <button onClick={() => setPortfolioOpen(!portfolioOpen)} style={{
@@ -408,30 +454,47 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
                 fontSize: 13, fontWeight: 500,
                 cursor: 'pointer',
               }}>
-                <span>Autonomous Console</span>
+                <span>
+                  {ibkrStatus?.accountId
+                    ? `IBKR Paper · ${ibkrStatus.accountId}`
+                    : 'Autonomous Console'}
+                </span>
                 <ChevronDown size={14} color={colors.textMuted} />
               </button>
               {portfolioOpen && (
                 <div style={{
                   position: 'absolute', top: 44, left: 0,
                   background: colors.bgElevated, border: `1px solid ${colors.borderLight}`,
-                  borderRadius: layout.cardRadiusSmall, padding: '6px 0',
-                  minWidth: 200, zIndex: 300,
+                  borderRadius: layout.cardRadiusSmall, padding: '10px 14px',
+                  minWidth: 260, zIndex: 300,
                   boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: 11,
+                  color: colors.textSecondary,
                 }}>
-                  {['Autonomous Console', 'Main Portfolio', 'Paper Trading', 'Backtest Lab'].map((p) => (
-                    <button key={p} onClick={() => setPortfolioOpen(false)} style={{
-                      width: '100%', padding: '10px 16px', background: 'transparent',
-                      border: 'none', color: colors.textSecondary, fontSize: 13,
-                      textAlign: 'left', cursor: 'pointer',
+                  <div style={{ color: colors.textPrimary, marginBottom: 6 }}>Active trading account</div>
+                  <div>
+                    {ibkrStatus?.accountId
+                      ? `Interactive Brokers Paper (${ibkrStatus.accountId})`
+                      : 'No IBKR Paper account linked — connect on Accounts'}
+                  </div>
+                  {ibkrStatus?.cash != null && ibkrStatus.cash > 0 && (
+                    <div style={{ marginTop: 8, color: colors.textMuted }}>
+                      Equity ${Number(ibkrStatus.equity || 0).toLocaleString()} · Cash ${Number(ibkrStatus.cash).toLocaleString()}
+                    </div>
+                  )}
+                  <button
+                    type='button'
+                    onClick={() => setPortfolioOpen(false)}
+                    style={{
+                      marginTop: 10, padding: '6px 10px', background: colors.bgSecondary,
+                      border: `1px solid ${colors.border}`, borderRadius: 6,
+                      color: colors.textSecondary, cursor: 'pointer', fontSize: 10,
                       fontFamily: 'inherit',
                     }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = colors.activePurpleBg)}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                  >
+                    Close
+                  </button>
                 </div>
               )}
             </div>
@@ -455,7 +518,18 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
               }}>
                 <Search size={14} color={colors.textMuted} />
                 <input
-                  placeholder='Search ticker, event, order...'
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    const q = globalSearch.trim()
+                    if (!q) return
+                    try { sessionStorage.setItem('autonomous.globalSearch', q) } catch { /* ignore */ }
+                    // Route: ticker-like → Positions; otherwise Orders/Events.
+                    if (/^[A-Za-z.]{1,6}$/.test(q)) setActiveTab('positions')
+                    else setActiveTab('orders')
+                  }}
+                  placeholder='Search ticker… (Enter)'
                   style={{ background: 'transparent', border: 'none', color: colors.textSecondary, fontSize: 12, outline: 'none', width: '100%', fontFamily: 'inherit' }}
                 />
               </div>
@@ -466,7 +540,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <StatusPill label='MODE' value={modeLabel} color={modeColor} />
-              <StatusPill label='ENGINE' value={engineRunning ? 'RUNNING' : 'PAUSED'} color={engineColor} />
+              <StatusPill label='ENGINE' value={engineLabel} color={engineColor} />
               <StatusPill label='IBKR' value={ibkrLabel} color={ibkrColor} />
             </div>
           )}
@@ -512,13 +586,22 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
             {!isMobile && (
               <>
                 <div style={{ width: 1, height: 24, background: colors.border, margin: '0 4px' }} />
-                <button style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative' }}>
+                <button
+                  type='button'
+                  title='Open Audit'
+                  onClick={() => setActiveTab('audit')}
+                  style={{ padding: 8, background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative' }}
+                >
                   <Bell size={18} color={colors.textMuted} strokeWidth={1.5} />
-                  <div style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, background: colors.purple, border: `2px solid ${colors.bgTopBar}` }} />
                 </button>
-                <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${colors.purple}40, ${colors.violet}60)`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <button
+                  type='button'
+                  title='Open Settings'
+                  onClick={() => setActiveTab('settings')}
+                  style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${colors.purple}40, ${colors.violet}60)`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', padding: 0 }}
+                >
                   <User size={16} color={colors.purpleSoft} />
-                </div>
+                </button>
               </>
             )}
           </div>
@@ -528,9 +611,9 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
         {isMobile && (
           <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: 8, overflowX: 'auto' }}>
             <StatusPill label='MODE' value={modeLabel} color={modeColor} />
-            <StatusPill label='ENGINE' value={engineRunning ? 'RUNNING' : 'PAUSED'} color={engineColor} />
+            <StatusPill label='ENGINE' value={engineLabel} color={engineColor} />
             <StatusPill label='IBKR' value={ibkrLabel} color={ibkrColor} />
-            <StatusPill label='DATA' value={engineConfig.dataStatus} color={dataColor} />
+            <StatusPill label='DATA' value={dataStatusLabel} color={dataColor} />
           </div>
         )}
 
@@ -575,17 +658,45 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
           padding: isMobile ? '16px' : '24px',
           paddingBottom: isMobile && !singleScreen ? `${layout.mobileBottomNav + 16}px` : '24px',
         }}>
-          {actionError && (
-            <div style={{
-              margin: isMobile ? '0 16px 8px' : '0 24px 8px',
-              padding: '10px 14px',
-              background: `${colors.chipRed}12`,
-              border: `1px solid ${colors.chipRed}40`,
-              borderRadius: layout.cardRadiusSmall,
-              color: colors.chipRed,
-              fontSize: 12,
-            }}>
-              {actionError}
+          {(actionError || sessionError || accountLabel) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {accountLabel && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: `${colors.chipBlue}12`,
+                  border: `1px solid ${colors.chipBlue}40`,
+                  borderRadius: layout.cardRadiusSmall,
+                  color: colors.textPrimary,
+                  fontSize: 12,
+                  fontFamily: 'JetBrains Mono, monospace',
+                }}>
+                  Trading account: {accountLabel}
+                </div>
+              )}
+              {actionError && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: `${colors.chipRed}12`,
+                  border: `1px solid ${colors.chipRed}40`,
+                  borderRadius: layout.cardRadiusSmall,
+                  color: colors.chipRed,
+                  fontSize: 12,
+                }}>
+                  {actionError}
+                </div>
+              )}
+              {sessionError && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: `${colors.chipOrange}12`,
+                  border: `1px solid ${colors.chipOrange}40`,
+                  borderRadius: layout.cardRadiusSmall,
+                  color: colors.chipOrange,
+                  fontSize: 12,
+                }}>
+                  Session: {sessionError}
+                </div>
+              )}
             </div>
           )}
           {renderTab()}

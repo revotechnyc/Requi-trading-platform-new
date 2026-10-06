@@ -8,12 +8,17 @@ import { trpc } from '@/providers/trpc';
 import { getSupabase } from '@/lib/supabase';
 
 function getOAuthUrl() {
-  const kimiAuthUrl = import.meta.env.VITE_KIMI_AUTH_URL;
-  const appID = import.meta.env.VITE_APP_ID;
+  const kimiAuthUrl = (import.meta.env.VITE_KIMI_AUTH_URL as string | undefined)?.trim();
+  const appID = (import.meta.env.VITE_APP_ID as string | undefined)?.trim();
+  if (!kimiAuthUrl || !appID) {
+    throw new Error(
+      'Kimi OAuth is not configured. Use email/password sign-in (Supabase), or set VITE_KIMI_AUTH_URL and VITE_APP_ID.',
+    );
+  }
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
   const state = btoa(redirectUri);
 
-  const url = new URL(`${kimiAuthUrl}/api/oauth/authorize`);
+  const url = new URL(`${kimiAuthUrl.replace(/\/$/, '')}/api/oauth/authorize`);
   url.searchParams.set('client_id', appID);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
@@ -76,10 +81,17 @@ export default function Login() {
   });
   const createAccount = trpc.auth.createAccount.useMutation();
 
-  const supabaseReady = Boolean(config.data?.supabase && config.data.supabaseUrl && config.data.supabaseAnonKey);
+  const viteSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '';
+  const viteSupabaseAnon = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? '';
+  const supabaseUrl = (config.data?.supabaseUrl || viteSupabaseUrl).trim();
+  const supabaseAnonKey = (config.data?.supabaseAnonKey || viteSupabaseAnon).trim();
+  const supabaseReady = Boolean(
+    (config.data?.supabase && config.data.supabaseUrl && config.data.supabaseAnonKey) ||
+      (viteSupabaseUrl && viteSupabaseAnon),
+  );
   const supabase = useMemo(
-    () => (supabaseReady ? getSupabase(config.data!.supabaseUrl, config.data!.supabaseAnonKey) : null),
-    [supabaseReady, config.data],
+    () => (supabaseReady && supabaseUrl && supabaseAnonKey ? getSupabase(supabaseUrl, supabaseAnonKey) : null),
+    [supabaseReady, supabaseUrl, supabaseAnonKey],
   );
 
   const [mode, setMode] = useState<Mode>('signin');
@@ -301,22 +313,34 @@ export default function Login() {
               </>
             ) : (
               <>
-                <div className="mt-6 flex items-start gap-3 rounded-xl border border-sky-600/25 bg-sky-600/10 p-3.5">
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                   <p className="text-xs leading-relaxed text-slate-600">
-                    <span className="font-semibold text-slate-900">One-click sign in.</span> Your account
-                    is provisioned automatically on first login — strategies, accounts, and support
-                    history are saved to your workspace.
+                    <span className="font-semibold text-slate-900">Email sign-in loading…</span> If this stays,
+                    restart <span className="font-mono">npm run dev</span> so{' '}
+                    <span className="font-mono">VITE_SUPABASE_URL</span> is picked up. Do not use Kimi OAuth for this project.
                   </p>
                 </div>
 
-                <Button
-                  size="lg"
-                  onClick={() => { window.location.href = getOAuthUrl(); }}
-                  className="btn-glow mt-7 h-12 w-full bg-royal-500 text-base font-semibold text-white hover:bg-royal-600"
-                >
-                  Sign In to Intelligence <ArrowRight className="ml-1.5 h-4.5 w-4.5" />
-                </Button>
+                {(import.meta.env.VITE_KIMI_AUTH_URL as string | undefined)?.trim() &&
+                (import.meta.env.VITE_APP_ID as string | undefined)?.trim() ? (
+                  <Button
+                    size="lg"
+                    onClick={() => {
+                      try {
+                        window.location.href = getOAuthUrl();
+                      } catch (err) {
+                        setMessage({
+                          kind: 'err',
+                          text: err instanceof Error ? err.message : 'Sign-in is not configured.',
+                        });
+                      }
+                    }}
+                    className="btn-glow mt-7 h-12 w-full bg-royal-500 text-base font-semibold text-white hover:bg-royal-600"
+                  >
+                    Sign In to Intelligence <ArrowRight className="ml-1.5 h-4.5 w-4.5" />
+                  </Button>
+                ) : null}
 
                 <Button
                   size="lg"
