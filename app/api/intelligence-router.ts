@@ -51,14 +51,28 @@ import {
 } from "./intelligence/intent";
 import { stageTicketFromAdvisory } from "./intelligence/stage-ticket";
 import {
+  cancelOrdersFromNl,
   formatIntelligenceAccountStatus,
+  isCancelWorkingOrderIntent,
+  isFollowUpProtectiveStopIntent,
+  isMakeTrailingStopIntent,
   isPaperIntelligenceVenue,
+  isPortfolioStatusAsk,
+  isSellProfitableIntent,
+  isStopToBreakevenIntent,
+  isTakeProfitIntent,
   parseLimitPrice,
   parseStopLossPct,
+  parseTakeProfitPct,
   parseTrailPct,
   resolveSellQtyFromHoldings,
   stageCloseAllPositions,
   stageExplicitIntelligenceOrder,
+  stageProtectiveStopForPosition,
+  stageSellAllProfitable,
+  stageStopToBreakeven,
+  stageTakeProfitOrder,
+  stageTrailingStopForPosition,
   stopFromPct,
 } from "./intelligence/ibkr-paper-nl";
 import { isCloseAllPositionsIntent } from "./intelligence/trade-symbol";
@@ -300,6 +314,25 @@ export async function runIntelligenceChat(
   // agentChat, which no longer saves — persistence is centralized here so
   // Recent Conversations always has the full thread).
   if (conversationId) await saveMessage(user.id, "user", text, conversationId);
+
+  // Live book FIRST — before context/Lucia. "what i have" / "current holdings" must never
+  // get a model reply that claims there is no portfolio snapshot.
+  if (isPortfolioStatusAsk(text)) {
+    try {
+      const accountStatus = await formatIntelligenceAccountStatus(user.id, text);
+      if (accountStatus) {
+        if (conversationId) await saveMessage(user.id, "assistant", accountStatus, conversationId);
+        return { kind: "text" as const, reply: accountStatus };
+      }
+    } catch (e) {
+      console.error("[intelligence] portfolio status failed", e);
+      const fallback =
+        `I couldn't load your live book just now (${(e as Error).message}).\n\n` +
+        `Check IBKR Client Portal Gateway login, then try again: **Show my open positions**.`;
+      if (conversationId) await saveMessage(user.id, "assistant", fallback, conversationId);
+      return { kind: "text" as const, reply: fallback };
+    }
+  }
 
   // Pack G1 — refuse memory-only market / buy probes before any LLM path.
   if (isMemoryBypassProbe(text)) {
@@ -773,6 +806,17 @@ export async function runIntelligenceChat(
         return { kind: "text" as const, reply: res.ok ? `🚫 ${res.message}` : `⛔ ${res.message}` };
       }
 
+      // 1b) Live book / holdings — always answer from IBKR + ledger BEFORE Lucia.
+      // Prevents "I can't see your portfolio" when user says "what i have" / "current holdings".
+      if (isPortfolioStatusAsk(text) || isPortfolioStatusAsk(effectiveText)) {
+        const accountStatus =
+          (await formatIntelligenceAccountStatus(ctx.user.id, text)) ??
+          (await formatIntelligenceAccountStatus(ctx.user.id, effectiveText));
+        if (accountStatus) {
+          return { kind: "text" as const, reply: accountStatus };
+        }
+      }
+
       // 2) INTENT ROUTER — the deterministic switch between the AI model
       //    (conversation / reasoning / research) and the deterministic engine
       //    (analyze → protocol check → advisory → staged ticket).
@@ -921,6 +965,33 @@ export async function runIntelligenceChat(
             return { kind: "text" as const, reply: intent.quantityError };
           }
 
+          // Slice 2 — order management (cancel / stop / TP / trail / sell winners).
+          // These must run before generic buy/sell staging so research stays untouched.
+          if (isCancelWorkingOrderIntent(text)) {
+            const canceled = await cancelOrdersFromNl(ctx.user.id, text, { conversationId });
+            return { kind: "text" as const, reply: canceled.reply };
+          }
+          if (isStopToBreakevenIntent(text)) {
+            const be = await stageStopToBreakeven(ctx.user.id, text, { conversationId });
+            return { kind: "text" as const, reply: be.reply };
+          }
+          if (isTakeProfitIntent(text) && parseTakeProfitPct(text) != null) {
+            const tp = await stageTakeProfitOrder(ctx.user.id, text, { conversationId });
+            return { kind: "text" as const, reply: tp.reply };
+          }
+          if (isMakeTrailingStopIntent(text) && !/\bbuy\b/i.test(text)) {
+            const trail = await stageTrailingStopForPosition(ctx.user.id, text, { conversationId });
+            return { kind: "text" as const, reply: trail.reply };
+          }
+          if (isFollowUpProtectiveStopIntent(text) && !/\bbuy\b|\bsell\b/i.test(text)) {
+            const stop = await stageProtectiveStopForPosition(ctx.user.id, text, { conversationId });
+            return { kind: "text" as const, reply: stop.reply };
+          }
+          if (isSellProfitableIntent(text)) {
+            const sold = await stageSellAllProfitable(ctx.user.id, { conversationId });
+            return { kind: "text" as const, reply: sold.reply };
+          }
+
           // Close / flatten everything — one SELL ticket per open holding (CONFIRM each).
           if (
             isCloseAllPositionsIntent(text) ||
@@ -1045,11 +1116,27 @@ export async function runIntelligenceChat(
             if (isPaperIntelligenceVenue(venue.broker, venue.accountId)) {
               const stopPct = parseStopLossPct(text);
               const trailPct = parseTrailPct(text);
+              const tpPct = parseTakeProfitPct(text);
               const limitPx = parseLimitPrice(text);
               const last = snap.price;
-              const protectivePct = trailPct ?? stopPct ?? 1;
+              // BUY + trail%: entry LMT/MKT with protective stop; native TRAIL SELL after fill via manage intent.
+              // SELL + trail%: stage native IBKR TRAIL.
+              const protectivePct = stopPct ?? (trailPct != null ? trailPct : 1);
               const stop = stopFromPct(side, last, protectivePct);
-              const orderType = /\bmarket\b/i.test(text) ? "MKT" : "LMT";
+              const target =
+                tpPct != null && side === "BUY"
+                  ? +(last * (1 + tpPct / 100)).toFixed(2)
+                  : undefined;
+              const orderType =
+                /\bmarket\b/i.test(text)
+                  ? "MKT"
+                  : trailPct != null && side === "SELL"
+                    ? "TRAIL"
+                    : "LMT";
+              const trailAmount =
+                orderType === "TRAIL" && trailPct != null
+                  ? +(last * (trailPct / 100)).toFixed(2)
+                  : undefined;
               const staged = await stageExplicitIntelligenceOrder({
                 userId: ctx.user.id,
                 symbol: intent.symbol,
@@ -1058,19 +1145,22 @@ export async function runIntelligenceChat(
                 lastPrice: last,
                 conversationId,
                 limitPrice: limitPx ?? undefined,
-                stop,
+                stop: orderType === "TRAIL" ? undefined : stop,
+                target,
                 orderType,
+                trailAmount,
                 strategy: "INTELLIGENCE_NL",
               });
-              if (staged.ok && trailPct != null) {
-                return {
-                  kind: "text" as const,
-                  reply:
-                    staged.reply +
-                    `\n\n_Note: trailing ${trailPct}% was recorded as a **protective stop** at $${stop} for this paper ticket. Native IBKR TRAIL child orders ship in a follow-up slice._`,
-                };
+              let reply = staged.reply;
+              if (staged.ok && target != null) {
+                reply += `\n\n_Take-profit target on ticket: $${target} (+${tpPct}%). Stage a LMT SELL after fill with "Take profit on half at ${tpPct}%" if you want a live TP order._`;
               }
-              return { kind: "text" as const, reply: staged.reply };
+              if (staged.ok && trailPct != null && side === "BUY") {
+                reply +=
+                  `\n\n_Trail ${trailPct}% (~$${+(last * (trailPct / 100)).toFixed(2)}) is on the ticket as protective stop. ` +
+                  `After fill, say **"Make it a trailing stop"** or **"Trail ${intent.symbol} by ${trailPct}%"** to stage a native IBKR TRAIL SELL._`;
+              }
+              return { kind: "text" as const, reply };
             }
           }
 

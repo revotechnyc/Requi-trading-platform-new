@@ -68,7 +68,9 @@ export const authRouter = createRouter({
     );
     return { success: true };
   }),
-  logout: authedQuery.mutation(async ({ ctx }) => {
+  // Public so logout still clears the cookie even if the client already dropped
+  // its Bearer token (otherwise users get stuck bouncing login ↔ loading).
+  logout: publicQuery.mutation(async ({ ctx }) => {
     const opts = getSessionCookieOptions(ctx.req.headers);
     ctx.resHeaders.append(
       "set-cookie",

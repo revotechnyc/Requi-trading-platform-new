@@ -3,7 +3,6 @@ import { getDb } from "../queries/connection";
 import { autonomousConfigs, autonomousSessions, brokerAccounts, orderTickets, positions } from "@db/schema";
 import { computedAllocation, emitEvent } from "./service";
 import { proposeTicket, autoExecuteTicket } from "../queries/tickets";
-import { isAutoExecuteEnabled } from "../engine/portfolio";
 import { getSnapshot } from "../marketdata/gateway/gateway";
 import { gatewayHealth } from "../marketdata/ibkr-data";
 import { configuredIbkrAccountId, isIbkrBrokerAccount } from "../brokers/ibkr";
@@ -221,38 +220,30 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     runSessionId: s.id,
   });
 
-  if (await isAutoExecuteEnabled(s.userId)) {
-    const exec = await autoExecuteTicket(s.userId, result.ticket.ticketId);
-    await emitEvent(s.id, s.userId, {
-      phase: "BROKER_CONFIRM",
-      kind: exec.ok ? "success" : "error",
-      symbol,
-      message: exec.ok
-        ? `IBKR Paper ${exec.message} · ticket ${result.ticket.ticketId}`
-        : `IBKR Paper auto-execute failed (${exec.reasonCode}): ${exec.message} · ticket ${result.ticket.ticketId} remains staged`,
-    });
-    if (exec.ok && (exec.ticket?.state === "FILLED" || exec.ticket?.state === "WORKING")) {
-      await db
-        .update(autonomousSessions)
-        .set({
-          arc: "holding",
-          symbol,
-          entry: String(entry),
-          stop: String(stop),
-          target: String(target),
-          quantity: qty,
-        })
-        .where(eq(autonomousSessions.id, s.id));
-    }
-    return;
-  }
-
+  // Client feedback: Autonomous event path must not wait for manual CONFIRM on paper.
+  // Intelligence / chat tickets still require CONFIRM ORDER separately.
+  const exec = await autoExecuteTicket(s.userId, result.ticket.ticketId);
   await emitEvent(s.id, s.userId, {
-    phase: "ORDER_SUBMITTED",
-    kind: "warn",
+    phase: "BROKER_CONFIRM",
+    kind: exec.ok ? "success" : "error",
     symbol,
-    message: `Staged for IBKR Paper — CONFIRM ORDER ${result.ticket.ticketId} (auto-execute is off) · nothing sent yet`,
+    message: exec.ok
+      ? `IBKR Paper ${exec.message} · ticket ${result.ticket.ticketId} (auto)`
+      : `IBKR Paper auto-execute failed (${exec.reasonCode}): ${exec.message} · ticket ${result.ticket.ticketId}`,
   });
+  if (exec.ok && (exec.ticket?.state === "FILLED" || exec.ticket?.state === "WORKING")) {
+    await db
+      .update(autonomousSessions)
+      .set({
+        arc: "holding",
+        symbol,
+        entry: String(entry),
+        stop: String(stop),
+        target: String(target),
+        quantity: qty,
+      })
+      .where(eq(autonomousSessions.id, s.id));
+  }
 }
 
 async function tickIbkrHolding(s: Session, cfg: Config): Promise<void> {
@@ -318,17 +309,16 @@ async function tickIbkrHolding(s: Session, cfg: Config): Promise<void> {
     runSessionId: s.id,
   });
 
-  const auto = await isAutoExecuteEnabled(s.userId);
-  const exec = auto ? await autoExecuteTicket(s.userId, result.ticket.ticketId) : null;
+  const exec = await autoExecuteTicket(s.userId, result.ticket.ticketId);
   await emitEvent(s.id, s.userId, {
     phase: "EXIT_TRIGGERED",
     kind: hitTarget ? "success" : "warn",
     symbol: s.symbol!,
-    message: exec?.ok
-      ? `${reason} — IBKR Paper sell ${qty} ${s.symbol} · ${exec.message}`
-      : `${reason} — staged SELL ticket ${result.ticket.ticketId} · CONFIRM ORDER ${result.ticket.ticketId}`,
+    message: exec.ok
+      ? `${reason} — IBKR Paper sell ${qty} ${s.symbol} · ${exec.message} (auto)`
+      : `${reason} — IBKR Paper sell failed (${exec.reasonCode}): ${exec.message} · ticket ${result.ticket.ticketId}`,
   });
-  if (exec?.ok) {
+  if (exec.ok) {
     await db
       .update(autonomousSessions)
       .set({

@@ -97,11 +97,15 @@ export function threadStateSnapshot(userId: string, conversationId: string): Thr
 /* ---------- lexicon (versioned constants — changing a trigger is a code edit) ---------- */
 
 export const ORDER_COMMAND_RE = /^\s*(confirm|reject)\s+order\s+[a-z0-9-]+\s*$/i;
-export const STATUS_TRIGGERS = /\b(p&l|pnl|profit|loss|positions?|orders?|tickets?|monitors?|watchlist|what'?s open|how am i doing|portfolio|balance|buying\s*power|how much cash|account\s*(equity|balance)?|equity|nav)\b/i;
+export const STATUS_TRIGGERS =
+  /\b(p&l|pnl|profit|loss|positions?|holdings?|orders?|tickets?|monitors?|watchlist|what'?s\s+open|how\s+am\s+i\s+doing|portfolio|balance|buying\s*power|how\s+much\s+cash|account\s*(equity|balance)?|equity|nav|what\s+(?:do\s+)?i\s+have|what\s+am\s+i\s+holding|my\s+(?:current\s+)?(?:holdings?|positions?|portfolio)|current\s+(?:holdings?|positions?|portfolio))\b/i;
 export const STRATEGIZE_TRIGGERS = /\b(strategi[sz]e|build (me )?a strategy|create (a )?strategy|design (a )?strategy|write (a )?strategy|backtest|game ?plan|trade plan)\b/i;
 /** Bare "short" excluded — "short list" is research scope, not short-selling. */
 export const TRADE_TRIGGERS =
   /\b(buy|sell|long|flatten|exit|add to|go short|short the)\b|\bclose\s+all\b|\bclose\s+(?:my\s+|the\s+)?(?:[A-Za-z.]{1,12}\s+)?position\b|\bclose\s+(?:my\s+|the\s+)?[A-Za-z.]{1,12}\b|\b(all\s+the\s+holdings|all\s+my\s+holdings|all\s+positions|all\s+open\s+positions)\b|\bshort\s+(?:\d+|[A-Za-z$]{1,6}\b)/i;
+/** Cancel / stop / TP / trail follow-ups — TRADE_INTENT, not CHAT. */
+export const ORDER_MANAGE_TRIGGERS =
+  /\bcancel\s+(?:all\s+)?(?:my\s+|the\s+|open\s+)?(?:orders?|order)\b|\bcancel\s+(?:my\s+|the\s+)?(?:open\s+)?[A-Za-z.]{1,12}|\bmove\s+(?:my\s+)?stop|\bstop\s*(?:loss)?\s+to\s+breakeven|\bbreakeven\s+stop|\btake\s*profit|\badd\s+(?:a\s+)?\d+(?:\.\d+)?\s*%\s*stop|\bmake\s+it\s+(?:a\s+)?trail|\btrail(?:ing)?\s+(?:it\s+)?(?:by\s+)?\d|\bsell\s+(?:all\s+)?(?:my\s+)?profit|\bsell\s+winners\b/i;
 export const STAGE_FOLLOWUP_RE = /\b(stage|stage it|do it|go ahead|place it|send it|buy it|sell it|execute|proceed|let'?s do it|confirmed?)\b/i;
 const QUESTION_OR_NEGATION =
   /(\?|^\s*what\s+should\s+i\s+buy\b|^\s*what\s+(?:stock\s+)?should\s+i\b|^\s*(should|would|could|is it|what if|what happens|why did|when (to|should)|how about)|\b(don'?t|do not|hold off|not yet|wait)\b)/i;
@@ -206,10 +210,18 @@ export function classifyIntent(text: string, thread: ThreadState): IntentResult 
   }
 
   const hasTradeTrigger = TRADE_TRIGGERS.test(text);
+  const hasManageTrigger = ORDER_MANAGE_TRIGGERS.test(text);
   const isQuestionOrNegated = QUESTION_OR_NEGATION.test(text);
 
-  if (hasTradeTrigger && !isQuestionOrNegated) {
-    return { ...base, side: base.side ?? "BUY", mode: "TRADE_INTENT", reason: "imperative trade instruction" };
+  if ((hasTradeTrigger || hasManageTrigger) && !isQuestionOrNegated) {
+    return {
+      ...base,
+      side: base.side ?? (hasManageTrigger ? "SELL" : "BUY"),
+      mode: "TRADE_INTENT",
+      reason: hasManageTrigger && !hasTradeTrigger
+        ? "order management imperative (cancel / stop / TP / trail)"
+        : "imperative trade instruction",
+    };
   }
   if (STRATEGIZE_TRIGGERS.test(text)) {
     return { ...base, mode: "STRATEGIZE", reason: "strategy-building request — deterministic strategy builder path" };

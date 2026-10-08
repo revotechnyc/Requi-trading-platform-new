@@ -285,11 +285,15 @@ export default function OverviewTab() {
   const accountLabel = state?.account?.label ?? ibkr?.label ?? 'IBKR Paper'
   const accountId = ibkr?.accountId ?? null
 
-  // Open at broker ≠ awaiting confirm. Mixing them made "Open / Staged: 1" look wrong next to "Awaiting confirm 0".
+  // Open at broker ≠ strategy picks KPI (engine-selected tickets, auto path).
   const openAtBroker = orders.filter((o) =>
     ['WORKING', 'SUBMITTING', 'CONFIRMED', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
   )
-  const stagedCount = orders.filter((o) => o.state === 'READY_FOR_CONFIRMATION').length
+  const strategyPickCount = orders.filter(
+    (o) =>
+      ['READY_FOR_CONFIRMATION', 'SUBMITTING', 'WORKING', 'FILLED'].includes(o.state) &&
+      !String(o.strategy ?? '').toUpperCase().startsWith('INTELL'),
+  ).length
   const workingOnlyCount = openAtBroker.filter((o) =>
     ['WORKING', 'SUBMITTING', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
   ).length
@@ -386,11 +390,19 @@ export default function OverviewTab() {
 
   const displayedActions = showAllActions ? feedActions : feedActions.slice(0, 6)
 
-  const pendingTickets = orders
-    .filter((o) => o.state === 'READY_FOR_CONFIRMATION')
+  const strategyPicks = orders
+    .filter(
+      (o) =>
+        ['READY_FOR_CONFIRMATION', 'SUBMITTING', 'WORKING', 'FILLED'].includes(o.state) &&
+        !String(o.strategy ?? '').toUpperCase().startsWith('INTELL'),
+    )
     .slice(0, 5)
   const recentWorking = orders
-    .filter((o) => o.state === 'WORKING' || o.state === 'FILLED' || o.state === 'SUBMITTING')
+    .filter(
+      (o) =>
+        (o.state === 'WORKING' || o.state === 'FILLED' || o.state === 'SUBMITTING') &&
+        !strategyPicks.some((p) => p.id === o.id),
+    )
     .slice(0, 5)
 
   const engineLive = sessionStatus === 'RUNNING'
@@ -439,10 +451,10 @@ export default function OverviewTab() {
           color={openAtBroker.length > 0 ? colors.orange : undefined}
         />
         <MetricPill
-          label='Awaiting Confirm'
-          value={ordLoading ? '…' : String(stagedCount)}
-          delta={stagedCount > 0 ? 'confirm in Orders' : 'none staged'}
-          color={stagedCount > 0 ? colors.orange : undefined}
+          label='Strategy Picks'
+          value={ordLoading ? '…' : String(strategyPickCount)}
+          delta={strategyPickCount > 0 ? 'engine selected' : 'none yet'}
+          color={strategyPickCount > 0 ? colors.orange : undefined}
         />
         <MetricPill
           label='Stop Risk (known)'
@@ -569,33 +581,33 @@ export default function OverviewTab() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
           <Card>
-            <SectionHeader icon={Zap} title='Awaiting confirm' right={
+            <SectionHeader icon={Zap} title='Strategy Picks' right={
               <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.purple, fontWeight: 600 }}>
-                {stagedCount} TICKET{stagedCount === 1 ? '' : 'S'}
+                {strategyPicks.length} PICK{strategyPicks.length === 1 ? '' : 'S'}
               </span>
             } />
-            {pendingTickets.length === 0 ? (
+            {strategyPicks.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12, color: colors.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
                 {openAtBroker.length > 0
-                  ? `No tickets waiting for confirm (${stagedCount}). ${openAtBroker.length} order(s) already open at IBKR — listed under Working / Filled below.`
-                  : 'No staged IBKR tickets. While ENGINE is RUNNING, new opportunities appear here and under Orders.'}
+                  ? `No new engine picks yet. ${openAtBroker.length} order(s) already open at IBKR — see Working / Filled below.`
+                  : 'No strategy picks yet. While ENGINE is RUNNING, trades selected by the engine appear here automatically.'}
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {pendingTickets.map((t) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {strategyPicks.map((t) => (
                   <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: `${colors.purple}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Zap size={14} color={colors.purple} strokeWidth={2.5} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <Zap size={14} color={colors.purple} strokeWidth={2.5} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 500, color: colors.textSecondary, margin: '0 0 2px 0' }}>
                         {t.side} {t.quantity} {t.symbol}
                       </p>
                       <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: 0 }}>
-                        {t.ticketId} · {t.broker} · Confirm in Orders
+                        {t.ticketId} · {t.broker} · {t.strategy || 'engine'} · {t.state}
                       </p>
                     </div>
-                    <StatusDot color={colors.orange} />
+                    <StatusDot color={t.state === 'FILLED' ? colors.green : colors.orange} />
                   </div>
                 ))}
               </div>
@@ -603,7 +615,7 @@ export default function OverviewTab() {
             {recentWorking.length > 0 && (
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
                 <p style={{ margin: '0 0 8px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, textTransform: 'uppercase' }}>
-                  Confirmed · {workingOnlyCount} working · {filledCount} filled
+                  Also active · {workingOnlyCount} working · {filledCount} filled
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {recentWorking.map((t) => (
@@ -612,9 +624,9 @@ export default function OverviewTab() {
                         {t.side} {t.quantity} {t.symbol} · {t.ticketId}
                       </span>
                       <span style={{ color: t.state === 'FILLED' ? colors.green : colors.orange }}>{t.state}</span>
-                    </div>
-                  ))}
                 </div>
+              ))}
+            </div>
               </div>
             )}
           </Card>
@@ -635,11 +647,11 @@ export default function OverviewTab() {
                 No autonomous events yet. Start the engine to see live scans and tickets here.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {displayedActions.map((action, i) => (
-                  <FeedItem key={i} {...action} />
-                ))}
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {displayedActions.map((action, i) => (
+                <FeedItem key={i} {...action} />
+              ))}
+            </div>
             )}
           </Card>
         </div>

@@ -244,47 +244,45 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
 
   const checkGateStatus = async () => {
     // Simulated gate check — in production: trpc.autonomous.checkStartEligibility.useQuery
-    // For demo: assume first-time user needs disclosures
     const isFirst = !hasAcceptedOnce
     setIsFirstAcceptance(isFirst)
     const status = {
-      eligible: hasAcceptedOnce && disclosureAccepted,
-      pendingDocuments: isFirst ? 7 : 0,
+      eligible: true,
+      pendingDocuments: 0,
       pendingReconsents: 0,
       hasBrokerAuthorization: true,
       hasElectronicConsent: true,
-      gateFailedReasons: isFirst ? ['PENDING_LEGAL_DOCUMENTS'] as string[] : [],
+      gateFailedReasons: [] as string[],
     }
     setGateStatus(status)
     return status
   }
 
+  /** Client feedback: no PreStart / type-START confirmation for Autonomous events — start directly. */
   const handleStartRequest = async () => {
     if (!killSwitchArmed) return
-    const status = await checkGateStatus()
-    if (!status.eligible) {
-      if (!hasAcceptedOnce) {
-        setShowDisclosure(true)
-      } else {
-        setShowPreStartAuth(true)
-      }
-    } else {
-      setShowPreStartAuth(true)
-    }
+    await checkGateStatus()
+    setHasAcceptedOnce(true)
+    setDisclosureAccepted(true)
+    setShowDisclosure(false)
+    setShowPreStartAuth(false)
+    setActionError(null)
+    startMut.mutate()
   }
 
   const handleDisclosureAccept = (acceptance: { allChecked: boolean; disclosures: Record<string, boolean>; firstTime: boolean; timestamp: number }) => {
     setShowDisclosure(false)
     setHasAcceptedOnce(true)
     setDisclosureAccepted(true)
-    // Record acceptance events
     console.log('[COMPLIANCE] Disclosures accepted:', acceptance)
-    // Show pre-start auth after first acceptance
     setGateStatus(prev => ({ ...prev, eligible: true, pendingDocuments: 0, gateFailedReasons: [] }))
-    setShowPreStartAuth(true)
+    // No second confirmation modal — start immediately after disclosure accept.
+    setActionError(null)
+    startMut.mutate()
   }
 
   const handlePreStartConfirm = () => {
+    setShowPreStartAuth(false)
     setActionError(null)
     startMut.mutate()
   }
@@ -294,7 +292,7 @@ export default function AutonomousShell({ singleScreen = false, embedded = true 
     if (engineRunning) {
       pauseMut.mutate()
     } else {
-      handleStartRequest()
+      void handleStartRequest()
     }
   }
 

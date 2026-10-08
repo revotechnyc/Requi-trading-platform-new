@@ -5,7 +5,8 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck, Sparkles, Zap } from '
 import { Button } from '@/components/ui/button';
 import { LogoMark } from '@/components/Brand';
 import { trpc } from '@/providers/trpc';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabase, signOutSupabaseLocal } from '@/lib/supabase';
+import { SIGNING_OUT_KEY } from '@/hooks/useAuth';
 
 function getOAuthUrl() {
   const kimiAuthUrl = (import.meta.env.VITE_KIMI_AUTH_URL as string | undefined)?.trim();
@@ -102,14 +103,31 @@ export default function Login() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   // OAuth redirect (Google via Supabase) lands back here with a session —
-  // forward into the app.
+  // forward into the app. After explicit logout (?signedOut=1) do NOT bounce
+  // back to /app off a stale Supabase session.
   useEffect(() => {
     if (!supabase) return;
+    const signedOut = params.get('signedOut') === '1';
+    if (signedOut) {
+      try {
+        sessionStorage.removeItem(SIGNING_OUT_KEY);
+      } catch {
+        /* ignore */
+      }
+      void signOutSupabaseLocal().then(() => {
+        // Drop the flag so a later OAuth return can still auto-enter /app.
+        if (window.location.search.includes('signedOut=')) {
+          window.history.replaceState({}, '', '/login');
+        }
+      });
+      return;
+    }
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('recovery');
         return;
       }
+      if (event === 'SIGNED_OUT') return;
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
         window.location.href = '/app';
       }
@@ -118,7 +136,7 @@ export default function Login() {
       if (data.session) window.location.href = '/app';
     });
     return () => sub.subscription.unsubscribe();
-  }, [supabase]);
+  }, [supabase, params]);
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();

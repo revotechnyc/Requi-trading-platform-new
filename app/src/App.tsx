@@ -56,17 +56,19 @@ function LoadingScreen() {
 
 function Protected({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth({ redirectOnUnauthenticated: true });
-  // Escape hatch if auth queries hang (DB / gateway) — force login instead of infinite spinner.
+  // Escape hatch if auth queries hang — video showed stuck "Loading your workspace…" on /app.
   const [escape, setEscape] = useState(false);
   useEffect(() => {
-    const t = window.setTimeout(() => setEscape(true), 5_000);
+    const t = window.setTimeout(() => setEscape(true), 2_500);
     return () => window.clearTimeout(t);
   }, []);
   useEffect(() => {
-    if (escape && !isAuthenticated) {
-      window.location.replace('/login');
+    // Always leave /app if still loading or unauthenticated after the cap.
+    if (!escape) return;
+    if (isLoading || !isAuthenticated) {
+      window.location.replace('/login?signedOut=1');
     }
-  }, [escape, isAuthenticated]);
+  }, [escape, isLoading, isAuthenticated]);
 
   if (isLoading && !escape) return <LoadingScreen />;
   if (!isAuthenticated) {

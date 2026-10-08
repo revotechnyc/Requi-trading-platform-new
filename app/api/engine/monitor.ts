@@ -4,24 +4,16 @@ import { loadConfig } from "./config";
 import { SetupMachine, type MachineEvent, type Proposal } from "./state-machine";
 import { proposeTicket, autoExecuteTicket } from "../queries/tickets";
 import { sizePosition, portfolioHeatPct, returnCorrelation, GLOBAL_RISK } from "./risk";
-import { isAutoExecuteEnabled, openRiskDollars, listPositions } from "./portfolio";
+import { openRiskDollars, listPositions } from "./portfolio";
 import type { PublicTicket } from "../queries/tickets";
 
 /**
  * ENGINE MONITOR — module 6, execution wiring.
  *
- * The live autonomous loop for one user + symbol + strategy config:
+ *   feed refresh → SetupMachine → proposal → proposeTicket → autoExecuteTicket (paper Autonomous)
  *
- *   feed refresh (module 0) → SetupMachine evaluates latest bar
- *   → CONFIRMED proposal → governance-clamped risk sizing
- *   → proposeTicket(...) → READY_FOR_CONFIRMATION
- *   → human types CONFIRM ORDER [TICKET_ID] → existing broker path
- *
- * Phase 1 by design: the engine NEVER auto-executes. Every proposal lands
- * in the same ticketed confirmation gate used by Intelligence — the exact
- * CONFIRM string validated against the signed governance package.
- * One proposal per symbol per day (OCO across variants is enforced by the
- * machine itself; the monitor adds the per-day idempotence).
+ * Intelligence / chat tickets still require explicit CONFIRM ORDER.
+ * One proposal per symbol per day (machine + monitor idempotence).
  */
 
 const PAPER_EQUITY = 100_000; // paper-mode account equity until a live broker account is bound
@@ -176,17 +168,12 @@ export async function evaluateMonitor(userId: string, symbol: string): Promise<E
           origin: "AUTONOMOUS",
         });
         ticket = result.ticket;
-        if (await isAutoExecuteEnabled(userId)) {
-          // User opted in: AUTONOMOUS proposals execute without the CONFIRM
-          // string. Same ticket artifact, same broker path, louder audit.
-          const exec = await autoExecuteTicket(userId, result.ticket.ticketId);
-          ticket = exec.ticket ?? ticket;
-          detail = exec.ok
-            ? `AUTO-EXECUTED → ${exec.message} (${size.qty} sh, risk $${size.dollarRisk}, capped by ${size.cappedBy})`
-            : `auto-execute failed (${exec.reasonCode}: ${exec.message}) — ticket ${result.ticket.ticketId} remains staged for manual CONFIRM`;
-        } else {
-          detail = `CONFIRMED → ticket ${result.ticket.ticketId} staged (${size.qty} sh, risk $${size.dollarRisk}, capped by ${size.cappedBy}) — awaiting CONFIRM ORDER ${result.ticket.ticketId}`;
-        }
+        // Client feedback: Autonomous event proposals must not wait for manual CONFIRM on paper.
+        const exec = await autoExecuteTicket(userId, result.ticket.ticketId);
+        ticket = exec.ticket ?? ticket;
+        detail = exec.ok
+          ? `AUTO-EXECUTED → ${exec.message} (${size.qty} sh, risk $${size.dollarRisk}, capped by ${size.cappedBy})`
+          : `auto-execute failed (${exec.reasonCode}: ${exec.message}) — ticket ${result.ticket.ticketId}`;
       }
     }
   }

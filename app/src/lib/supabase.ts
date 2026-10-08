@@ -77,3 +77,40 @@ export async function getAccessToken(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Clear Supabase browser session + localStorage tokens.
+ * Required on logout — otherwise /login sees a stale session and bounces to /app
+ * (stuck on "Loading your workspace…").
+ */
+export async function signOutSupabaseLocal(): Promise<void> {
+  try {
+    if (!client) initFromViteEnv();
+    if (client) {
+      await Promise.race([
+        client.auth.signOut({ scope: "local" }),
+        new Promise((r) => setTimeout(r, 2_000)),
+      ]);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (typeof localStorage === "undefined") return;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith("sb-") ||
+          k === "requi.supabase.auth" ||
+          k.includes("supabase.auth"))
+      ) {
+        keys.push(k);
+      }
+    }
+    for (const k of keys) localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}

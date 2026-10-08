@@ -37,6 +37,11 @@ export interface ProposeInput {
   orderType: "MKT" | "LMT" | "STP" | "STP_LMT" | "TRAIL";
   limitPrice?: number;
   stopPrice?: number;
+  /**
+   * Native IBKR trailing amount ($). For TRAIL tickets we persist this in
+   * `stopPrice` (aux) so confirmTicket can rebuild OrderIntent.trailAmount.
+   */
+  trailAmount?: number;
   tif?: string;
   entry?: number;
   stop?: number;
@@ -125,6 +130,12 @@ export async function proposeTicket(userId: string, input: ProposeInput): Promis
 
   const ticketId = makeTicketId(input.strategy, await nextTicketSequence(db, input.strategy));
 
+  // TRAIL: persist trail $ in stopPrice column (CPAPI aux / trailingAmt on submit).
+  const persistedStopPrice =
+    input.orderType === "TRAIL"
+      ? (input.trailAmount ?? input.stopPrice)
+      : input.stopPrice;
+
   await db.insert(orderTickets).values({
     ticketId,
     userId,
@@ -138,7 +149,7 @@ export async function proposeTicket(userId: string, input: ProposeInput): Promis
     quantity: input.quantity,
     orderType: input.orderType,
     limitPrice: input.limitPrice !== undefined ? String(input.limitPrice) : null,
-    stopPrice: input.stopPrice !== undefined ? String(input.stopPrice) : null,
+    stopPrice: persistedStopPrice !== undefined ? String(persistedStopPrice) : null,
     tif: input.tif ?? "DAY",
     state: "READY_FOR_CONFIRMATION",
     entry: entry !== undefined ? String(entry) : null,
@@ -241,13 +252,16 @@ export async function confirmTicket(userId: string, ticketIdRaw: string, confirm
   // 3) Submit through the broker adapter (idempotency key travels as client order id).
   const { adapter, effective } = resolveBroker(ticket.broker as BrokerCode);
   const accountId = ticket.accountId ?? (await adapter.getAccounts())[0]?.accountId ?? "PAPER-001";
+  const isTrail = ticket.orderType === "TRAIL";
+  const auxPx = ticket.stopPrice !== null ? Number(ticket.stopPrice) : undefined;
   const intent: OrderIntent = {
     symbol: ticket.symbol,
     side: ticket.side as "BUY" | "SELL",
     quantity: ticket.quantity,
     orderType: ticket.orderType as OrderIntent["orderType"],
     limitPrice: ticket.limitPrice !== null ? Number(ticket.limitPrice) : undefined,
-    stopPrice: ticket.stopPrice !== null ? Number(ticket.stopPrice) : undefined,
+    stopPrice: isTrail ? undefined : auxPx,
+    trailAmount: isTrail ? auxPx : undefined,
     tif: (ticket.tif as OrderIntent["tif"]) ?? "DAY",
     clientOrderId: ticket.idempotencyKey,
   };
