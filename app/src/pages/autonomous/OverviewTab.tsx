@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity, Radio, TrendingUp, Shield, Zap, Clock, ChevronDown,
   Search, Filter, ArrowUpRight, ArrowDownRight,
@@ -6,6 +6,9 @@ import {
 import { colors, layout } from './design'
 import { trpc } from '@/providers/trpc'
 import TradingChart from './charts/TradingChart'
+
+/** In-flight order states that count as live execution (not completed FILLED). */
+const ACTIVE_ORDER_STATES = new Set(['READY_FOR_CONFIRMATION', 'WORKING', 'SUBMITTING'])
 
 function Card({ children, style, noPadding = false }: { children: React.ReactNode; style?: React.CSSProperties; noPadding?: boolean }) {
   return (
@@ -187,30 +190,39 @@ export default function OverviewTab() {
     { refetchInterval: 12_000, retry: 1 },
   )
 
+  // Live execution chips: only symbols with an open position or in-flight order.
+  // No hardcoded fallbacks (e.g. SPY) — empty when nothing is actively trading.
   const chartCandidates = useMemo(() => {
     const syms: string[] = []
-    for (const p of positions) {
-      if (p.symbol && !syms.includes(p.symbol)) syms.push(p.symbol)
+    const add = (raw?: string | null) => {
+      const s = String(raw || '').trim().toUpperCase()
+      if (!s || syms.includes(s)) return
+      syms.push(s)
     }
+    for (const p of positions) add(p.symbol)
     for (const r of brokerPos?.positions ?? []) {
-      if (r.symbol && Number(r.quantity) !== 0 && !syms.includes(String(r.symbol))) syms.push(String(r.symbol))
+      if (Number(r.quantity) !== 0) add(String(r.symbol))
     }
     for (const o of orders) {
-      if (['READY_FOR_CONFIRMATION', 'WORKING', 'FILLED', 'SUBMITTING'].includes(o.state) && o.symbol && !syms.includes(o.symbol)) {
-        syms.push(o.symbol)
-      }
+      if (ACTIVE_ORDER_STATES.has(o.state)) add(o.symbol)
     }
-    if (!syms.includes('SPY')) syms.push('SPY')
-    return syms.slice(0, 8)
+    return syms.slice(0, 12)
   }, [positions, orders, brokerPos])
 
   const chartSymbol = (chartSymbolOverride && chartCandidates.includes(chartSymbolOverride)
     ? chartSymbolOverride
-    : chartCandidates[0]) || 'SPY'
+    : chartCandidates[0]) || ''
+
+  // Drop selection when that symbol is no longer in the active set.
+  useEffect(() => {
+    if (chartSymbolOverride && !chartCandidates.includes(chartSymbolOverride)) {
+      setChartSymbolOverride(null)
+    }
+  }, [chartCandidates, chartSymbolOverride])
 
   const { data: history, isLoading: histLoading, isError: histError } = trpc.marketData.gatewayHistory.useQuery(
     { symbol: chartSymbol, period: '1d', interval: '1m', limit: 120 },
-    { refetchInterval: 60_000, retry: 1 },
+    { refetchInterval: 60_000, retry: 1, enabled: Boolean(chartSymbol) },
   )
 
   const candleData = useMemo(() => {
@@ -470,48 +482,63 @@ export default function OverviewTab() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Activity size={16} color={colors.purple} strokeWidth={2} />
                 <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Live execution</h3>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
-                  {chartSymbol} · 1m
-                </span>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: history?.available ? colors.green : colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
-                  {histLoading ? 'LOADING…' : history?.available ? `via ${history.source ?? 'gateway'}` : 'NO BARS'}
-                </span>
+                {chartSymbol ? (
+                  <>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+                      {chartSymbol} · 1m
+                    </span>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: history?.available ? colors.green : colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+                      {histLoading ? 'LOADING…' : history?.available ? `via ${history.source ?? 'gateway'}` : 'NO BARS'}
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, padding: '2px 8px', background: colors.bgElevated, borderRadius: 4 }}>
+                    NO ACTIVE TRADES
+                  </span>
+                )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                {chartCandidates.map((s) => (
-                  <button
-                    key={s}
-                    type='button'
-                    onClick={() => setChartSymbolOverride(s)}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: layout.pillRadius,
-                      border: `1px solid ${s === chartSymbol ? colors.borderPurple : colors.border}`,
-                      background: s === chartSymbol ? colors.activePurpleBg : colors.bgElevated,
-                      color: s === chartSymbol ? colors.purple : colors.textMuted,
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: 10,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+              {chartCandidates.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {chartCandidates.map((s) => (
+                    <button
+                      key={s}
+                      type='button'
+                      onClick={() => setChartSymbolOverride(s)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: layout.pillRadius,
+                        border: `1px solid ${s === chartSymbol ? colors.borderPurple : colors.border}`,
+                        background: s === chartSymbol ? colors.activePurpleBg : colors.bgElevated,
+                        color: s === chartSymbol ? colors.purple : colors.textMuted,
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ padding: 12, minHeight: 280 }}>
-              {histLoading && (
+              {chartCandidates.length === 0 && (
+                <p style={{ margin: 40, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
+                  No live executions right now. Tickers appear here only when there is an open position or a working order.
+                </p>
+              )}
+              {chartSymbol && histLoading && (
                 <p style={{ margin: 40, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
                   Fetching {chartSymbol} bars from market-data gateway…
                 </p>
               )}
-              {!histLoading && (histError || !history?.available || candleData.length === 0) && (
+              {chartSymbol && !histLoading && (histError || !history?.available || candleData.length === 0) && (
                 <p style={{ margin: 40, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: colors.textMuted }}>
                   No verified {chartSymbol} candles right now (gateway/Yahoo unavailable or market closed). Nothing invented.
                 </p>
               )}
-              {!histLoading && candleData.length > 0 && (
+              {chartSymbol && !histLoading && candleData.length > 0 && (
                 <TradingChart data={candleData} height={280} markers={chartMarkers} showVolume={true} showVwap={true} />
               )}
             </div>

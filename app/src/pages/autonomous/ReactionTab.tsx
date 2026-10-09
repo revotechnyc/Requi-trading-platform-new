@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Zap, Eye, Activity, BarChart3 } from 'lucide-react'
 import { colors, layout } from './design'
 import { trpc } from '@/providers/trpc'
+
+const ACTIVE_ORDER_STATES = new Set(['READY_FOR_CONFIRMATION', 'WORKING', 'SUBMITTING'])
 
 function Card({ children, accent }: { children: React.ReactNode; accent?: string }) {
   return (
@@ -77,27 +79,33 @@ export default function ReactionTab() {
 
   const candidates = useMemo(() => {
     const syms: string[] = []
-    for (const p of positions) {
-      if (p.symbol && !syms.includes(p.symbol)) syms.push(p.symbol)
+    const add = (raw?: string | null) => {
+      const s = String(raw || '').trim().toUpperCase()
+      if (!s || syms.includes(s)) return
+      syms.push(s)
     }
+    for (const p of positions) add(p.symbol)
     for (const o of orders) {
-      if (['READY_FOR_CONFIRMATION', 'WORKING', 'FILLED'].includes(o.state) && o.symbol && !syms.includes(o.symbol)) {
-        syms.push(o.symbol)
-      }
+      if (ACTIVE_ORDER_STATES.has(o.state)) add(o.symbol)
     }
-    if (!syms.includes('SPY')) syms.push('SPY')
-    return syms.slice(0, 8)
+    return syms.slice(0, 12)
   }, [positions, orders])
 
-  const symbol = (symbolOverride && candidates.includes(symbolOverride) ? symbolOverride : candidates[0]) || 'SPY'
+  const symbol = (symbolOverride && candidates.includes(symbolOverride) ? symbolOverride : candidates[0]) || ''
+
+  useEffect(() => {
+    if (symbolOverride && !candidates.includes(symbolOverride)) {
+      setSymbolOverride(null)
+    }
+  }, [candidates, symbolOverride])
 
   const { data: snap, isLoading: snapLoading } = trpc.marketData.gatewaySnapshot.useQuery(
     { symbol },
-    { refetchInterval: 15_000, retry: 1 },
+    { refetchInterval: 15_000, retry: 1, enabled: Boolean(symbol) },
   )
   const { data: hist, isLoading: histLoading } = trpc.marketData.gatewayHistory.useQuery(
     { symbol, period: '1d', interval: '1m', limit: 120 },
-    { refetchInterval: 60_000, retry: 1 },
+    { refetchInterval: 60_000, retry: 1, enabled: Boolean(symbol) },
   )
 
   const bars = hist?.bars ?? []
@@ -236,28 +244,34 @@ export default function ReactionTab() {
         <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>
           live gateway · IBKR Paper flow
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {candidates.map((s) => (
-            <button
-              key={s}
-              type='button'
-              onClick={() => setSymbolOverride(s)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: layout.pillRadius,
-                border: `1px solid ${s === symbol ? colors.borderPurple : colors.border}`,
-                background: s === symbol ? colors.activePurpleBg : colors.bgElevated,
-                color: s === symbol ? colors.purple : colors.textMuted,
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        {candidates.length > 0 ? (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {candidates.map((s) => (
+              <button
+                key={s}
+                type='button'
+                onClick={() => setSymbolOverride(s)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: layout.pillRadius,
+                  border: `1px solid ${s === symbol ? colors.borderPurple : colors.border}`,
+                  background: s === symbol ? colors.activePurpleBg : colors.bgElevated,
+                  color: s === symbol ? colors.purple : colors.textMuted,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span style={{ marginLeft: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted }}>
+            NO ACTIVE TRADES
+          </span>
+        )}
       </div>
 
       <div style={{
@@ -269,11 +283,17 @@ export default function ReactionTab() {
         fontSize: 11,
         color: colors.textSecondary,
       }}>
-        {symbol} · session {sessionStatus} · decision <span style={{ color: decisionColor, fontWeight: 600 }}>{decisionState}</span>
-        {' · '}
-        bars {reaction.barCount}
-        {reaction.source ? ` via ${reaction.source}` : ''}
-        {loading ? ' · loading…' : ''}
+        {!symbol
+          ? 'No live executions — tickers appear when there is an open position or working order.'
+          : (
+            <>
+              {symbol} · session {sessionStatus} · decision <span style={{ color: decisionColor, fontWeight: 600 }}>{decisionState}</span>
+              {' · '}
+              bars {reaction.barCount}
+              {reaction.source ? ` via ${reaction.source}` : ''}
+              {loading ? ' · loading…' : ''}
+            </>
+          )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
