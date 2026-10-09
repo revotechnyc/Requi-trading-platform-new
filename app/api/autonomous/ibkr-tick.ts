@@ -6,9 +6,11 @@ import { proposeTicket, autoExecuteTicket } from "../queries/tickets";
 import { getSnapshot } from "../marketdata/gateway/gateway";
 import { gatewayHealth } from "../marketdata/ibkr-data";
 import { configuredIbkrAccountId, isIbkrBrokerAccount } from "../brokers/ibkr";
-
-const IBKR_UNIVERSE = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "SPY", "QQQ"];
-const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+import {
+  earningsAutoTradeEnabled,
+  getOpportunityScan,
+  nextExecutablePick,
+} from "./opportunity-scan";
 
 /**
  * Paper sessions stay RUNNING through gateway blips — we only skip new orders.
@@ -16,14 +18,10 @@ const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
  */
 const healthFailStreak = new Map<string, number>();
 const HEALTH_WARN_EVERY = 3;
-
-const STRATEGY_NAMES = [
-  "Pre-Earnings Sentiment",
-  "Through-Earnings Event",
-  "Earnings-Day Reaction",
-  "Post-Earnings Continuation",
-  "General Intraday",
-];
+/** Avoid spamming new entries while still scanning every tick. */
+const MIN_MS_BETWEEN_ENTRIES = 3 * 60 * 1000;
+const lastEntryAt = new Map<string, number>();
+const lastScanAnnounceAt = new Map<string, number>();
 
 type Session = typeof autonomousSessions.$inferSelect;
 type Config = typeof autonomousConfigs.$inferSelect;
@@ -51,7 +49,6 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
   if (!health.ok || !accountConfigured) {
     const fails = (healthFailStreak.get(s.id) ?? 0) + 1;
     healthFailStreak.set(s.id, fails);
-    // Keep RUNNING — paper engine must not die on a flaky /iserver/auth/status tick.
     if (fails === 1 || fails % HEALTH_WARN_EVERY === 0) {
       await emitEvent(s.id, s.userId, {
         phase: "MARKET_DATA",
@@ -101,9 +98,8 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     )
     .limit(1);
   if (staged) {
-    // Avoid spamming Events every 2.5s while a ticket waits for Confirm.
-    const last = (s as { lastEventAt?: Date | string | null }).lastEventAt
-    const lastMs = last ? new Date(last).getTime() : 0
+    const last = (s as { lastEventAt?: Date | string | null }).lastEventAt;
+    const lastMs = last ? new Date(last).getTime() : 0;
     if (!lastMs || Date.now() - lastMs >= 30_000) {
       await emitEvent(s.id, s.userId, {
         phase: "ORDER_SUBMITTED",
@@ -115,33 +111,79 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     return;
   }
 
-  const roll = Math.random();
-  if (roll < 0.6) {
-    await emitEvent(s.id, s.userId, {
-      phase: "MARKET_SCAN",
-      message: `Scanning IBKR Paper universe — ${IBKR_UNIVERSE.join(", ")}`,
-    });
+  const openRows = await db
+    .select({ symbol: positions.symbol, quantity: positions.quantity, avgEntry: positions.avgEntry })
+    .from(positions)
+    .where(and(eq(positions.userId, s.userId), eq(positions.status, "OPEN"), eq(positions.broker, "IBKR")));
+  const openSymbols = new Set(openRows.map((p) => p.symbol.toUpperCase()));
+
+  if (openRows.length >= cfg.maxPositions) {
+    const lastAnn = lastScanAnnounceAt.get(s.id) ?? 0;
+    if (Date.now() - lastAnn >= 60_000) {
+      lastScanAnnounceAt.set(s.id, Date.now());
+      await emitEvent(s.id, s.userId, {
+        phase: "RISK_CHECK",
+        kind: "risk",
+        message: `Max simultaneous positions (${openRows.length}/${cfg.maxPositions}) — scan continues, new entries paused`,
+      });
+    }
     return;
   }
-  if (roll < 0.82) {
-    const symbol = pick(IBKR_UNIVERSE);
+
+  let scan;
+  try {
+    scan = await getOpportunityScan(s.userId, { excludeSymbols: [...openSymbols] });
+  } catch (e) {
     await emitEvent(s.id, s.userId, {
-      phase: "OPPORTUNITY",
+      phase: "MARKET_DATA",
       kind: "warn",
-      symbol,
-      message: `${symbol} evaluated on IBKR Paper — entry criteria unmet · monitoring continues`,
+      message: `Opportunity scan failed: ${(e as Error).message}`,
     });
     return;
   }
 
-  const symbol = pick(IBKR_UNIVERSE);
-  const quote = await lastPrice(s.userId, symbol);
+  const lastAnn = lastScanAnnounceAt.get(s.id) ?? 0;
+  if (Date.now() - lastAnn >= 45_000) {
+    lastScanAnnounceAt.set(s.id, Date.now());
+    const earnNote = scan.earningsAvailable
+      ? earningsAutoTradeEnabled()
+        ? "earnings sleeve ON"
+        : "earnings evaluate-only (auto-trade off)"
+      : `earnings calendar unavailable${scan.earningsError ? `: ${scan.earningsError}` : ""}`;
+    await emitEvent(s.id, s.userId, {
+      phase: "MARKET_SCAN",
+      message: `${scan.message} · ${earnNote}`,
+    });
+  }
+
+  const pick = nextExecutablePick(scan, openSymbols);
+  if (!pick) {
+    // Surface top non-executable earnings evaluate-only pick occasionally.
+    const evalOnly = scan.candidates.find((c) => !c.executable && !openSymbols.has(c.symbol));
+    if (evalOnly && Date.now() - lastAnn >= 45_000) {
+      await emitEvent(s.id, s.userId, {
+        phase: "OPPORTUNITY",
+        kind: "warn",
+        symbol: evalOnly.symbol,
+        message: `${evalOnly.symbol} · ${evalOnly.strategy} — ${evalOnly.reason}`,
+      });
+    }
+    return;
+  }
+
+  const sinceEntry = Date.now() - (lastEntryAt.get(s.id) ?? 0);
+  if (sinceEntry < MIN_MS_BETWEEN_ENTRIES) {
+    return;
+  }
+
+  // Re-verify live quote immediately before ticket (scan may be up to ~90s old).
+  const quote = await lastPrice(s.userId, pick.symbol);
   if (!quote) {
     await emitEvent(s.id, s.userId, {
       phase: "MARKET_DATA",
       kind: "warn",
-      symbol,
-      message: `${symbol} — no verified snapshot · skipped (will not invent a price for IBKR Paper)`,
+      symbol: pick.symbol,
+      message: `${pick.symbol} — no verified snapshot · skipped (will not invent a price for IBKR Paper)`,
     });
     return;
   }
@@ -150,32 +192,19 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
   const stopPct = parseFloat(cfg.stopLossPct) / 100;
   const stop = +(entry * (1 - stopPct)).toFixed(2);
   const target = +(entry * (1 + stopPct * 2)).toFixed(2);
-  const strategy = pick(STRATEGY_NAMES);
+  const strategy = pick.strategy;
 
-  const openRows = await db
-    .select({ quantity: positions.quantity, avgEntry: positions.avgEntry })
-    .from(positions)
-    .where(and(eq(positions.userId, s.userId), eq(positions.status, "OPEN"), eq(positions.broker, "IBKR")));
   const allocated = computedAllocation(cfg, account);
   const deployed = openRows.reduce((a, p) => a + p.quantity * parseFloat(p.avgEntry), 0);
   const available = allocated - deployed;
   const maxPosPct = parseFloat(cfg.maxPositionSizePct) / 100;
   const maxNotional = Math.min(available, allocated * maxPosPct);
 
-  if (openRows.length >= cfg.maxPositions) {
-    await emitEvent(s.id, s.userId, {
-      phase: "RISK_CHECK",
-      kind: "risk",
-      symbol,
-      message: `Risk check REJECTED — max simultaneous positions (${openRows.length}/${cfg.maxPositions})`,
-    });
-    return;
-  }
   if (maxNotional < entry) {
     await emitEvent(s.id, s.userId, {
       phase: "RISK_CHECK",
       kind: "risk",
-      symbol,
+      symbol: pick.symbol,
       message: `Risk check REJECTED — allocation exhausted for IBKR Paper`,
     });
     return;
@@ -185,19 +214,19 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
   await emitEvent(s.id, s.userId, {
     phase: "OPPORTUNITY",
     kind: "success",
-    symbol,
-    message: `${symbol} opportunity — last ${entry.toFixed(2)} via ${quote.source} · IBKR Paper`,
-    payload: { price: entry, venue: "IBKR" },
+    symbol: pick.symbol,
+    message: `${pick.symbol} opportunity — ${pick.reason} · last ${entry.toFixed(2)} via ${quote.source}`,
+    payload: { price: entry, venue: "IBKR", score: pick.score, sleeve: pick.sleeve },
   });
   await emitEvent(s.id, s.userId, {
     phase: "STRATEGY_SELECTED",
-    symbol,
+    symbol: pick.symbol,
     message: `Strategy: ${strategy} · entry ${entry.toFixed(2)} · stop ${stop.toFixed(2)} · target ${target.toFixed(2)}`,
   });
   await emitEvent(s.id, s.userId, {
     phase: "RISK_CHECK",
     kind: "success",
-    symbol,
+    symbol: pick.symbol,
     message: `Risk validation passed — size ${qty} sh · IBKR Paper ${await ibkrVenueId()}`,
   });
 
@@ -206,7 +235,7 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     strategy,
     broker: "IBKR",
     accountId: venueId,
-    symbol,
+    symbol: pick.symbol,
     side: "BUY",
     quantity: qty,
     orderType: "LMT",
@@ -220,13 +249,12 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
     runSessionId: s.id,
   });
 
-  // Client feedback: Autonomous event path must not wait for manual CONFIRM on paper.
-  // Intelligence / chat tickets still require CONFIRM ORDER separately.
   const exec = await autoExecuteTicket(s.userId, result.ticket.ticketId);
+  lastEntryAt.set(s.id, Date.now());
   await emitEvent(s.id, s.userId, {
     phase: "BROKER_CONFIRM",
     kind: exec.ok ? "success" : "error",
-    symbol,
+    symbol: pick.symbol,
     message: exec.ok
       ? `IBKR Paper ${exec.message} · ticket ${result.ticket.ticketId} (auto)`
       : `IBKR Paper auto-execute failed (${exec.reasonCode}): ${exec.message} · ticket ${result.ticket.ticketId}`,
@@ -236,7 +264,7 @@ export async function tickIbkrSession(s: Session, cfg: Config, account: Account)
       .update(autonomousSessions)
       .set({
         arc: "holding",
-        symbol,
+        symbol: pick.symbol,
         entry: String(entry),
         stop: String(stop),
         target: String(target),

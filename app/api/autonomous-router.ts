@@ -116,6 +116,23 @@ const autonomousSessionRouter = createRouter({
   positions: authedQuery.query(({ ctx }) => listAutonomousPositions(ctx.user.id)),
   orders: authedQuery.query(({ ctx }) => listAutonomousOrders(ctx.user.id)),
   trades: authedQuery.query(({ ctx }) => listAutonomousTrades(ctx.user.id)),
+
+  /**
+   * Live strategy picks from the S&P≈100 + earnings scan (cached ~90s).
+   * Includes evaluate-only earnings names when auto-trade sleeve is off.
+   */
+  scanPicks: authedQuery.query(async ({ ctx }) => {
+    const { getOpportunityScan, listScanPicks, earningsAutoTradeEnabled } = await import("./autonomous/opportunity-scan");
+    const { listAutonomousPositions } = await import("./autonomous/service");
+    const open = await listAutonomousPositions(ctx.user.id);
+    const exclude = open.map((p) => p.symbol);
+    const scan = await getOpportunityScan(ctx.user.id, { excludeSymbols: exclude });
+    return {
+      ...scan,
+      picks: listScanPicks(scan, 12),
+      earningsAutoTrade: earningsAutoTradeEnabled(),
+    };
+  }),
 });
 
 /** Session control + v3 console (engine/events/settings against schema `ac`). */

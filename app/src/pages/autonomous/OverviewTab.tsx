@@ -189,6 +189,10 @@ export default function OverviewTab() {
     { broker: 'IBKR' },
     { refetchInterval: 12_000, retry: 1 },
   )
+  const { data: scan } = trpc.autonomous.scanPicks.useQuery(undefined, {
+    refetchInterval: 20_000,
+    retry: 1,
+  })
 
   // Live execution chips: only symbols with an open position or in-flight order.
   // No hardcoded fallbacks (e.g. SPY) — empty when nothing is actively trading.
@@ -301,11 +305,8 @@ export default function OverviewTab() {
   const openAtBroker = orders.filter((o) =>
     ['WORKING', 'SUBMITTING', 'CONFIRMED', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
   )
-  const strategyPickCount = orders.filter(
-    (o) =>
-      ['READY_FOR_CONFIRMATION', 'SUBMITTING', 'WORKING', 'FILLED'].includes(o.state) &&
-      !String(o.strategy ?? '').toUpperCase().startsWith('INTELL'),
-  ).length
+  const scanPicks = scan?.picks ?? []
+  const strategyPickCount = scanPicks.length
   const workingOnlyCount = openAtBroker.filter((o) =>
     ['WORKING', 'SUBMITTING', 'BROKER_ACK', 'PARTIALLY_FILLED'].includes(o.state),
   ).length
@@ -402,20 +403,12 @@ export default function OverviewTab() {
 
   const displayedActions = showAllActions ? feedActions : feedActions.slice(0, 6)
 
-  const strategyPicks = orders
-    .filter(
-      (o) =>
-        ['READY_FOR_CONFIRMATION', 'SUBMITTING', 'WORKING', 'FILLED'].includes(o.state) &&
-        !String(o.strategy ?? '').toUpperCase().startsWith('INTELL'),
-    )
-    .slice(0, 5)
   const recentWorking = orders
-    .filter(
-      (o) =>
-        (o.state === 'WORKING' || o.state === 'FILLED' || o.state === 'SUBMITTING') &&
-        !strategyPicks.some((p) => p.id === o.id),
+    .filter((o) =>
+      ['WORKING', 'SUBMITTING', 'FILLED', 'READY_FOR_CONFIRMATION'].includes(o.state) &&
+      !String(o.strategy ?? '').toUpperCase().startsWith('INTELL'),
     )
-    .slice(0, 5)
+    .slice(0, 6)
 
   const engineLive = sessionStatus === 'RUNNING'
   const ibkrLive = Boolean(ibkr?.gatewayOk && ibkr?.connectedForUser)
@@ -464,8 +457,14 @@ export default function OverviewTab() {
         />
         <MetricPill
           label='Strategy Picks'
-          value={ordLoading ? '…' : String(strategyPickCount)}
-          delta={strategyPickCount > 0 ? 'engine selected' : 'none yet'}
+          value={scan ? String(strategyPickCount) : '…'}
+          delta={
+            scan
+              ? strategyPickCount > 0
+                ? `${scan.scanned} scanned`
+                : 'none met criteria'
+              : undefined
+          }
           color={strategyPickCount > 0 ? colors.orange : undefined}
         />
         <MetricPill
@@ -610,31 +609,32 @@ export default function OverviewTab() {
           <Card>
             <SectionHeader icon={Zap} title='Strategy Picks' right={
               <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.purple, fontWeight: 600 }}>
-                {strategyPicks.length} PICK{strategyPicks.length === 1 ? '' : 'S'}
+                {scanPicks.length} PICK{scanPicks.length === 1 ? '' : 'S'}
               </span>
             } />
-            {strategyPicks.length === 0 ? (
+            {scanPicks.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12, color: colors.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
-                {openAtBroker.length > 0
-                  ? `No new engine picks yet. ${openAtBroker.length} order(s) already open at IBKR — see Working / Filled below.`
-                  : 'No strategy picks yet. While ENGINE is RUNNING, trades selected by the engine appear here automatically.'}
+                {scan?.message
+                  || 'Scanning liquid universe + earnings calendar. Picks appear only when criteria are met — nothing invented.'}
               </p>
             ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {strategyPicks.map((t) => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
+                {scanPicks.slice(0, 8).map((t) => (
+                  <div key={`${t.sleeve}-${t.symbol}-${t.strategy}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: colors.bgElevated, borderRadius: layout.cardRadiusSmall }}>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: `${colors.purple}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Zap size={14} color={colors.purple} strokeWidth={2.5} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 500, color: colors.textSecondary, margin: '0 0 2px 0' }}>
-                        {t.side} {t.quantity} {t.symbol}
+                        {t.symbol} · {t.strategy}
                       </p>
                       <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, margin: 0 }}>
-                        {t.ticketId} · {t.broker} · {t.strategy || 'engine'} · {t.state}
+                        {t.price.toFixed(2)}
+                        {t.dailyChangePct != null ? ` · ${t.dailyChangePct >= 0 ? '+' : ''}${t.dailyChangePct.toFixed(2)}%` : ''}
+                        {' · '}{t.executable ? 'EXECUTABLE' : 'EVALUATE-ONLY'}
                       </p>
                     </div>
-                    <StatusDot color={t.state === 'FILLED' ? colors.green : colors.orange} />
+                    <StatusDot color={t.executable ? colors.green : colors.orange} />
                   </div>
                 ))}
               </div>
@@ -642,13 +642,13 @@ export default function OverviewTab() {
             {recentWorking.length > 0 && (
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
                 <p style={{ margin: '0 0 8px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: colors.textMuted, textTransform: 'uppercase' }}>
-                  Also active · {workingOnlyCount} working · {filledCount} filled
+                  Live tickets · {workingOnlyCount} working · {filledCount} filled
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {recentWorking.map((t) => (
                     <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                       <span style={{ color: colors.textSecondary }}>
-                        {t.side} {t.quantity} {t.symbol} · {t.ticketId}
+                        {t.side} {t.quantity} {t.symbol} · {t.strategy || 'engine'}
                       </span>
                       <span style={{ color: t.state === 'FILLED' ? colors.green : colors.orange }}>{t.state}</span>
                 </div>
